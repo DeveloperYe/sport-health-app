@@ -52,7 +52,7 @@
 </template>
 
 <script>
-import { MODES, calcSportCalories } from '@/utils/health.js'
+import { MODES, calcSportCalories, getWorkoutSteps } from '@/utils/health.js'
 import { getTodayData, saveTodayData, addRecord } from '@/utils/storage.js'
 import { syncDaily } from '@/utils/cloud.js'
 
@@ -64,6 +64,15 @@ export default {
       state: 'idle', // idle / running / paused
       seconds: 0,
       timer: null,
+      /**
+       * 运动会话真实计步：
+       * stepBaseline 进入页面开始运动时记录的累计步数基线，
+       * liveSteps 运动中实时累计的本场步数（= 当前累计 - 基线）。
+       * 结束用真实差值入账，不再伪造。
+       */
+      stepBaseline: 0,
+      liveSteps: 0,
+      stepTimer: null,
     }
   },
   computed: {
@@ -76,27 +85,35 @@ export default {
       return calcSportCalories(MODES[this.mode].met, this.seconds / 60)
     },
     stepPreview() {
-      return Math.round(MODES[this.mode].stepPerMin * (this.seconds / 60))
+      // 运动页步数 = 真实计步器会话内累计（本场走了多少步）
+      return this.liveSteps
     },
   },
   onUnload() {
     this.clearTimer()
+    this.clearStepTimer()
   },
   methods: {
     switchMode(key) {
       if (this.state !== 'idle') return
       this.mode = key
     },
-    start() {
+    async start() {
       this.state = 'running'
       this.clearTimer()
+      // 记录运动会话开始时的累计步数作为基线，本场步数 = 当前累计 - 基线
+      this.stepBaseline = await getWorkoutSteps()
+      this.liveSteps = 0
       this.timer = setInterval(() => {
         this.seconds++
       }, 1000)
+      // 实时刷新真实步数（读一次计步器较廉价；微信运动不走实时，结束时取差值）
+      this.startStepSync()
     },
     pause() {
       this.state = 'paused'
       this.clearTimer()
+      this.clearStepTimer()
     },
     resume() {
       this.state = 'running'
@@ -104,6 +121,7 @@ export default {
       this.timer = setInterval(() => {
         this.seconds++
       }, 1000)
+      this.startStepSync()
     },
     clearTimer() {
       if (this.timer) {
@@ -111,15 +129,37 @@ export default {
         this.timer = null
       }
     },
-    finish() {
+    startStepSync() {
+      this.clearStepTimer()
+      // #ifdef APP-PLUS
+      // Android 原生计步可廉价轮询，实时刷新本场步数
+      this.stepTimer = setInterval(async () => {
+        const cur = await getWorkoutSteps()
+        if (cur >= this.stepBaseline) this.liveSteps = cur - this.stepBaseline
+      }, 5000)
+      // #endif
+    },
+    clearStepTimer() {
+      if (this.stepTimer) {
+        clearInterval(this.stepTimer)
+        this.stepTimer = null
+      }
+    },
+    async finish() {
       this.clearTimer()
+      this.clearStepTimer()
       const minutes = Math.round(this.seconds / 60)
       if (minutes < 1) {
         uni.showToast({ title: '运动时间太短', icon: 'none' })
         this.state = 'idle'
         this.seconds = 0
+        this.liveSteps = 0
         return
       }
+
+      // 结束读取一次累计步数，真实差值 = 当前累计 - 基线（不伪造）
+      const cur = await getWorkoutSteps()
+      const realSteps = cur >= this.stepBaseline ? cur - this.stepBaseline : 0
 
       const m = MODES[this.mode]
       const record = {
@@ -127,7 +167,7 @@ export default {
         type: this.mode,
         duration: minutes,
         calories: calcSportCalories(m.met, minutes),
-        steps: Math.round(m.stepPerMin * minutes),
+        steps: realSteps,
         createdAt: Date.now(),
       }
 
@@ -144,6 +184,7 @@ export default {
 
       this.state = 'idle'
       this.seconds = 0
+      this.liveSteps = 0
       uni.showToast({ title: '运动已保存', icon: 'success' })
     },
   },

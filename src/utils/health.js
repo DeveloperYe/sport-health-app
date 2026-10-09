@@ -47,6 +47,34 @@ function readCurrentStep(ok) {
     ok(0)
   }
 }
+
+// 运动会话计步：读取"当前累计步数"，供会话内做 delta 计步（结束值 - 开始值 = 本场真实步数）。
+// 返回今日累计步数，不支持则返回 0。
+export function getWorkoutSteps() {
+  return new Promise((resolve) => {
+    const ok = (val) => resolve(val > 0 ? Number(val) : 0)
+    if (!plus || !plus.stepCounter) {
+      ok(0)
+      return
+    }
+    // 优先取今天的累计值（getHistoryStepCount 最后一项通常为今天），退回 getCurrentStep
+    if (typeof plus.stepCounter.getHistoryStepCount === 'function') {
+      plus.stepCounter.getHistoryStepCount(
+        (arr) => {
+          if (Array.isArray(arr) && arr.length) {
+            const last = arr[arr.length - 1]
+            const v = last && typeof last === 'object' ? last.value : last
+            if (v > 0) return ok(v)
+          }
+          readCurrentStep(ok)
+        },
+        () => readCurrentStep(ok)
+      )
+    } else {
+      readCurrentStep(ok)
+    }
+  })
+}
 // #endif
 
 // #ifdef MP-WEIXIN
@@ -110,11 +138,28 @@ function readWeRun(resolve) {
     fail: () => resolve(0),
   })
 }
+
+// 运动会话计步：读取微信运动今日步数（需已授权），供会话内 delta 计步。
+// 未授权 / 读取失败返回 0（不伪造）。
+export function getWorkoutSteps() {
+  return new Promise((resolve) => {
+    isWeRunAuthorized().then((authed) => {
+      if (!authed) {
+        resolve(0)
+        return
+      }
+      readWeRun(resolve)
+    })
+  })
+}
 // #endif
 
 // #ifndef APP-PLUS
 // #ifndef MP-WEIXIN
 export function getTodaySteps() {
+  return Promise.resolve(0)
+}
+export function getWorkoutSteps() {
   return Promise.resolve(0)
 }
 // #endif
