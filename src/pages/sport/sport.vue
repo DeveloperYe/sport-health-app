@@ -52,8 +52,8 @@
 </template>
 
 <script>
-import { MODES, calcSportCalories, getWorkoutSteps } from '@/utils/health.js'
-import { getTodayData, saveTodayData, addRecord } from '@/utils/storage.js'
+import { MODES, calcCaloriesBySteps, getWorkoutSteps } from '@/utils/health.js'
+import { getTodayData, saveTodayData, addRecord, getWeight } from '@/utils/storage.js'
 import { syncDaily } from '@/utils/cloud.js'
 
 export default {
@@ -73,6 +73,7 @@ export default {
       stepBaseline: 0,
       liveSteps: 0,
       stepTimer: null,
+      weight: 60,
     }
   },
   computed: {
@@ -82,12 +83,16 @@ export default {
       return `${m}:${s}`
     },
     caloriePreview() {
-      return calcSportCalories(MODES[this.mode].met, this.seconds / 60)
+      // 热量按真实步数 + 体重估算（每千步约 40 千卡，随体重线性折算）
+      return calcCaloriesBySteps(this.liveSteps, this.weight)
     },
     stepPreview() {
       // 运动页步数 = 真实计步器会话内累计（本场走了多少步）
       return this.liveSteps
     },
+  },
+  onShow() {
+    this.weight = getWeight()
   },
   onUnload() {
     this.clearTimer()
@@ -161,12 +166,11 @@ export default {
       const cur = await getWorkoutSteps()
       const realSteps = cur >= this.stepBaseline ? cur - this.stepBaseline : 0
 
-      const m = MODES[this.mode]
       const record = {
         id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
         type: this.mode,
         duration: minutes,
-        calories: calcSportCalories(m.met, minutes),
+        calories: calcCaloriesBySteps(realSteps, this.weight),
         steps: realSteps,
         createdAt: Date.now(),
       }

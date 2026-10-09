@@ -88,7 +88,7 @@
 </template>
 
 <script>
-import { getTodayData, saveTodayData, getTargets, getRecords } from '@/utils/storage.js'
+import { getTodayData, saveTodayData, getTargets, getRecords, getWeight } from '@/utils/storage.js'
 import { getTodaySteps, calcCaloriesBySteps } from '@/utils/health.js'
 // #ifdef MP-WEIXIN
 import { isWeRunAuthorized, authorizeWeRun } from '@/utils/health.js'
@@ -106,6 +106,7 @@ export default {
       ringTimer: null,
       // 微信小程序：微信运动未授权时提示开启
       weRunAuthed: true,
+      weight: 60,
     }
   },
   computed: {
@@ -138,6 +139,7 @@ export default {
       this.targets = getTargets()
       this.records = getRecords()
       this.todayText = this.formatToday()
+      this.weight = getWeight()
 
       // 拉取当日步数（小程序：微信运动；App：原生计步器），合并后落本地 + 静默同步云端
       let steps = await getTodaySteps()
@@ -153,7 +155,7 @@ export default {
 
       if (steps > 0 && steps > this.daily.steps) {
         this.daily.steps = steps
-        this.daily.calories = calcCaloriesBySteps(steps)
+        this.daily.calories = calcCaloriesBySteps(steps, this.weight)
         saveTodayData(this.daily)
         syncDaily(this.daily, null)
       }
@@ -167,7 +169,7 @@ export default {
       if (steps > 0) {
         this.weRunAuthed = true
         this.daily.steps = steps
-        this.daily.calories = calcCaloriesBySteps(steps)
+        this.daily.calories = calcCaloriesBySteps(steps, this.weight)
         saveTodayData(this.daily)
         syncDaily(this.daily, null)
         this.animateRing()

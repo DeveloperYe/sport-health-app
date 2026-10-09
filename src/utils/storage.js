@@ -4,6 +4,7 @@ const KEYS = {
   targets: 'fh_targets', // 每日目标
   records: 'fh_records', // 运动记录列表
   daily: 'fh_daily', // 按日期存储的当日统计
+  weight: 'fh_weight', // 用户体重（kg），用于热量估算
 }
 
 function today() {
@@ -30,6 +31,16 @@ export function getTargets() {
 
 export function saveTargets(t) {
   uni.setStorageSync(KEYS.targets, t)
+}
+
+// 体重（kg），默认 60，用于热量估算
+export function getWeight() {
+  const w = uni.getStorageSync(KEYS.weight)
+  return w > 30 && w < 300 ? w : 60
+}
+
+export function saveWeight(w) {
+  uni.setStorageSync(KEYS.weight, w)
 }
 
 export function getTodayData() {
