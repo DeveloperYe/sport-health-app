@@ -52,7 +52,11 @@
         <text class="recent-more" @click="goMine">全部 ›</text>
       </view>
       <view v-if="records.length === 0" class="empty">
-        <text>还没有运动记录，去动起来吧</text>
+        <view class="empty-illu">
+          <text class="empty-run">&#x1F3C3;</text>
+        </view>
+        <text class="empty-text">还没有运动记录</text>
+        <text class="empty-sub">点击「开始运动」迈出第一步</text>
       </view>
       <view v-for="r in records.slice(0, 3)" :key="r.id" class="record">
         <view class="record-icon" :class="r.type === 'run' ? 'icon-run' : 'icon-walk'">
@@ -83,6 +87,8 @@ export default {
       targets: {},
       records: [],
       todayText: '',
+      animPercent: 0, // 圆环填充动画进度
+      ringTimer: null,
     }
   },
   computed: {
@@ -94,7 +100,7 @@ export default {
       return this.daily.duration || 0
     },
     ringStyle() {
-      const p = this.percent
+      const p = this.animPercent
       return {
         background: `conic-gradient(#2bd45c ${p}%, #232329 ${p}% 100%)`,
       }
@@ -102,6 +108,12 @@ export default {
   },
   onShow() {
     this.loadAll()
+  },
+  onUnload() {
+    if (this.ringTimer) {
+      clearInterval(this.ringTimer)
+      this.ringTimer = null
+    }
   },
   methods: {
     async loadAll() {
@@ -118,6 +130,28 @@ export default {
         saveTodayData(this.daily)
         syncDaily(this.daily, null)
       }
+
+      this.animateRing()
+    },
+    // 圆环填充动画：从 0 缓动到目标百分比
+    animateRing() {
+      if (this.ringTimer) {
+        clearInterval(this.ringTimer)
+        this.ringTimer = null
+      }
+      const target = this.percent
+      let p = 0
+      const frames = 36 // 约 0.6s 完成
+      const step = target / frames
+      this.ringTimer = setInterval(() => {
+        p += step
+        if (p >= target) {
+          p = target
+          clearInterval(this.ringTimer)
+          this.ringTimer = null
+        }
+        this.animPercent = p
+      }, 16)
     },
     formatToday() {
       const d = new Date()
@@ -306,10 +340,34 @@ export default {
   color: $text-secondary;
 }
 .empty {
-  padding: 48rpx 0;
-  text-align: center;
+  padding: 48rpx 0 8rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.empty-illu {
+  width: 160rpx;
+  height: 160rpx;
+  border-radius: 50%;
+  background: rgba(43, 212, 92, 0.10);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 24rpx;
+}
+.empty-run {
+  font-size: 80rpx;
+  line-height: 1;
+}
+.empty-text {
+  font-size: 30rpx;
+  color: $text-secondary;
+  font-weight: 600;
+}
+.empty-sub {
+  margin-top: 12rpx;
+  font-size: 24rpx;
   color: $text-muted;
-  font-size: 26rpx;
 }
 .record {
   display: flex;
