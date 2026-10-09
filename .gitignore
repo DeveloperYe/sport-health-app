@@ -36,5 +36,10 @@ android/gradle-local.properties
 android/**/*.jks
 android/**/*.keystore
 android/*.key
+# 签名密码本地配置文件（本地开发用，CI 走 GitHub Secrets，绝不提交）
+android/app/keystore.properties
+
+# 设计稿原始素材（AI 生成的中间大图，不入库）
+assets/
 # 构建时才能生成的 App 资源（由 uni build -p app 产生并复制进来）
 android/app/src/main/assets/apps/__UNI__74D4914/www/

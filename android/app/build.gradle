@@ -1,11 +1,27 @@
 apply plugin: 'com.android.application'
 
-// 签名配置：优先读环境变量（CI 用 GitHub Secrets），本地开发回退到默认值。
-// 注意：keystore 文件本身不入 git，见顶层 .gitignore。
-def SIGN_KEYSTORE_PATH = System.getenv('KEYSTORE_PATH') ?: file('sporthealth.keystore').path
-def SIGN_KEY_ALIAS     = System.getenv('KEY_ALIAS')     ?: "sporthealth"
-def SIGN_KEY_PASSWORD  = System.getenv('KEY_PASSWORD')  ?: "***REMOVED***"
-def SIGN_STORE_PASSWORD = System.getenv('KEYSTORE_PASSWORD') ?: "***REMOVED***"
+// 签名配置：优先读 CI 环境变量（GitHub Secrets），其次读本地 gitignore 的
+// keystore.properties。两者都没有则构建失败，绝不在源码里写死密码。
+def keystoreProperties = new Properties()
+def keystorePropsFile = file('keystore.properties')
+if (keystorePropsFile.exists()) {
+    keystorePropsFile.withInputStream { keystoreProperties.load(it) }
+}
+
+// 从环境变量优先，其次 keystore.properties，取不到返回 null（让其显式失败）
+def cred = { String envKey, String propKey ->
+    def envVal = System.getenv(envKey)
+    if (envVal != null && !envVal.trim().isEmpty()) return envVal
+    def propVal = keystoreProperties.getProperty(propKey)
+    if (propVal != null && !propVal.trim().isEmpty()) return propVal
+    return null
+}
+
+def SIGN_KEY_ALIAS      = cred('KEY_ALIAS',        'keyAlias')
+def SIGN_KEY_PASSWORD   = cred('KEY_PASSWORD',     'keyPassword')
+def SIGN_STORE_PASSWORD = cred('KEYSTORE_PASSWORD','storePassword')
+def SIGN_KEYSTORE_PATH  = System.getenv('KEYSTORE_PATH')
+        ?: keystoreProperties.getProperty('storeFile') ?: file('sporthealth.keystore').path
 
 android {
     compileSdkVersion 35
