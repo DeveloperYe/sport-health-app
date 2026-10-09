@@ -39,6 +39,18 @@
       </view>
     </view>
 
+    <!-- 微信小程序：开启微信运动计步引导 -->
+    <!-- #ifdef MP-WEIXIN -->
+    <view v-if="!weRunAuthed" class="werun-bar" @click="enableWeRun">
+      <view class="werun-icon">步</view>
+      <view class="werun-body">
+        <text class="werun-title">开启微信运动计步</text>
+        <text class="werun-sub">授权后将自动读取今日步数</text>
+      </view>
+      <view class="werun-btn">开启</view>
+    </view>
+    <!-- #endif -->
+
     <!-- 快捷入口 -->
     <view class="go-sport" @click="goSport">
       <text class="go-text">开始运动</text>
@@ -78,6 +90,9 @@
 <script>
 import { getTodayData, saveTodayData, getTargets, getRecords } from '@/utils/storage.js'
 import { getTodaySteps, calcCaloriesBySteps } from '@/utils/health.js'
+// #ifdef MP-WEIXIN
+import { isWeRunAuthorized, authorizeWeRun } from '@/utils/health.js'
+// #endif
 import { syncDaily } from '@/utils/cloud.js'
 
 export default {
@@ -89,6 +104,8 @@ export default {
       todayText: '',
       animPercent: 0, // 圆环填充动画进度
       ringTimer: null,
+      // 微信小程序：微信运动未授权时提示开启
+      weRunAuthed: true,
     }
   },
   computed: {
@@ -123,7 +140,17 @@ export default {
       this.todayText = this.formatToday()
 
       // 拉取当日步数（小程序：微信运动；App：原生计步器），合并后落本地 + 静默同步云端
-      const steps = await getTodaySteps()
+      let steps = await getTodaySteps()
+
+      // 微信小程序：检测微信运动授权态，未授权时显示「开启计步」引导
+      // #ifdef MP-WEIXIN
+      if (typeof isWeRunAuthorized === 'function') {
+        const authed = await isWeRunAuthorized()
+        this.weRunAuthed = authed
+        if (!authed) steps = 0 // 未授权拿不到真实步数，避免旧值覆盖
+      }
+      // #endif
+
       if (steps > 0 && steps > this.daily.steps) {
         this.daily.steps = steps
         this.daily.calories = calcCaloriesBySteps(steps)
@@ -133,6 +160,20 @@ export default {
 
       this.animateRing()
     },
+    // 微信小程序：用户主动开启微信运动计步
+    // #ifdef MP-WEIXIN
+    async enableWeRun() {
+      const steps = await authorizeWeRun()
+      if (steps > 0) {
+        this.weRunAuthed = true
+        this.daily.steps = steps
+        this.daily.calories = calcCaloriesBySteps(steps)
+        saveTodayData(this.daily)
+        syncDaily(this.daily, null)
+        this.animateRing()
+      }
+    },
+    // #endif
     // 圆环填充动画：从 0 缓动到目标百分比
     animateRing() {
       if (this.ringTimer) {
@@ -294,6 +335,53 @@ export default {
   margin-top: 8rpx;
   font-size: 24rpx;
   color: $text-secondary;
+}
+
+/* 微信运动开启引导 */
+.werun-bar {
+  margin-top: 24rpx;
+  background: $bg-card;
+  border-radius: 32rpx;
+  padding: 28rpx 32rpx;
+  display: flex;
+  align-items: center;
+  border: 1rpx solid rgba(43, 212, 92, 0.28);
+}
+.werun-icon {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 20rpx;
+  background: rgba(43, 212, 92, 0.12);
+  color: $brand-primary;
+  font-size: 36rpx;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.werun-body {
+  flex: 1;
+  margin-left: 24rpx;
+  display: flex;
+  flex-direction: column;
+}
+.werun-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: $text-main;
+}
+.werun-sub {
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  color: $text-muted;
+}
+.werun-btn {
+  padding: 14rpx 28rpx;
+  border-radius: 999rpx;
+  background: linear-gradient(135deg, #2bd45c, #17a348);
+  color: #06180d;
+  font-size: 26rpx;
+  font-weight: 600;
 }
 
 /* 开始运动 */
