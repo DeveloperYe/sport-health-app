@@ -1,5 +1,9 @@
 name: Build Android APK
 
+# 需要写权限才能创建/更新 GitHub Release
+permissions:
+  contents: write
+
 on:
   # 每次 push 到 main 都自动构建出 APK（不限定路径，保证任何代码改动都触发）
   push:
@@ -81,3 +85,19 @@ jobs:
           name: sport-health-app-release
           path: android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
+
+      # 5) 同时发布为一个 GitHub Release 测试版（pre-release），方便直接下载安装
+      - name: Publish test Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: android/app/build/outputs/apk/release/*.apk
+          tag_name: test-${{ github.run_number }}
+          name: 测试版 ${{ github.run_number }}
+          prerelease: true
+          body: |
+            自动构建的测试版 APK（run #${{ github.run_number }}）
+
+            - Commit: ${{ github.sha }}
+            - 事件: ${{ github.event_name }}
+            - 时间: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          append_body: true
