@@ -8,32 +8,83 @@
 // 退化为 getCurrentStep 当前值），并兜底返回 0。
 export function getTodaySteps() {
   return new Promise((resolve) => {
-    const ok = (val) => resolve(val > 0 ? Number(val) : 0)
+    ensureStepReady().then((ready) => {
+      if (!ready) {
+        resolve(0)
+        return
+      }
+      const ok = (val) => resolve(val > 0 ? Number(val) : 0)
 
-    // 设备不支持计步器 / 未勾选「计步器」模块时 plus.stepCounter 为空
+      // 优先按天历史步数，取最后一天（今天）
+      if (typeof plus.stepCounter.getHistoryStepCount === 'function') {
+        plus.stepCounter.getHistoryStepCount(
+          (arr) => {
+            if (Array.isArray(arr) && arr.length) {
+              const last = arr[arr.length - 1]
+              // 部分平台返回数字，部分返回 { value }
+              const v = last && typeof last === 'object' ? last.value : last
+              if (v > 0) return ok(v)
+            }
+            readCurrentStep(ok)
+          },
+          () => readCurrentStep(ok)
+        )
+      } else {
+        readCurrentStep(ok)
+      }
+    })
+  })
+}
+
+// Android 计步前置：确认有计步器模块 + 动态申请 ACTIVITY_RECOGNITION 权限 + 激活计步器。
+// 任一失败返回 false（设备不支持 / 未勾选计步模块 / 用户拒绝授权）。
+// 返回 true 表示可安全读取步数。
+function ensureStepReady() {
+  return new Promise((resolve) => {
     if (!plus || !plus.stepCounter) {
-      ok(0)
+      resolve(false)
       return
     }
 
-    // 优先按天历史步数，取最后一天（今天）
-    if (typeof plus.stepCounter.getHistoryStepCount === 'function') {
-      plus.stepCounter.getHistoryStepCount(
-        (arr) => {
-          if (Array.isArray(arr) && arr.length) {
-            const last = arr[arr.length - 1]
-            // 部分平台返回数字，部分返回 { value }
-            const v = last && typeof last === 'object' ? last.value : last
-            if (v > 0) return ok(v)
-          }
-          readCurrentStep(ok)
-        },
-        () => readCurrentStep(ok)
-      )
-    } else {
-      readCurrentStep(ok)
-    }
+    requestActivityRecognition(() => startStepCounter(resolve))
   })
+}
+
+// 动态申请计步权限（Android 6.0+ 必需；非 Plus 环境自动放行）
+function requestActivityRecognition(done) {
+  try {
+    plus.android.requestPermissions(
+      ['android.permission.ACTIVITY_RECOGNITION'],
+      (result) => {
+        // granted 可能存在且为数组/set，逐个判断；失败也放行，交由 start/read 兜底
+        const granted = result && result.granted
+        if (granted && granted.length) {
+          done()
+        } else if (typeof granted === 'string' && granted.indexOf('ACTIVITY_RECOGNITION') > -1) {
+          done()
+        } else if (!granted) {
+          done() // 老设备无该权限声明，放行尝试
+        } else {
+          done() // 拒绝授权：仍尝试读取（部分机型原生已记步）
+        }
+      },
+      () => done()
+    )
+  } catch (e) {
+    done()
+  }
+}
+
+// 激活计步器，成功后回调
+function startStepCounter(done) {
+  if (typeof plus.stepCounter.start !== 'function') {
+    done()
+    return
+  }
+  plus.stepCounter.start(
+    () => done(),
+    () => done() // 启动失败不阻塞，读取走兜底
+  )
 }
 
 // 读取计步器当前累计值（兜底方案）
@@ -57,22 +108,25 @@ export function getWorkoutSteps() {
       ok(0)
       return
     }
-    // 优先取今天的累计值（getHistoryStepCount 最后一项通常为今天），退回 getCurrentStep
-    if (typeof plus.stepCounter.getHistoryStepCount === 'function') {
-      plus.stepCounter.getHistoryStepCount(
-        (arr) => {
-          if (Array.isArray(arr) && arr.length) {
-            const last = arr[arr.length - 1]
-            const v = last && typeof last === 'object' ? last.value : last
-            if (v > 0) return ok(v)
-          }
-          readCurrentStep(ok)
-        },
-        () => readCurrentStep(ok)
-      )
-    } else {
-      readCurrentStep(ok)
-    }
+    // 读取前先保证权限 + 启动计步器
+    ensureStepReady().then(() => {
+      // 优先取今天的累计值（getHistoryStepCount 最后一项通常为今天），退回 getCurrentStep
+      if (typeof plus.stepCounter.getHistoryStepCount === 'function') {
+        plus.stepCounter.getHistoryStepCount(
+          (arr) => {
+            if (Array.isArray(arr) && arr.length) {
+              const last = arr[arr.length - 1]
+              const v = last && typeof last === 'object' ? last.value : last
+              if (v > 0) return ok(v)
+            }
+            readCurrentStep(ok)
+          },
+          () => readCurrentStep(ok)
+        )
+      } else {
+        readCurrentStep(ok)
+      }
+    })
   })
 }
 // #endif
