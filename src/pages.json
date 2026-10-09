@@ -1,0 +1,48 @@
+{
+	"pages": [
+		{
+			"path": "pages/index/index",
+			"style": {
+				"navigationBarTitleText": "运动健康"
+			}
+		},
+		{
+			"path": "pages/sport/sport",
+			"style": {
+				"navigationBarTitleText": "运动"
+			}
+		},
+		{
+			"path": "pages/mine/mine",
+			"style": {
+				"navigationBarTitleText": "我的"
+			}
+		}
+	],
+	"globalStyle": {
+		"navigationBarTextStyle": "white",
+		"navigationBarTitleText": "运动健康",
+		"navigationBarBackgroundColor": "#101014",
+		"backgroundColor": "#101014"
+	},
+	"tabBar": {
+		"color": "#5C5E66",
+		"selectedColor": "#2BD45C",
+		"backgroundColor": "#1A1A1F",
+		"borderStyle": "black",
+		"list": [
+			{
+				"pagePath": "pages/index/index",
+				"text": "首页"
+			},
+			{
+				"pagePath": "pages/sport/sport",
+				"text": "运动"
+			},
+			{
+				"pagePath": "pages/mine/mine",
+				"text": "我的"
+			}
+		]
+	}
+}

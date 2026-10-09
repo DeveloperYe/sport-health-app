@@ -1,0 +1,7 @@
+{
+  "name": "sync-data",
+  "version": "1.0.0",
+  "description": "运动健康双端同步云函数",
+  "main": "index.js",
+  "dependencies": {}
+}
