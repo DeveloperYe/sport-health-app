@@ -7,6 +7,11 @@
         <text class="user-name">运动者</text>
         <text class="user-id">ID: {{ shortId }}</text>
       </view>
+      <!-- 个人信息入口：头像右边 -->
+      <view class="profile-entry" @click="goProfile">
+        <text class="profile-entry-text">个人信息</text>
+        <text class="profile-entry-arrow">›</text>
+      </view>
     </view>
 
     <!-- 目标设置 -->
@@ -37,25 +42,6 @@
         />
         <text v-else class="target-value">{{ targets.calorie }} 千卡</text>
       </view>
-    </view>
-
-    <!-- 个人资料：体重（用于热量估算） -->
-    <view class="card">
-      <view class="card-head">
-        <text class="card-title">个人资料</text>
-      </view>
-      <view class="weight-row">
-        <text class="target-label">体重</text>
-        <input
-          class="weight-input"
-          type="number"
-          v-model="weight"
-          placeholder="如 60"
-        />
-        <text class="weight-unit">kg</text>
-        <view class="weight-save" @click="saveWeightSetting">保存</view>
-      </view>
-      <text class="weight-tip">按真实步数 + 体重估算热量，体重越准热量越准</text>
     </view>
 
     <!-- 云端同步 -->
@@ -92,7 +78,7 @@
 </template>
 
 <script>
-import { getUserId, getTargets, saveTargets, getRecords, saveRecords, removeRecord, getTodayData, saveTodayData, getWeight, saveWeight } from '@/utils/storage.js'
+import { getUserId, getTargets, saveTargets, getRecords, saveRecords, removeRecord, getTodayData, saveTodayData } from '@/utils/storage.js'
 import { syncDaily, fetchCloudData } from '@/utils/cloud.js'
 
 export default {
@@ -104,7 +90,6 @@ export default {
       editing: false,
       targetSteps: '',
       targetCalorie: '',
-      weight: 60,
       lastSyncAt: '',
     }
   },
@@ -127,17 +112,9 @@ export default {
       this.lastSyncAt = getTodayData().lastSyncAt || ''
       this.targetSteps = String(this.targets.steps)
       this.targetCalorie = String(this.targets.calorie)
-      this.weight = getWeight()
     },
-    saveWeightSetting() {
-      const w = Number(this.weight)
-      if (!(w > 30 && w < 300)) {
-        uni.showToast({ title: '请输入有效体重（30-300kg）', icon: 'none' })
-        return
-      }
-      saveWeight(w)
-      this.weight = w
-      uni.showToast({ title: '体重已保存', icon: 'success' })
+    goProfile() {
+      uni.navigateTo({ url: '/pages/profile/profile' })
     },
     toggleEdit() {
       if (this.editing) {
@@ -219,6 +196,7 @@ export default {
   margin-left: 28rpx;
   display: flex;
   flex-direction: column;
+  flex: 1;
 }
 .user-name {
   font-size: 36rpx;
@@ -229,6 +207,25 @@ export default {
   margin-top: 10rpx;
   font-size: 24rpx;
   color: $text-muted;
+}
+/* 个人信息入口 */
+.profile-entry {
+  display: flex;
+  align-items: center;
+  padding: 20rpx 28rpx;
+  border-radius: 999rpx;
+  background: rgba(43, 212, 92, 0.12);
+}
+.profile-entry-text {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: $brand-primary;
+}
+.profile-entry-arrow {
+  margin-left: 8rpx;
+  font-size: 32rpx;
+  color: $brand-primary;
+  line-height: 1;
 }
 
 /* 通用卡片 */
@@ -286,44 +283,6 @@ export default {
   font-size: 28rpx;
   color: $text-main;
   text-align: right;
-}
-
-/* 体重设置 */
-.weight-row {
-  display: flex;
-  align-items: center;
-  padding: 20rpx 0;
-}
-.weight-input {
-  width: 180rpx;
-  height: 64rpx;
-  margin-left: 24rpx;
-  background: $bg-card-light;
-  border-radius: 12rpx;
-  padding: 0 20rpx;
-  font-size: 28rpx;
-  color: $text-main;
-  text-align: right;
-}
-.weight-unit {
-  margin-left: 12rpx;
-  font-size: 26rpx;
-  color: $text-muted;
-}
-.weight-save {
-  margin-left: auto;
-  padding: 14rpx 28rpx;
-  border-radius: 999rpx;
-  background: linear-gradient(135deg, #2bd45c, #17a348);
-  color: #06180d;
-  font-size: 26rpx;
-  font-weight: 600;
-}
-.weight-tip {
-  display: block;
-  margin-top: 4rpx;
-  font-size: 22rpx;
-  color: $text-muted;
 }
 
 /* 同步 */

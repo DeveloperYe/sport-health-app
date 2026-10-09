@@ -5,6 +5,8 @@ const KEYS = {
   records: 'fh_records', // 运动记录列表
   daily: 'fh_daily', // 按日期存储的当日统计
   weight: 'fh_weight', // 用户体重（kg），用于热量估算
+  height: 'fh_height', // 用户身高（cm）
+  age: 'fh_age', // 用户年龄（岁）
 }
 
 function today() {
@@ -41,6 +43,26 @@ export function getWeight() {
 
 export function saveWeight(w) {
   uni.setStorageSync(KEYS.weight, w)
+}
+
+// 身高（cm），默认 170
+export function getHeight() {
+  const h = uni.getStorageSync(KEYS.height)
+  return h > 50 && h < 250 ? h : 170
+}
+
+export function saveHeight(h) {
+  uni.setStorageSync(KEYS.height, h)
+}
+
+// 年龄（岁），默认 25
+export function getAge() {
+  const a = uni.getStorageSync(KEYS.age)
+  return Number.isFinite(a) && a > 0 && a < 120 ? a : 25
+}
+
+export function saveAge(a) {
+  uni.setStorageSync(KEYS.age, a)
 }
 
 export function getTodayData() {
