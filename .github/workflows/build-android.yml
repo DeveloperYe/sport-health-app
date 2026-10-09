@@ -1,12 +1,10 @@
 name: Build Android APK
 
 on:
+  # 每次 push 到 main 都自动构建出 APK（不限定路径，保证任何代码改动都触发）
   push:
     branches: [main]
-    paths:
-      - 'src/**'
-      - 'package.json'
-      - 'package-lock.json'
+  # 也支持在 Actions 页面手动触发
   workflow_dispatch:
 
 jobs:
