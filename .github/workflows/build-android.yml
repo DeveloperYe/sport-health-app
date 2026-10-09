@@ -68,7 +68,8 @@ jobs:
         working-directory: android
         env:
           ANDROID_HOME: $ANDROID_HOME
-          KEYSTORE_PATH: app/sporthealth.keystore
+          # 相对 app 模块目录（module 根目录是 android/app/），与解码步骤写入的路径对齐
+          KEYSTORE_PATH: sporthealth.keystore
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
