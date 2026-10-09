@@ -60,6 +60,11 @@ jobs:
           ls -la android/app/sporthealth.keystore
         shell: bash
 
+      # 3.5) 修正 gradlew 可执行位（Windows 提交会丢 exec 权限）
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+        working-directory: android
+
       # 4) gradle 编译 Release（产物默认已签名，build.gradle 读签名环境变量）
       - name: Build Release APK with Gradle
         working-directory: android
