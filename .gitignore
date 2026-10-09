@@ -19,3 +19,22 @@ dist
 *.njsproj
 *.sln
 *.sw?
+
+# ===== Android 离线打包工程 =====
+# 构建产物
+android/app/build/
+android/app/release/
+android/build/
+android/.gradle/
+android/app/.gradle/
+android/captures/
+android/externalNativeBuild/
+android/.cxx/
+android/local.properties
+android/gradle-local.properties
+# 签名证书（绝不提交，用 GitHub Secrets 注入）
+android/**/*.jks
+android/**/*.keystore
+android/*.key
+# 构建时才能生成的 App 资源（由 uni build -p app 产生并复制进来）
+android/app/src/main/assets/apps/__UNI__74D4914/www/

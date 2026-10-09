@@ -6,6 +6,7 @@
     "dev:mp-weixin": "uni-launch mp-weixin",
     "dev:app-android": "uni-launch app-android",
     "build:h5": "uni build",
+    "build:app": "uni build -p app",
     "build:mp-weixin": "uni build -p mp-weixin",
     "logcat:web": "uni-logcat web",
     "logcat:app-android": "uni-logcat app-android",

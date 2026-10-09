@@ -1,0 +1,67 @@
+apply plugin: 'com.android.application'
+
+// 签名配置：优先读环境变量（CI 用 GitHub Secrets），本地开发回退到默认值。
+// 注意：keystore 文件本身不入 git，见顶层 .gitignore。
+def SIGN_KEYSTORE_PATH = System.getenv('KEYSTORE_PATH') ?: file('sporthealth.keystore').path
+def SIGN_KEY_ALIAS     = System.getenv('KEY_ALIAS')     ?: "sporthealth"
+def SIGN_KEY_PASSWORD  = System.getenv('KEY_PASSWORD')  ?: "***REMOVED***"
+def SIGN_STORE_PASSWORD = System.getenv('KEYSTORE_PASSWORD') ?: "***REMOVED***"
+
+android {
+    compileSdkVersion 35
+    buildToolsVersion '35.0.0'
+    namespace 'com.developerye.sporthealth'
+    defaultConfig {
+        applicationId "com.developerye.sporthealth"
+        minSdkVersion 21
+        targetSdkVersion 33
+        versionCode 100
+        versionName "1.0.0"
+        multiDexEnabled true
+        compileOptions {
+            sourceCompatibility JavaVersion.VERSION_1_8
+            targetCompatibility JavaVersion.VERSION_1_8
+        }
+    }
+    signingConfigs {
+        config {
+            keyAlias SIGN_KEY_ALIAS
+            keyPassword SIGN_KEY_PASSWORD
+            storeFile file(SIGN_KEYSTORE_PATH)
+            storePassword SIGN_STORE_PASSWORD
+            v1SigningEnabled true
+            v2SigningEnabled true
+        }
+    }
+
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.config
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        release {
+            signingConfig signingConfigs.config
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    aaptOptions {
+        additionalParameters '--auto-add-overlay'
+        ignoreAssetsPattern "!.svn:!.git:.*:!CVS:!thumbs.db:!picasa.ini:!*.scc:*~"
+    }
+}
+
+dependencies {
+    implementation fileTree(dir: 'libs', include: ['*.aar', '*.jar'], exclude: [])
+    implementation 'androidx.appcompat:appcompat:1.1.0'
+    implementation 'androidx.localbroadcastmanager:localbroadcastmanager:1.0.0'
+    implementation 'androidx.core:core:1.1.0'
+    implementation "androidx.fragment:fragment:1.1.0"
+    implementation 'androidx.recyclerview:recyclerview:1.1.0'
+    implementation 'com.facebook.fresco:fresco:2.5.0'
+    implementation "com.facebook.fresco:animated-gif:2.5.0"
+    implementation 'com.github.bumptech.glide:glide:4.9.0'
+    implementation 'com.alibaba:fastjson:1.2.83'
+    implementation 'androidx.webkit:webkit:1.5.0'
+}
