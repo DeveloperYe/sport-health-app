@@ -77,7 +77,7 @@ export default {
        * liveSteps 运动中实时累计的本场步数（= 当前累计 - 基线）。
        * 结束用真实差值入账，不再伪造。
        */
-      stepBaseline: 0,
+      stepBaseline: -1,
       liveSteps: 0,
       stepTimer: null,
       weight: 60,
@@ -114,7 +114,7 @@ export default {
     async start() {
       this.state = 'running'
       this.clearTimer()
-      // 记录运动会话开始时的累计步数作为基线，本场步数 = 当前累计 - 基线
+      // 基线 = 会话开始时的累计读数（0 是合法值；-1 表示读取失败，由首个有效读数兜底）
       this.stepBaseline = await getWorkoutSteps()
       this.liveSteps = 0
       this.timer = setInterval(() => {
@@ -148,9 +148,12 @@ export default {
       // Android 原生计步可廉价轮询，实时刷新本场步数
       this.stepTimer = setInterval(async () => {
         const cur = await getWorkoutSteps()
-        // 懒基线：开始时没读到传感器（基线 0），首个有效读数即作为基线
-        if (!this.stepBaseline && cur > 0) this.stepBaseline = cur
-        if (this.stepBaseline > 0 && cur >= this.stepBaseline) this.liveSteps = cur - this.stepBaseline
+        if (this.stepBaseline < 0) {
+          // 开始时读取失败：首个有效读数即作为基线
+          if (cur >= 0) this.stepBaseline = cur
+        } else if (cur >= this.stepBaseline) {
+          this.liveSteps = cur - this.stepBaseline
+        }
         // 临时诊断（定位后移除）
         const d = getStepDiag()
         this.diag = `sen:${d.sensorFound ? 1 : 0} dt:${d.detFound ? 1 : 0} cb:${d.cb} ev:${d.ev} comp:${d.comp} base:${this.stepBaseline}${d.err ? ' err:' + d.err : ''}`
@@ -177,8 +180,9 @@ export default {
 
       // 结束读取一次累计步数，真实差值 = 当前累计 - 基线（不伪造）
       const cur = await getWorkoutSteps()
-      if (!this.stepBaseline && cur > 0) this.stepBaseline = cur // 懒基线兜底
-      const realSteps = this.stepBaseline > 0 && cur >= this.stepBaseline ? cur - this.stepBaseline : 0
+      if (this.stepBaseline < 0 && cur >= 0) this.stepBaseline = cur // 读取失败时的懒基线兜底
+      const realSteps =
+        this.stepBaseline >= 0 && cur >= this.stepBaseline ? cur - this.stepBaseline : 0
 
       const record = {
         id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),

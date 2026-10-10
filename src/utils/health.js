@@ -36,8 +36,8 @@ function requestActivityRecognition(done) {
 // 对外统一返回两路对齐后的 max 值：任一路失效（counter 卡住 / detector 缺失）另一路兜底。
 const SENSOR_KEY = 'fh_step_sensor'
 let sensorTotal = -1 // counter 最新累计值（开机口径）
+let counterBase = null // counter 首值时点（统一口径为「注册起算」的起点）
 let detTotal = 0 // detector 自注册起事件累计（进程内单调）
-let detOffset = null // 对齐偏移 = counter 首值 - detTotal，使两分支同量级
 let counterEvents = 0 // 诊断：counter 回调次数
 let detEvents = 0 // 诊断：detector 回调次数
 let sensorRegistered = false
@@ -80,10 +80,8 @@ function ensureSensorListener() {
             counterEvents++
             const v = readEventValue(event)
             if (Number.isFinite(v) && v >= 0) {
-              const isFirst = sensorTotal < 0
+              if (counterBase === null) counterBase = Math.floor(v) // 首值即起点
               sensorTotal = Math.floor(v)
-              // counter 首值到达时对齐 detector 分支
-              if (isFirst && detOffset === null) detOffset = sensorTotal - detTotal
             }
           },
           onAccuracyChanged: function () {},
@@ -122,11 +120,15 @@ function ensureSensorListener() {
   }
 }
 
-// 两路对齐后的累计值（单调，供 delta 计步）
+// 两路统一为「自注册/首值起算」的增量后取 max（单调、无量级跳变，供 delta 计步）：
+// - counter 分支：sensorTotal - counterBase（首值前无效，counter 晚到不影响已产生的读数）
+// - detector 分支：detTotal（每步 +1）
+// 任一分支失效另一分支顶上；手机重启 counter 归零 → 该分支按无效处理，由 detector 兜底。
 function compositeTotal() {
-  if (sensorTotal < 0) return detTotal + (detOffset || 0)
-  if (detOffset === null) detOffset = sensorTotal - detTotal
-  return Math.max(sensorTotal, detTotal + detOffset)
+  const counterDelta =
+    counterBase !== null && sensorTotal >= counterBase ? sensorTotal - counterBase : -1
+  if (counterDelta < 0) return detTotal
+  return Math.max(counterDelta, detTotal)
 }
 
 // 读取累计步数；两路都无数据 / 3 秒内无回调返回 -1
@@ -208,9 +210,10 @@ export function getTodaySteps() {
   })
 }
 
-// 运动会话计步：返回两路对齐后的累计值（单调），供运动页做 delta（结束值 - 开始值）
+// 运动会话计步：返回两路统一口径的累计值（单调，供 delta 计步）。
+// 传感器无数据时返回 -1（由运动页用懒基线兜底，区分「读取失败」与「真的 0 步」）。
 export function getWorkoutSteps() {
-  return readComposite().then((total) => (total > 0 ? total : 0))
+  return readComposite()
 }
 
 // 临时诊断信息（真机排查用，定位后移除）
