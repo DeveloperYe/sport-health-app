@@ -45,7 +45,7 @@
             android:launchMode="singleTask"
             android:hardwareAccelerated="true"
             android:theme="@style/TranslucentTheme"
-            android:screenOrientation="user"
+            android:screenOrientation="portrait"
             android:exported="true"
             android:windowSoftInputMode="adjustResize" >
             <intent-filter>
@@ -59,7 +59,7 @@
             android:configChanges="orientation|keyboardHidden|screenSize|mcc|mnc|fontScale|keyboard|smallestScreenSize|screenLayout|screenSize|uiMode"
             android:hardwareAccelerated="true"
             android:permission="com.miui.securitycenter.permission.AppPermissionsEditor"
-            android:screenOrientation="user"
+            android:screenOrientation="portrait"
             android:theme="@style/DCloudTheme"
             android:exported="true"
             android:windowSoftInputMode="adjustResize">
