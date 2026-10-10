@@ -1,7 +1,12 @@
 <script>
+import { autoSyncSteps } from '@/utils/cloud.js'
+
 export default {
   onLaunch: function () {},
-  onShow: function () {},
+  onShow: function () {
+    // 启动/回到前台时自动同步今日步数（Android 原生计步器 / 微信运动）
+    autoSyncSteps()
+  },
   onHide: function () {},
 }
 </script>
