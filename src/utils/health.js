@@ -30,16 +30,37 @@ function requestActivityRecognition(done) {
   }
 }
 
-// ===== 系统计步传感器 =====
-// TYPE_STEP_COUNTER = 19（Android 4.4+ 标配），返回"开机以来累计步数"。
-// 当日步数 = 当前累计 - 当日首次读取时的基线；手机重启后累计归零，检测到变小即重置基线。
+// ===== 系统计步传感器（双传感器兜底） =====
+// - TYPE_STEP_COUNTER(19)：开机以来累计，按批上报；部分机型注册后只推一次初始值就卡住。
+// - TYPE_STEP_DETECTOR(18)：每落一步推一个事件，实时性最好。
+// 对外统一返回两路对齐后的 max 值：任一路失效（counter 卡住 / detector 缺失）另一路兜底。
 const SENSOR_KEY = 'fh_step_sensor'
-let sensorTotal = -1 // 监听到的最新系统累计步数
+let sensorTotal = -1 // counter 最新累计值（开机口径）
+let detTotal = 0 // detector 自注册起事件累计（进程内单调）
+let detOffset = null // 对齐偏移 = counter 首值 - detTotal，使两分支同量级
+let counterEvents = 0 // 诊断：counter 回调次数
+let detEvents = 0 // 诊断：detector 回调次数
 let sensorRegistered = false
 let sensorFound = false
+let detFound = false
 let sensorManagerRef = null // 持有引用防 GC
 let listenerRef = null
+let detListenerRef = null
 let lastErr = ''
+
+// 从 Java 事件对象取 values[0]（桥接两种读法兜底）
+function readEventValue(event) {
+  let v = NaN
+  try {
+    const values = plus.android.getAttribute(event, 'values')
+    v = Number(values && values[0])
+  } catch (e) {
+    try {
+      v = Number(event.values[0])
+    } catch (e2) {}
+  }
+  return v
+}
 
 function ensureSensorListener() {
   if (sensorRegistered) return true
@@ -47,55 +68,85 @@ function ensureSensorListener() {
     const main = plus.android.runtimeMainActivity()
     const sm = main.getSystemService('sensor')
     plus.android.importClass(sm)
-    const sensor = sm.getDefaultSensor(19) // SensorManager.TYPE_STEP_COUNTER
-    if (!sensor) {
-      lastErr = 'no-sensor'
-      return false
-    }
-    sensorFound = true
-    listenerRef = plus.android.implements('android.hardware.SensorEventListener', {
-      onSensorChanged: function (event) {
-        // Java 桥接对象取 values 数组，两种读法兜底
-        let v = NaN
-        try {
-          const values = plus.android.getAttribute(event, 'values')
-          v = Number(values && values[0])
-        } catch (e) {
-          try {
-            v = Number(event.values[0])
-          } catch (e2) {}
-        }
-        if (Number.isFinite(v) && v >= 0) sensorTotal = Math.floor(v)
-      },
-      onAccuracyChanged: function () {},
-    })
-    sm.registerListener(listenerRef, sensor, 3) // SENSOR_DELAY_NORMAL
     sensorManagerRef = sm
+
+    // counter（开机累计，可能卡住）
+    try {
+      const sc = sm.getDefaultSensor(19) // SensorManager.TYPE_STEP_COUNTER
+      if (sc) {
+        sensorFound = true
+        listenerRef = plus.android.implements('android.hardware.SensorEventListener', {
+          onSensorChanged: function (event) {
+            counterEvents++
+            const v = readEventValue(event)
+            if (Number.isFinite(v) && v >= 0) {
+              const isFirst = sensorTotal < 0
+              sensorTotal = Math.floor(v)
+              // counter 首值到达时对齐 detector 分支
+              if (isFirst && detOffset === null) detOffset = sensorTotal - detTotal
+            }
+          },
+          onAccuracyChanged: function () {},
+        })
+        sm.registerListener(listenerRef, sc, 3) // SENSOR_DELAY_NORMAL
+      } else if (!lastErr) {
+        lastErr = 'no-counter'
+      }
+    } catch (e) {
+      lastErr = 'counter:' + String((e && e.message) || e)
+    }
+
+    // detector（每步一事件，实时）
+    try {
+      const sd = sm.getDefaultSensor(18) // SensorManager.TYPE_STEP_DETECTOR
+      if (sd) {
+        detFound = true
+        detListenerRef = plus.android.implements('android.hardware.SensorEventListener', {
+          onSensorChanged: function () {
+            detEvents++
+            detTotal++ // 每个事件 = 落地一步
+          },
+          onAccuracyChanged: function () {},
+        })
+        sm.registerListener(detListenerRef, sd, 3)
+      }
+    } catch (e) {
+      if (!lastErr) lastErr = 'detector:' + String((e && e.message) || e)
+    }
+
     sensorRegistered = true
-    return true
+    return sensorFound || detFound
   } catch (e) {
     lastErr = String((e && e.message) || e)
     return false
   }
 }
 
-// 读取系统累计步数；无传感器 / 3 秒内无回调返回 -1
-function readSensorTotal() {
+// 两路对齐后的累计值（单调，供 delta 计步）
+function compositeTotal() {
+  if (sensorTotal < 0) return detTotal + (detOffset || 0)
+  if (detOffset === null) detOffset = sensorTotal - detTotal
+  return Math.max(sensorTotal, detTotal + detOffset)
+}
+
+// 读取累计步数；两路都无数据 / 3 秒内无回调返回 -1
+function readComposite() {
   return new Promise((resolve) => {
     requestActivityRecognition(() => {
       if (!ensureSensorListener()) {
         resolve(-1)
         return
       }
-      if (sensorTotal >= 0) {
-        resolve(sensorTotal)
+      const ready = () => sensorTotal >= 0 || detEvents > 0
+      if (ready()) {
+        resolve(compositeTotal())
         return
       }
       const t0 = Date.now()
       const iv = setInterval(() => {
-        if (sensorTotal >= 0) {
+        if (ready()) {
           clearInterval(iv)
-          resolve(sensorTotal)
+          resolve(compositeTotal())
         } else if (Date.now() - t0 > 3000) {
           clearInterval(iv)
           resolve(-1)
@@ -111,28 +162,55 @@ function todayStr() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
-// 今日步数（传感器口径）：当前累计 - 当日基线；当日首次读取/重启则设基线并返回 0
+// 今日步数（传感器口径）：两路各自相对当日基线取 max。
+// 基线在当日首次读取时设定；counter 归零（手机重启）→ 全部重设；detector 归零（App 重启）
+// → 仅重设 det 基线（counter 分支仍有效，不丢当日步数）。
 export function getTodaySteps() {
-  return readSensorTotal().then((total) => {
+  return readComposite().then((total) => {
     if (total < 0) return 0
     const today = todayStr()
     let rec = null
     try {
       rec = uni.getStorageSync(SENSOR_KEY)
     } catch (e) {}
-    if (!rec || rec.date !== today || total < rec.base) {
+    const valid = rec && rec.date === today && typeof rec.base === 'number'
+    if (!valid) {
+      // 当日首次读取：双基线同时设定
       try {
-        uni.setStorageSync(SENSOR_KEY, { date: today, base: total })
+        uni.setStorageSync(SENSOR_KEY, { date: today, base: sensorTotal, detBase: detTotal })
       } catch (e) {}
       return 0
     }
-    return total - rec.base
+    if (sensorTotal >= 0 && sensorTotal < rec.base) {
+      // 手机重启：counter 归零，今日步数从头计
+      try {
+        uni.setStorageSync(SENSOR_KEY, { date: today, base: sensorTotal, detBase: detTotal })
+      } catch (e) {}
+      return 0
+    }
+    if (detTotal < (rec.detBase || 0)) {
+      // App 重启：detector 归零，仅重设 det 基线，counter 分支继续
+      rec.detBase = detTotal
+      try {
+        uni.setStorageSync(SENSOR_KEY, rec)
+      } catch (e) {}
+    }
+    if (rec.base < 0 && sensorTotal >= 0) {
+      // counter 首值晚到：从到达时刻补设基线
+      rec.base = sensorTotal
+      try {
+        uni.setStorageSync(SENSOR_KEY, rec)
+      } catch (e) {}
+    }
+    const counterDelta = rec.base >= 0 && sensorTotal >= rec.base ? sensorTotal - rec.base : 0
+    const detDelta = detTotal >= (rec.detBase || 0) ? detTotal - (rec.detBase || 0) : 0
+    return Math.max(counterDelta, detDelta)
   })
 }
 
-// 运动会话计步：返回系统累计步数（与基线同口径），会话步数 = 结束值 - 开始值
+// 运动会话计步：返回两路对齐后的累计值（单调），供运动页做 delta（结束值 - 开始值）
 export function getWorkoutSteps() {
-  return readSensorTotal().then((total) => (total > 0 ? total : 0))
+  return readComposite().then((total) => (total > 0 ? total : 0))
 }
 
 // 临时诊断信息（真机排查用，定位后移除）
@@ -141,8 +219,13 @@ export function getStepDiag() {
     hasPlus: typeof plus !== 'undefined',
     permAsked: permRequested,
     sensorFound,
+    detFound,
     registered: sensorRegistered,
     total: sensorTotal,
+    det: detTotal,
+    cb: counterEvents,
+    ev: detEvents,
+    comp: compositeTotal(),
     err: lastErr,
   }
 }

@@ -153,7 +153,7 @@ export default {
         if (this.stepBaseline > 0 && cur >= this.stepBaseline) this.liveSteps = cur - this.stepBaseline
         // 临时诊断（定位后移除）
         const d = getStepDiag()
-        this.diag = `plus:${d.hasPlus ? 1 : 0} perm:${d.permAsked ? 1 : 0} sen:${d.sensorFound ? 1 : 0} reg:${d.registered ? 1 : 0} total:${d.total} base:${this.stepBaseline}${d.err ? ' err:' + d.err : ''}`
+        this.diag = `sen:${d.sensorFound ? 1 : 0} dt:${d.detFound ? 1 : 0} cb:${d.cb} ev:${d.ev} comp:${d.comp} base:${this.stepBaseline}${d.err ? ' err:' + d.err : ''}`
       }, 5000)
       // #endif
     },
