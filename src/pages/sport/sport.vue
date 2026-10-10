@@ -29,6 +29,10 @@
       <text class="timer-hint" v-if="state === 'idle'">准备好后，点击开始</text>
       <text class="timer-hint" v-else-if="state === 'running'">运动进行中…</text>
       <text class="timer-hint" v-else>已暂停</text>
+      <!-- 临时诊断（定位后移除） -->
+      <!-- #ifdef APP-PLUS -->
+      <text v-if="diag" class="timer-diag">{{ diag }}</text>
+      <!-- #endif -->
     </view>
 
     <!-- 操作按钮 -->
@@ -53,6 +57,9 @@
 
 <script>
 import { MODES, calcCaloriesBySteps, getWorkoutSteps } from '@/utils/health.js'
+// #ifdef APP-PLUS
+import { getStepDiag } from '@/utils/health.js'
+// #endif
 import { getTodayData, saveTodayData, addRecord, getWeight } from '@/utils/storage.js'
 import { syncDaily } from '@/utils/cloud.js'
 
@@ -74,6 +81,7 @@ export default {
       liveSteps: 0,
       stepTimer: null,
       weight: 60,
+      diag: '',
     }
   },
   computed: {
@@ -140,7 +148,12 @@ export default {
       // Android 原生计步可廉价轮询，实时刷新本场步数
       this.stepTimer = setInterval(async () => {
         const cur = await getWorkoutSteps()
-        if (cur >= this.stepBaseline) this.liveSteps = cur - this.stepBaseline
+        // 懒基线：开始时没读到传感器（基线 0），首个有效读数即作为基线
+        if (!this.stepBaseline && cur > 0) this.stepBaseline = cur
+        if (this.stepBaseline > 0 && cur >= this.stepBaseline) this.liveSteps = cur - this.stepBaseline
+        // 临时诊断（定位后移除）
+        const d = getStepDiag()
+        this.diag = `plus:${d.hasPlus ? 1 : 0} perm:${d.permAsked ? 1 : 0} sen:${d.sensorFound ? 1 : 0} reg:${d.registered ? 1 : 0} total:${d.total} base:${this.stepBaseline}${d.err ? ' err:' + d.err : ''}`
       }, 5000)
       // #endif
     },
@@ -164,7 +177,8 @@ export default {
 
       // 结束读取一次累计步数，真实差值 = 当前累计 - 基线（不伪造）
       const cur = await getWorkoutSteps()
-      const realSteps = cur >= this.stepBaseline ? cur - this.stepBaseline : 0
+      if (!this.stepBaseline && cur > 0) this.stepBaseline = cur // 懒基线兜底
+      const realSteps = this.stepBaseline > 0 && cur >= this.stepBaseline ? cur - this.stepBaseline : 0
 
       const record = {
         id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
@@ -272,6 +286,13 @@ export default {
   margin-top: 48rpx;
   font-size: 26rpx;
   color: $text-muted;
+}
+/* 临时诊断（定位后移除） */
+.timer-diag {
+  margin-top: 16rpx;
+  font-size: 20rpx;
+  color: $text-muted;
+  word-break: break-all;
 }
 
 /* 操作按钮 */
