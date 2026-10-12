@@ -157,7 +157,7 @@ export default {
         // 临时诊断（定位后移除）
         const d = getStepDiag()
         this.diag = `sen:${d.sensorFound ? 1 : 0} dt:${d.detFound ? 1 : 0} cb:${d.cb} ev:${d.ev} comp:${d.comp} base:${this.stepBaseline}${d.err ? ' err:' + d.err : ''}`
-      }, 5000)
+      }, 2000)
       // #endif
     },
     clearStepTimer() {
