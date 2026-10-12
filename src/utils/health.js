@@ -44,6 +44,7 @@ let sensorRegistered = false
 let sensorFound = false
 let detFound = false
 let sensorManagerRef = null // 持有引用防 GC
+let counterSensorRef = null // counter 传感器对象（重注册刷新用）
 let listenerRef = null
 let detListenerRef = null
 let lastErr = ''
@@ -62,6 +63,57 @@ function readEventValue(event) {
   return v
 }
 
+// counter 监听器（ensure 与刷新重注册共用同一创建逻辑）
+function createCounterListener() {
+  return plus.android.implements('android.hardware.SensorEventListener', {
+    onSensorChanged: function (event) {
+      counterEvents++
+      const v = readEventValue(event)
+      if (Number.isFinite(v) && v >= 0) {
+        if (counterBase === null) counterBase = Math.floor(v) // 首值即起点
+        sensorTotal = Math.floor(v)
+      }
+    },
+    onAccuracyChanged: function () {},
+  })
+}
+
+// 强制刷新 counter：注销旧监听并重注册，触发系统重推「当前开机累计值」。
+// 部分机型 counter 不主动上报、仅注册时推送一次，此操作即可拿到 App 未运行期间走的步数。
+function refreshCounterValue() {
+  return new Promise((resolve) => {
+    if (!sensorManagerRef || !counterSensorRef) {
+      resolve(false)
+      return
+    }
+    try {
+      if (listenerRef) {
+        try {
+          sensorManagerRef.unregisterListener(listenerRef)
+        } catch (e) {}
+      }
+      listenerRef = createCounterListener()
+      const before = sensorTotal
+      const ok = !!sensorManagerRef.registerListener(listenerRef, counterSensorRef, 3)
+      if (!ok) {
+        resolve(false)
+        return
+      }
+      // 注册后通常几百 ms 内推首值；最多等 1.5 秒
+      const t0 = Date.now()
+      const iv = setInterval(() => {
+        if (sensorTotal !== before || Date.now() - t0 > 1500) {
+          clearInterval(iv)
+          resolve(true)
+        }
+      }, 150)
+    } catch (e) {
+      lastErr = 'refresh:' + String((e && e.message) || e)
+      resolve(false)
+    }
+  })
+}
+
 function ensureSensorListener() {
   if (sensorRegistered) return true
   try {
@@ -78,17 +130,8 @@ function ensureSensorListener() {
       const sc = sm.getDefaultSensor(19) // SensorManager.TYPE_STEP_COUNTER
       if (sc) {
         sensorFound = true
-        listenerRef = plus.android.implements('android.hardware.SensorEventListener', {
-          onSensorChanged: function (event) {
-            counterEvents++
-            const v = readEventValue(event)
-            if (Number.isFinite(v) && v >= 0) {
-              if (counterBase === null) counterBase = Math.floor(v) // 首值即起点
-              sensorTotal = Math.floor(v)
-            }
-          },
-          onAccuracyChanged: function () {},
-        })
+        counterSensorRef = sc
+        listenerRef = createCounterListener()
         counterOk = !!sm.registerListener(listenerRef, sc, 3) // 返回 false = 注册失败
       } else if (!lastErr) {
         lastErr = 'no-counter'
@@ -169,10 +212,14 @@ function todayStr() {
 }
 
 // 今日步数（传感器口径）：两路各自相对当日基线取 max。
+// 读取前强制重注册 counter 以刷新「开机累计」——可拿到 App 未运行期间走的步数
+// （前提：该机型重注册会重推当前值，真机诊断行 cb/comp 可验证）。
 // 基线在当日首次读取时设定；counter 归零（手机重启）→ 全部重设；detector 归零（App 重启）
 // → 仅重设 det 基线（counter 分支仍有效，不丢当日步数）。
 export function getTodaySteps() {
-  return readComposite().then((total) => {
+  return readComposite()
+    .then((total) => refreshCounterValue().then(() => total))
+    .then((total) => {
     if (total < 0) return 0
     const today = todayStr()
     let rec = null
