@@ -12,12 +12,32 @@
     <!-- 目标圆环 -->
     <view class="ring-card">
       <view class="ring" :style="ringStyle">
-        <view class="ring-inner">
-          <text class="ring-num">{{ daily.steps }}</text>
-          <text class="ring-unit">步</text>
-        </view>
+      <!-- App 端：SVG 进度环（圆头端点 + 亮绿→深红纵向深度渐变） -->
+      <!-- #ifdef APP-PLUS -->
+      <svg viewBox="0 0 320 320" class="ring-svg">
+        <defs>
+          <linearGradient id="ringGrad" x1="0.5" y1="0" x2="0.5" y2="1">
+            <stop offset="0%" stop-color="#4ade80" />
+            <stop offset="35%" stop-color="#22c55e" />
+            <stop offset="68%" stop-color="#ea580c" />
+            <stop offset="100%" stop-color="#b91c1c" />
+          </linearGradient>
+        </defs>
+        <circle cx="160" cy="160" r="140" fill="none" stroke="#232329" stroke-width="30" />
+        <circle
+          cx="160" cy="160" r="140" fill="none"
+          stroke="url(#ringGrad)" stroke-width="30" stroke-linecap="round"
+          :stroke-dasharray="ringDash"
+          transform="rotate(-90 160 160)"
+        />
+      </svg>
+      <!-- #endif -->
+      <view class="ring-inner">
+        <text class="ring-num">{{ daily.steps }}</text>
+        <text class="ring-unit">步</text>
       </view>
-      <view class="ring-label">
+    </view>
+    <view class="ring-label">
         <text class="ring-target">今日目标 {{ targets.steps }} 步</text>
         <text class="ring-tip">已完成 {{ percent }}%</text>
       </view>
@@ -127,12 +147,23 @@ export default {
       return this.daily.duration || 0
     },
     ringStyle() {
+      // #ifdef APP-PLUS
+      return { background: 'none' } // 渐变由内联 SVG 承担
+      // #endif
+      // #ifndef APP-PLUS
       const p = this.animPercent
       const deg = (p * 3.6).toFixed(2)
-      // 上层：未完成段铺底色遮罩；下层：绿→黄→红完整渐变圆盘（顶部起点绿、接近目标转红）
+      // 上层：未完成段铺底色遮罩；下层：亮绿→深红深度渐变（同步 App 端色阶）
       return {
-        background: `conic-gradient(transparent 0deg, transparent ${deg}deg, #232329 ${deg}deg, #232329 360deg), conic-gradient(#2bd45c 0%, #8fd94a 28%, #f5c542 58%, #f58a3c 80%, #ef4444 96%, #2bd45c 100%)`,
+        background: `conic-gradient(transparent 0deg, transparent ${deg}deg, #232329 ${deg}deg, #232329 360deg), conic-gradient(#4ade80 0%, #22c55e 35%, #ea580c 68%, #b91c1c 96%, #4ade80 100%)`,
       }
+      // #endif
+    },
+    // App 端 SVG 进度弧的 dasharray（随 animPercent 缓动更新）
+    ringDash() {
+      const C = 2 * Math.PI * 140
+      const len = (Math.max(0, Math.min(100, this.animPercent)) / 100) * C
+      return `${len.toFixed(2)} ${C.toFixed(2)}`
     },
   },
   onShow() {
@@ -334,8 +365,19 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
+}
+/* App 端 SVG 进度环（圆头端点） */
+.ring-svg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
 }
 .ring-inner {
+  position: relative;
+  z-index: 1;
   width: 252rpx;
   height: 252rpx;
   border-radius: 50%;
