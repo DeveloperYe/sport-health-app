@@ -70,6 +70,9 @@ function ensureSensorListener() {
     plus.android.importClass(sm)
     sensorManagerRef = sm
 
+    let counterOk = false
+    let detectorOk = false
+
     // counter（开机累计，可能卡住）
     try {
       const sc = sm.getDefaultSensor(19) // SensorManager.TYPE_STEP_COUNTER
@@ -86,7 +89,7 @@ function ensureSensorListener() {
           },
           onAccuracyChanged: function () {},
         })
-        sm.registerListener(listenerRef, sc, 3) // SENSOR_DELAY_NORMAL
+        counterOk = !!sm.registerListener(listenerRef, sc, 3) // 返回 false = 注册失败
       } else if (!lastErr) {
         lastErr = 'no-counter'
       }
@@ -106,14 +109,15 @@ function ensureSensorListener() {
           },
           onAccuracyChanged: function () {},
         })
-        sm.registerListener(detListenerRef, sd, 3)
+        detectorOk = !!sm.registerListener(detListenerRef, sd, 3)
       }
     } catch (e) {
       if (!lastErr) lastErr = 'detector:' + String((e && e.message) || e)
     }
 
-    sensorRegistered = true
-    return sensorFound || detFound
+    // 至少一路注册成功才缓存；全部失败（如权限授予时序问题）不缓存，下次读取自动重试
+    sensorRegistered = counterOk || detectorOk
+    return sensorRegistered
   } catch (e) {
     lastErr = String((e && e.message) || e)
     return false
