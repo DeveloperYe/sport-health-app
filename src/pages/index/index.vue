@@ -171,7 +171,7 @@ export default {
       // 临时诊断：Android 计步链路状态（定位后移除）
       // #ifdef APP-PLUS
       const d = getStepDiag()
-      this.diag = `sen:${d.sensorFound ? 1 : 0} dt:${d.detFound ? 1 : 0} cb:${d.cb} ev:${d.ev} comp:${d.comp}${d.err ? ' err:' + d.err : ''}`
+      this.diag = `sen:${d.sensorFound ? 1 : 0} dt:${d.detFound ? 1 : 0} raw:${d.total} cb:${d.cb} ev:${d.ev} comp:${d.comp}${d.err ? ' err:' + d.err : ''}`
       // #endif
 
       this.animateRing()
