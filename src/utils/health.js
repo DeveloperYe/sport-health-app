@@ -211,11 +211,10 @@ function todayStr() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
-// 今日步数（传感器口径）：两路各自相对当日基线取 max。
-// 读取前强制重注册 counter 以刷新「开机累计」——可拿到 App 未运行期间走的步数
-// （前提：该机型重注册会重推当前值，真机诊断行 cb/comp 可验证）。
-// 基线在当日首次读取时设定；counter 归零（手机重启）→ 全部重设；detector 归零（App 重启）
-// → 仅重设 det 基线（counter 分支仍有效，不丢当日步数）。
+// 今日步数（传感器口径）。
+// 语义：开机累计直接作为今日初始值（首读不把读到的值当基线清零，读到多少显示多少）；
+// 跨天以「昨日最后读数」为今日起点；手机重启归零用 offset 补偿已计步数；
+// detector 分支兜底。每次读取前重注册 counter 以刷新开机累计（含 App 未运行期间的步数）。
 export function getTodaySteps() {
   return readComposite()
     .then((total) => refreshCounterValue().then(() => total))
@@ -228,34 +227,37 @@ export function getTodaySteps() {
     } catch (e) {}
     const valid = rec && rec.date === today && typeof rec.base === 'number'
     if (!valid) {
-      // 当日首次读取：双基线同时设定
-      try {
-        uni.setStorageSync(SENSOR_KEY, { date: today, base: sensorTotal, detBase: detTotal })
-      } catch (e) {}
-      return 0
+      // 跨天/首装：昨日最后读数 = 今日起点；首日无记录 → base=0（开机累计全额即今日）
+      const prevLastRaw =
+        rec && typeof rec.lastRaw === 'number'
+          ? rec.lastRaw
+          : rec && typeof rec.base === 'number'
+            ? rec.base
+            : null
+      rec = {
+        date: today,
+        base: prevLastRaw !== null && prevLastRaw >= 0 ? prevLastRaw : 0,
+        detBase: detTotal,
+        lastRaw: sensorTotal,
+        offset: 0,
+      }
+    } else {
+      // 旧格式记录兼容：补 lastRaw / offset，负基线视为 0（开机口径全额）
+      if (typeof rec.lastRaw !== 'number') rec.lastRaw = rec.base
+      if (typeof rec.offset !== 'number') rec.offset = 0
+      if (rec.base < 0) rec.base = 0
     }
-    if (sensorTotal >= 0 && sensorTotal < rec.base) {
-      // 手机重启：counter 归零，今日步数从头计
-      try {
-        uni.setStorageSync(SENSOR_KEY, { date: today, base: sensorTotal, detBase: detTotal })
-      } catch (e) {}
-      return 0
+    if (sensorTotal >= 0 && typeof rec.lastRaw === 'number' && rec.lastRaw >= 0 && sensorTotal < rec.lastRaw) {
+      // 手机重启：counter 归零，补偿重启前已计步数
+      rec.offset += rec.lastRaw
     }
-    if (detTotal < (rec.detBase || 0)) {
-      // App 重启：detector 归零，仅重设 det 基线，counter 分支继续
-      rec.detBase = detTotal
-      try {
-        uni.setStorageSync(SENSOR_KEY, rec)
-      } catch (e) {}
-    }
-    if (rec.base < 0 && sensorTotal >= 0) {
-      // counter 首值晚到：从到达时刻补设基线
-      rec.base = sensorTotal
-      try {
-        uni.setStorageSync(SENSOR_KEY, rec)
-      } catch (e) {}
-    }
-    const counterDelta = rec.base >= 0 && sensorTotal >= rec.base ? sensorTotal - rec.base : 0
+    if (sensorTotal >= 0) rec.lastRaw = sensorTotal
+    if (detTotal < (rec.detBase || 0)) rec.detBase = detTotal // App 重启：detector 归零重设
+    try {
+      uni.setStorageSync(SENSOR_KEY, rec)
+    } catch (e) {}
+    const counterDelta =
+      (rec.offset || 0) + (sensorTotal >= rec.base ? sensorTotal - rec.base : 0)
     const detDelta = detTotal >= (rec.detBase || 0) ? detTotal - (rec.detBase || 0) : 0
     return Math.max(counterDelta, detDelta)
   })
