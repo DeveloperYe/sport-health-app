@@ -230,24 +230,28 @@ export default {
       }
     },
     // #endif
-    // 圆环填充动画：从当前进度续接到目标百分比（更新时不再从 0 重转）
+    // 圆环填充动画：从当前进度 ease-out 缓动到目标——只上涨不重播，收尾平滑
     animateRing() {
       if (this.ringTimer) {
         clearInterval(this.ringTimer)
         this.ringTimer = null
       }
       const target = this.percent
-      let p = this.animPercent
-      const frames = 36 // 约 0.6s 完成
-      const step = (target - p) / frames
+      const start = this.animPercent
+      const gap = target - start
+      if (gap === 0) return
+      const frames = 54 // 约 0.9 秒
+      let i = 0
       this.ringTimer = setInterval(() => {
-        p += step
-        if (p >= target) {
-          p = target
+        i++
+        const t = i / frames
+        const eased = 1 - Math.pow(1 - t, 3) // ease-out：起步快、收尾缓
+        this.animPercent = start + gap * eased
+        if (i >= frames) {
+          this.animPercent = target
           clearInterval(this.ringTimer)
           this.ringTimer = null
         }
-        this.animPercent = p
       }, 16)
     },
     formatToday() {
