@@ -128,8 +128,10 @@ export default {
     },
     ringStyle() {
       const p = this.animPercent
+      const deg = (p * 3.6).toFixed(2)
+      // 上层：未完成段铺底色遮罩；下层：绿→黄→红完整渐变圆盘（顶部起点绿、接近目标转红）
       return {
-        background: `conic-gradient(#2bd45c ${p}%, #232329 ${p}% 100%)`,
+        background: `conic-gradient(transparent 0deg, transparent ${deg}deg, #232329 ${deg}deg, #232329 360deg), conic-gradient(#2bd45c 0%, #8fd94a 28%, #f5c542 58%, #f58a3c 80%, #ef4444 96%, #2bd45c 100%)`,
       }
     },
   },
@@ -189,10 +191,10 @@ export default {
       this.animateRing()
     },
     // #ifdef APP-PLUS
-    // 首页停留期间动态刷新：每 5 秒读一次传感器（本地异步，不阻塞 UI）
+    // 首页停留期间动态刷新：每 2 秒读一次传感器（与运动页刷新频率一致）
     startStepPolling() {
       this.stopStepPolling()
-      this.stepTimer = setInterval(() => this.refreshSteps(), 5000)
+      this.stepTimer = setInterval(() => this.refreshSteps(), 2000)
     },
     stopStepPolling() {
       if (this.stepTimer) {
