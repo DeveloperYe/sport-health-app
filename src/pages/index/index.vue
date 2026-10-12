@@ -21,6 +21,10 @@
         <text class="ring-target">今日目标 {{ targets.steps }} 步</text>
         <text class="ring-tip">已完成 {{ percent }}%</text>
       </view>
+      <!-- 临时诊断（定位后移除） -->
+      <!-- #ifdef APP-PLUS -->
+      <text v-if="diag" class="diag-line">{{ diag }}</text>
+      <!-- #endif -->
     </view>
 
     <!-- 数据统计 -->
@@ -90,6 +94,9 @@
 <script>
 import { getTodayData, saveTodayData, getTargets, getRecords, getWeight } from '@/utils/storage.js'
 import { getTodaySteps, calcCaloriesBySteps } from '@/utils/health.js'
+// #ifdef APP-PLUS
+import { getStepDiag } from '@/utils/health.js'
+// #endif
 // #ifdef MP-WEIXIN
 import { isWeRunAuthorized, authorizeWeRun } from '@/utils/health.js'
 // #endif
@@ -107,6 +114,7 @@ export default {
       // 微信小程序：微信运动未授权时提示开启
       weRunAuthed: true,
       weight: 60,
+      diag: '',
     }
   },
   computed: {
@@ -159,6 +167,12 @@ export default {
         saveTodayData(this.daily)
         syncDaily(this.daily, null)
       }
+
+      // 临时诊断：Android 计步链路状态（定位后移除）
+      // #ifdef APP-PLUS
+      const d = getStepDiag()
+      this.diag = `sen:${d.sensorFound ? 1 : 0} dt:${d.detFound ? 1 : 0} cb:${d.cb} ev:${d.ev} comp:${d.comp}${d.err ? ' err:' + d.err : ''}`
+      // #endif
 
       this.animateRing()
     },
@@ -309,6 +323,13 @@ export default {
   margin-left: 16rpx;
   font-size: 24rpx;
   color: $brand-primary;
+}
+/* 临时诊断（定位后移除） */
+.diag-line {
+  margin-top: 20rpx;
+  font-size: 20rpx;
+  color: $text-muted;
+  word-break: break-all;
 }
 
 /* 数据统计 */
