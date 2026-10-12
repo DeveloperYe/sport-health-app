@@ -115,6 +115,7 @@ export default {
       weRunAuthed: true,
       weight: 60,
       diag: '',
+      stepTimer: null, // 首页停留期间的步数轮询（仅 App 端）
     }
   },
   computed: {
@@ -134,12 +135,24 @@ export default {
   },
   onShow() {
     this.loadAll()
+    // #ifdef APP-PLUS
+    // 停留期间每 5 秒轮询一次传感器，步数动态刷新
+    this.startStepPolling()
+    // #endif
+  },
+  onHide() {
+    // #ifdef APP-PLUS
+    this.stopStepPolling()
+    // #endif
   },
   onUnload() {
     if (this.ringTimer) {
       clearInterval(this.ringTimer)
       this.ringTimer = null
     }
+    // #ifdef APP-PLUS
+    this.stopStepPolling()
+    // #endif
   },
   methods: {
     async loadAll() {
@@ -170,12 +183,39 @@ export default {
 
       // 临时诊断：Android 计步链路状态（定位后移除）
       // #ifdef APP-PLUS
-      const d = getStepDiag()
-      this.diag = `sen:${d.sensorFound ? 1 : 0} dt:${d.detFound ? 1 : 0} raw:${d.total} cb:${d.cb} ev:${d.ev} comp:${d.comp}${d.err ? ' err:' + d.err : ''}`
+      this.updateDiag()
       // #endif
 
       this.animateRing()
     },
+    // #ifdef APP-PLUS
+    // 首页停留期间动态刷新：每 5 秒读一次传感器（本地异步，不阻塞 UI）
+    startStepPolling() {
+      this.stopStepPolling()
+      this.stepTimer = setInterval(() => this.refreshSteps(), 5000)
+    },
+    stopStepPolling() {
+      if (this.stepTimer) {
+        clearInterval(this.stepTimer)
+        this.stepTimer = null
+      }
+    },
+    async refreshSteps() {
+      const steps = await getTodaySteps()
+      if (steps > 0 && steps > this.daily.steps) {
+        this.daily.steps = steps
+        this.daily.calories = calcCaloriesBySteps(steps, this.weight)
+        saveTodayData(this.daily)
+        syncDaily(this.daily, null)
+        this.animateRing()
+      }
+      this.updateDiag()
+    },
+    updateDiag() {
+      const d = getStepDiag()
+      this.diag = `sen:${d.sensorFound ? 1 : 0} dt:${d.detFound ? 1 : 0} raw:${d.total} cb:${d.cb} ev:${d.ev} comp:${d.comp}${d.err ? ' err:' + d.err : ''}`
+    },
+    // #endif
     // 微信小程序：用户主动开启微信运动计步
     // #ifdef MP-WEIXIN
     async enableWeRun() {
@@ -190,16 +230,16 @@ export default {
       }
     },
     // #endif
-    // 圆环填充动画：从 0 缓动到目标百分比
+    // 圆环填充动画：从当前进度续接到目标百分比（更新时不再从 0 重转）
     animateRing() {
       if (this.ringTimer) {
         clearInterval(this.ringTimer)
         this.ringTimer = null
       }
       const target = this.percent
-      let p = 0
+      let p = this.animPercent
       const frames = 36 // 约 0.6s 完成
-      const step = target / frames
+      const step = (target - p) / frames
       this.ringTimer = setInterval(() => {
         p += step
         if (p >= target) {
