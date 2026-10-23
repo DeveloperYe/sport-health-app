@@ -1,0 +1,77 @@
+name: Build Offline Tiles
+
+# 手动触发的切瓦片任务。
+#
+# 为什么放在 Actions 上跑：本机到 build.protomaps.com（Cloudflare）的持续带宽只有
+# 5–10 kB/s，且连接每 10–25 分钟被重置，而 pmtiles extract 不支持断点续传，
+# 大包永远下不完。GitHub 的 runner 在境外，直连 Cloudflare 很快；切完把 .pmtiles
+# 当 Release 资产挂出来，本地再通过镜像取，全程绕开烂链路。
+#
+# 用法：Actions → Build Offline Tiles → Run workflow，填 bbox / maxzoom。
+on:
+  workflow_dispatch:
+    inputs:
+      bbox:
+        description: 'min_lon,min_lat,max_lon,max_lat'
+        required: true
+        default: '119.50,35.55,121.05,36.35'
+      maxzoom:
+        description: '最大缩放级（15=最清晰，体积最大）'
+        required: true
+        default: '15'
+      name:
+        description: '产物文件名（不含扩展名）'
+        required: true
+        default: 'qingdao-hd'
+      source:
+        description: 'Protomaps 全球档案日期'
+        required: true
+        default: '20261022'
+
+permissions:
+  contents: write
+
+jobs:
+  tiles:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download pmtiles CLI
+        run: |
+          curl -fL -o pmtiles.zip \
+            https://github.com/protomaps/go-pmtiles/releases/download/v1.31.2/go-pmtiles_1.31.2_Linux_x86_64.zip
+          unzip -o pmtiles.zip
+          chmod +x pmtiles
+          ./pmtiles version
+
+      - name: Extract region
+        run: |
+          OUT="${{ github.event.inputs.name }}.pmtiles"
+          SRC="https://build.protomaps.com/${{ github.event.inputs.source }}.pmtiles"
+          echo "source=$SRC"
+          echo "bbox=${{ github.event.inputs.bbox }} maxzoom=${{ github.event.inputs.maxzoom }}"
+          ./pmtiles extract "$SRC" "$OUT" \
+            --bbox="${{ github.event.inputs.bbox }}" \
+            --maxzoom=${{ github.event.inputs.maxzoom }} \
+            --download-threads=8
+          ls -lh "$OUT"
+
+      - name: Verify archive
+        run: |
+          OUT="${{ github.event.inputs.name }}.pmtiles"
+          ./pmtiles verify "$OUT"
+          ./pmtiles show "$OUT" | grep -Ei 'bounds|min zoom|max zoom|addressed tiles|attribution' || true
+
+      - name: Publish as release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: tiles-${{ github.event.inputs.name }}-${{ github.run_number }}
+          name: 离线底图 ${{ github.event.inputs.name }} (run ${{ github.run_number }})
+          prerelease: true
+          body: |
+            离线矢量瓦片包（Protomaps / ODbL，© OpenStreetMap contributors）
+
+            - bbox: `${{ github.event.inputs.bbox }}`
+            - maxzoom: `${{ github.event.inputs.maxzoom }}`
+            - source: `${{ github.event.inputs.source }}`
+            - 用途：拷进 `src/static/tiles/` 后随 APK 打包，离线可用
+          files: ${{ github.event.inputs.name }}.pmtiles
