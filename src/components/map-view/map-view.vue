@@ -17,6 +17,8 @@
       :change:mvchunk="mapView.onChunk"
       :mvvisible="visible"
       :change:mvvisible="mapView.onVisible"
+      :mvsize="hostSize"
+      :change:mvsize="mapView.onSize"
     ></view>
     <!-- #endif -->
     <!-- #ifdef H5 -->
@@ -64,6 +66,7 @@ export default {
   data() {
     return {
       hostId: 'mv-host-' + ++seq,
+      hostSize: null, // App：逻辑层量好的容器像素尺寸，跨层给视图层用（见 measureHost）
       appMode: false, // App：置 true 触发 renderjs 启动（H5 永远 false，renderjs 保持惰性）
       booted: false, // 本平台是否真的走了建图分支（H5 / App），其它平台直接回退
       tick: 0, // 每次轨迹更新自增，保证过桥的值一定「变了」
@@ -119,6 +122,9 @@ export default {
     this.pushStatus()
     // 置 true -> 触发 :change:mvappmode -> renderjs 启动
     this.appMode = true
+    // 尺寸必须在逻辑层量：真机实测视图层（renderjs）量 .mv-host 恒为 0，
+    // 而逻辑层的 createSelectorQuery 同一时机能量到（同页自绘轨迹图就是靠它正常铺满的）。
+    this.measureHost()
     // 视图层迟迟没有任何回调：说明 renderjs 根本没跑起来（和「跑了但 WebGL 不行」
     // 是两回事）。这条诊断行是这轮 APK 的主要目的，必须能区分开。
     this.renderjsWatchdog = setTimeout(() => {
@@ -140,6 +146,26 @@ export default {
   methods: {
     pushStatus() {
       this.diagText = formatMapStatus(this.status)
+    },
+
+    // 逻辑层量地图容器尺寸，跨层推给 renderjs（视图层自己量不到，见 mounted 注释）。
+    // 布局未就绪就重试几次，量到即写 hostSize；量不到就让视图层走视口兜底。
+    measureHost(attempt) {
+      const n = attempt || 0
+      uni
+        .createSelectorQuery()
+        .in(this)
+        .select('.mv-host')
+        .boundingClientRect((r) => {
+          const w = r && Math.round(r.width)
+          const h = r && Math.round(r.height)
+          if (w > 0 && h > 0) {
+            this.hostSize = { w: w, h: h }
+          } else if (n < 15) {
+            setTimeout(() => this.measureHost(n + 1), 120)
+          }
+        })
+        .exec()
     },
 
     // ===== H5 =====
@@ -300,6 +326,7 @@ export default {
       lastPoints: [],
       hostId: '',
       el: null,
+      hostSize: null, // 逻辑层推下来的容器像素尺寸（首选，视图层自己量不到）
       chunkParts: null, // 每块 base64 立刻解码成字节，避免最后拼一个 15MB 字符串
       chunkN: 0,
       chunkGot: 0,
@@ -323,6 +350,11 @@ export default {
     // 兜底：万一拿不到 this.$el（不同运行时差异），还能靠 id 找到容器
     onHostId(id) {
       if (typeof id === 'string') this.hostId = id
+    },
+    // 逻辑层量好的容器尺寸（真机实测视图层量不出来，只能靠它）
+    onSize(v) {
+      const s = asObj(v)
+      if (s && s.w > 0 && s.h > 0) this.hostSize = { w: s.w, h: s.h }
     },
     onPoints(payload) {
       const p = asObj(payload)
@@ -408,6 +440,22 @@ export default {
       }
     },
 
+    // 尺寸解析：逻辑层推来的 -> 自己量 -> 视口反推（对齐 .mv-host 的 340rpx）
+    async resolveSize(el) {
+      const deadline = Date.now() + 3000
+      while (Date.now() < deadline) {
+        if (this.hostSize && this.hostSize.w > 0 && this.hostSize.h > 0) {
+          return { w: this.hostSize.w, h: this.hostSize.h }
+        }
+        const w = el.clientWidth || el.offsetWidth
+        const h = el.clientHeight || el.offsetHeight
+        if (w > 0 && h > 0) return { w: w, h: h }
+        await new Promise((r) => setTimeout(r, 100))
+      }
+      const vw = Math.round((typeof window !== 'undefined' && window.innerWidth) || 360)
+      return { w: vw, h: Math.round((vw * 340) / 750) }
+    },
+
     async boot() {
       this.booting = true
       this.status.webgl = probeWebgl() ? 'ok' : 'fail'
@@ -419,8 +467,17 @@ export default {
       const el = this.$el || (this.hostId ? document.getElementById(this.hostId) : null)
       if (!el) return this.fail('拿不到地图容器 DOM（renderjs $el 为空且按 id 也找不到）')
       this.el = el
-      const size = await waitForSize(el, 8000)
-      if (!size.w || !size.h) return this.fail('地图容器尺寸为 0（布局未就绪）')
+      // 尺寸来源优先级：逻辑层推下来的 hostSize -> 视图层自己量 -> 按视口反推 340rpx。
+      // 真机实测视图层量 .mv-host 恒为 0（uni-view 此刻尚未布局），所以不能只靠它。
+      const sz = await this.resolveSize(el)
+      if (!sz.w || !sz.h) return this.fail('地图容器尺寸为 0（布局未就绪）')
+      // 强制写内联像素：不赌 rpx 在视图层已生效，MapLibre 的 canvas 才有真实高度
+      try {
+        el.style.width = sz.w + 'px'
+        el.style.height = sz.h + 'px'
+      } catch (e) {
+        /* 写不进去不致命，MapLibre 会退回父级尺寸 */
+      }
 
       // 路径 1/2：视图层自己 fetch / XHR（相对路径、_www、plus 给出的绝对路径都试）
       let r = await loadTilesFromUrls(tileUrlCandidates())
