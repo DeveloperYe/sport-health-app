@@ -13,17 +13,31 @@
       </view>
     </view>
 
+    <!-- 轨迹图：当前为无底图自绘层（离线兜底），阶段 2 换成青岛离线底图 -->
+    <view class="map-wrap">
+      <track-map :points="trackPoints" :empty-text="mapEmptyText" />
+      <text class="gps-err" v-if="gpsError">{{ gpsError }}</text>
+    </view>
+
     <!-- 计时器 -->
     <view class="timer-card">
       <text class="timer-time">{{ timeText }}</text>
       <view class="timer-sub">
         <view class="timer-sub-item">
-          <text class="timer-sub-num">{{ caloriePreview }}</text>
-          <text class="timer-sub-label">千卡</text>
+          <text class="timer-sub-num">{{ distanceText }}</text>
+          <text class="timer-sub-label">距离</text>
+        </view>
+        <view class="timer-sub-item">
+          <text class="timer-sub-num">{{ paceText }}</text>
+          <text class="timer-sub-label">配速</text>
         </view>
         <view class="timer-sub-item">
           <text class="timer-sub-num">{{ stepPreview }}</text>
           <text class="timer-sub-label">步数</text>
+        </view>
+        <view class="timer-sub-item">
+          <text class="timer-sub-num">{{ caloriePreview }}</text>
+          <text class="timer-sub-label">千卡</text>
         </view>
       </view>
       <text class="timer-hint" v-if="state === 'idle'">准备好后，点击开始</text>
@@ -56,12 +70,15 @@
 </template>
 
 <script>
-import { MODES, calcCaloriesBySteps, getWorkoutSteps } from '@/utils/health.js'
+import { MODES, calcCaloriesBySteps, getWorkoutSteps, getTodaySteps } from '@/utils/health.js'
 // #ifdef APP-PLUS
 import { getStepDiag } from '@/utils/health.js'
 // #endif
 import { getTodayData, saveTodayData, addRecord, getWeight } from '@/utils/storage.js'
 import { syncDaily } from '@/utils/cloud.js'
+// GPS 轨迹：采集/滤波/距离在 track.js，格式化在 geo.js
+import { startTrack, stopTrack, pauseTrack, resumeTrack, onTrackUpdate, getTrack } from '@/utils/track.js'
+import { formatDistance, formatPace } from '@/utils/geo.js'
 
 export default {
   data() {
@@ -82,6 +99,11 @@ export default {
       stepTimer: null,
       weight: 60,
       diag: '',
+      // ===== GPS 轨迹 =====
+      trackPoints: [], // 与 UI 绑定的已过滤轨迹点（每来一个点换一次引用，触发 canvas 重绘）
+      gpsDistance: 0, // 米
+      gpsError: '', // 权限 / 定位失败原因，直接显示给用户
+      offTrack: null, // track.js 的退订函数
     }
   },
   computed: {
@@ -98,6 +120,17 @@ export default {
       // 运动页步数 = 真实计步器会话内累计（本场走了多少步）
       return this.liveSteps
     },
+    distanceText() {
+      return formatDistance(this.gpsDistance)
+    },
+    paceText() {
+      // 配速用与显示时间同一个口径（暂停时两者都停）
+      return formatPace(this.seconds, this.gpsDistance)
+    },
+    mapEmptyText() {
+      if (this.state === 'idle') return '开始运动后显示轨迹'
+      return '等待 GPS 定位…（室外更快）'
+    },
   },
   onShow() {
     this.weight = getWeight()
@@ -105,6 +138,12 @@ export default {
   onUnload() {
     this.clearTimer()
     this.clearStepTimer()
+    // 页面销毁时绝不能留下运行中的 GPS 监听
+    if (this.offTrack) {
+      this.offTrack()
+      this.offTrack = null
+    }
+    stopTrack()
   },
   methods: {
     switchMode(key) {
@@ -117,6 +156,23 @@ export default {
       // 基线 = 会话开始时的累计读数（0 是合法值；-1 表示读取失败，由首个有效读数兜底）
       this.stepBaseline = await getWorkoutSteps()
       this.liveSteps = 0
+
+      // 启动 GPS 轨迹采集：App 端 track.js 会传 type='wgs84'，
+      // 运行时透传 plus.geolocation 走系统定位，不需要任何地图厂商 key
+      this.trackPoints = []
+      this.gpsDistance = 0
+      this.gpsError = ''
+      await startTrack()
+      const first = getTrack()
+      if (first && first.error) this.gpsError = first.error
+      this.offTrack = onTrackUpdate((snap) => {
+        if (!snap) return
+        // 换引用以触发子组件重绘
+        this.trackPoints = snap.points.slice()
+        this.gpsDistance = snap.distance
+        if (snap.error) this.gpsError = snap.error
+      })
+
       this.timer = setInterval(() => {
         this.seconds++
       }, 1000)
@@ -127,10 +183,12 @@ export default {
       this.state = 'paused'
       this.clearTimer()
       this.clearStepTimer()
+      pauseTrack()
     },
     resume() {
       this.state = 'running'
       this.clearTimer()
+      resumeTrack()
       this.timer = setInterval(() => {
         this.seconds++
       }, 1000)
@@ -169,12 +227,20 @@ export default {
     async finish() {
       this.clearTimer()
       this.clearStepTimer()
+
+      // 先结束 GPS 采集并退订，拿到本场轨迹与距离
+      const gps = stopTrack()
+      if (this.offTrack) {
+        this.offTrack()
+        this.offTrack = null
+      }
+      const gpsDistance = gps ? gps.distance : this.gpsDistance
+      const track = gps ? gps.track : []
+
       const minutes = Math.round(this.seconds / 60)
       if (minutes < 1) {
         uni.showToast({ title: '运动时间太短', icon: 'none' })
-        this.state = 'idle'
-        this.seconds = 0
-        this.liveSteps = 0
+        this.resetSession()
         return
       }
 
@@ -190,6 +256,9 @@ export default {
         duration: minutes,
         calories: calcCaloriesBySteps(realSteps, this.weight),
         steps: realSteps,
+        distance: Math.round(gpsDistance), // 米（GPS 累计）
+        hasTrack: track.length > 1,
+        track, // 抽稀后的轨迹点，供后续地图回放
         createdAt: Date.now(),
       }
 
@@ -197,17 +266,29 @@ export default {
       addRecord(record)
       const daily = getTodayData()
       daily.duration = (daily.duration || 0) + minutes
-      daily.calories = (daily.calories || 0) + record.calories
-      daily.steps = (daily.steps || 0) + record.steps
+      // ⚠️ 步数与热量不再叠加进当日统计：当日步数由计步传感器口径统一供给，
+      // 运动期间走的步数本就包含在传感器累计里，这里再 += record.steps 会把
+      // 同一批步数算两次（运动中途切后台再切回时尤其明显）。
+      // 改为拉一次当天真值，热量按它重算，保证口径一致。
+      const todaySteps = await getTodaySteps()
+      if (todaySteps > 0) daily.steps = todaySteps
+      daily.calories = calcCaloriesBySteps(daily.steps || 0, this.weight)
       saveTodayData(daily)
 
       // 推云端（静默降级）
       syncDaily(daily, record)
 
+      this.resetSession()
+      uni.showToast({ title: '运动已保存', icon: 'success' })
+    },
+    resetSession() {
       this.state = 'idle'
       this.seconds = 0
       this.liveSteps = 0
-      uni.showToast({ title: '运动已保存', icon: 'success' })
+      this.stepBaseline = -1
+      this.trackPoints = []
+      this.gpsDistance = 0
+      this.diag = ''
     },
   },
 }
@@ -245,25 +326,38 @@ export default {
   font-weight: 700;
 }
 
+/* 轨迹图 */
+.map-wrap {
+  margin-top: 32rpx;
+  position: relative;
+}
+.gps-err {
+  display: block;
+  margin-top: 12rpx;
+  font-size: 22rpx;
+  color: #f0ad4e;
+  line-height: 1.5;
+}
+
 /* 计时器 */
 .timer-card {
-  margin-top: 40rpx;
+  margin-top: 32rpx;
   background: $bg-card;
   border-radius: 32rpx;
-  padding: 80rpx 0 64rpx;
+  padding: 56rpx 0 48rpx;
   display: flex;
   flex-direction: column;
   align-items: center;
 }
 .timer-time {
-  font-size: 140rpx;
+  font-size: 108rpx;
   font-weight: 700;
   color: $text-main;
   line-height: 1;
   font-variant-numeric: tabular-nums;
 }
 .timer-sub {
-  margin-top: 48rpx;
+  margin-top: 40rpx;
   display: flex;
   width: 100%;
 }
@@ -277,17 +371,17 @@ export default {
   border-left: 1rpx solid $border-subtle;
 }
 .timer-sub-num {
-  font-size: 48rpx;
+  font-size: 36rpx;
   font-weight: 700;
   color: $text-main;
 }
 .timer-sub-label {
   margin-top: 8rpx;
-  font-size: 24rpx;
+  font-size: 22rpx;
   color: $text-secondary;
 }
 .timer-hint {
-  margin-top: 48rpx;
+  margin-top: 32rpx;
   font-size: 26rpx;
   color: $text-muted;
 }

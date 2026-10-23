@@ -69,7 +69,7 @@
           <text class="record-time">{{ formatTime(r.createdAt) }}</text>
         </view>
         <view class="record-right">
-          <text class="record-num">{{ r.duration }}分 · {{ r.calories }}千卡</text>
+          <text class="record-num">{{ recordLine(r) }}</text>
         </view>
         <text class="record-del" @click="delRecord(r.id)">删除</text>
       </view>
@@ -80,6 +80,7 @@
 <script>
 import { getUserId, getTargets, saveTargets, getRecords, saveRecords, removeRecord, getTodayData, saveTodayData } from '@/utils/storage.js'
 import { syncDaily, fetchCloudData } from '@/utils/cloud.js'
+import { formatDistance } from '@/utils/geo.js'
 
 export default {
   data() {
@@ -160,6 +161,14 @@ export default {
       const d = new Date(ts)
       const pad = (n) => String(n).padStart(2, '0')
       return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+    },
+    // 有 GPS 距离就优先显示距离（跑步更关心这个），老记录没有 distance 字段则退回时长
+    recordLine(r) {
+      const parts = []
+      if (r.distance > 0) parts.push(formatDistance(r.distance))
+      parts.push(`${r.duration}分`)
+      if (r.calories > 0) parts.push(`${r.calories}千卡`)
+      return parts.join(' · ')
     },
   },
 }

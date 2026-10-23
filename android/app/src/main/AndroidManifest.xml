@@ -25,6 +25,10 @@
     <!-- ===== 运动 / 计步（sport 页计步功能，Android 10+ 需要） ===== -->
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION"/>
 
+    <!-- ===== 定位 / 轨迹（GPS 采集，Android 6+ 需运行时申请） ===== -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+
     <!-- ===== 相机（manifest.json 声明过） ===== -->
     <uses-feature android:name="android.hardware.camera"/>
     <uses-feature android:name="android.hardware.camera.autofocus"/>

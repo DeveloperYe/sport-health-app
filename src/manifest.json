@@ -22,7 +22,10 @@
         /* 模块配置 */
         "modules" : {
             /* 计步器模块（离线打包需在 HBuilderX 勾选，供 Android 原生计步使用） */
-            "Steps" : {}
+            "Steps" : {},
+            /* 定位模块：轨迹采集用。离线工程的 dcloud_properties.xml 已声明
+               Geolocation → io.dcloud.js.geolocation.GeolocationFeatureImpl */
+            "Geolocation" : {}
         },
         /* 应用发布信息 */
         "distribute" : {
@@ -44,7 +47,9 @@
                     "<uses-permission android:name=\"android.permission.FLASHLIGHT\"/>",
                     "<uses-feature android:name=\"android.hardware.camera\"/>",
                     "<uses-permission android:name=\"android.permission.WRITE_SETTINGS\"/>",
-                    "<uses-permission android:name=\"android.permission.ACTIVITY_RECOGNITION\"/>"
+                    "<uses-permission android:name=\"android.permission.ACTIVITY_RECOGNITION\"/>",
+                    "<uses-permission android:name=\"android.permission.ACCESS_FINE_LOCATION\"/>",
+                    "<uses-permission android:name=\"android.permission.ACCESS_COARSE_LOCATION\"/>"
                 ]
             },
             /* ios打包配置 */

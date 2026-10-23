@@ -35,6 +35,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # 0) 纯函数单测：轨迹几何（距离/配速）错了不会报错，只会静默算偏，必须先拦
+      - name: Unit tests
+        run: npm run test:unit
+
       # 1) uni-app 编译出 App 离线资源到 dist/build/app
       - name: Build uni-app resources
         run: npm run build:app
