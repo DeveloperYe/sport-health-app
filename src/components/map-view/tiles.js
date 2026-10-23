@@ -18,11 +18,11 @@ const MAGIC = [0x50, 0x4d, 0x54, 0x69, 0x6c, 0x65, 0x73] // "PMTiles"
 // （"2768 overlapping tiles ... Inputs must be disjoint"）。
 // 缺文件不致命：逐个加载，取到几个用几个，以后要加城市就往这个数组里加一项。
 export const TILE_FILES = [
-  'qingdao.pmtiles', // 主城 + 崂山 + 城阳 + 黄岛东部
-  'hd-core.pmtiles', // 黄岛核心：珠山 / 灵山湾 / 黄岛城区（优先切，覆盖常跑区域）
-  'hd-mid.pmtiles', // 黄岛中：珠山 / 灵山湾西
-  'hd-west.pmtiles', // 黄岛西：原胶南 / 董家口
-  'hd-east.pmtiles', // 黄岛东：黄岛城区 / 唐岛湾
+  // 主城 + 黄岛全区（含原胶南、珠山、灵山湾），bbox 119.50-121.05 / 35.55-36.35，z0-15
+  // 由 GitHub Actions 的境外 runner 切出（本机到 Cloudflare 只有 5-10 kB/s 且无断点续传）
+  'qingdao-south.pmtiles',
+  // 旧市区包：多覆盖城阳北 36.35-36.45 那一窄条，留着避免覆盖回退
+  'qingdao.pmtiles',
 ]
 
 /** H5：相对构建产物根目录 */
