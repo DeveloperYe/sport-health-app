@@ -1,0 +1,586 @@
+<template>
+  <view class="mv-root">
+    <!-- 地图挂载点：
+         App 端只有 renderjs（视图层）能拿到 DOM，用 :change: 把数据推给它；
+         H5 端由普通 script 直接建图。两个平台共用 map-core.js 里的同一份建图逻辑。 -->
+    <!-- #ifdef APP-PLUS -->
+    <view
+      class="mv-host"
+      :id="hostId"
+      :mvappmode="appMode"
+      :change:mvappmode="mapView.onAppMode"
+      :mvhostid="hostId"
+      :change:mvhostid="mapView.onHostId"
+      :mvpoints="pointsPayload"
+      :change:mvpoints="mapView.onPoints"
+      :mvchunk="chunk"
+      :change:mvchunk="mapView.onChunk"
+      :mvvisible="visible"
+      :change:mvvisible="mapView.onVisible"
+    ></view>
+    <!-- #endif -->
+    <!-- #ifdef H5 -->
+    <view class="mv-host" ref="host" :id="hostId"></view>
+    <!-- #endif -->
+
+    <!-- 还没开始 / 还没定位到：地图本身照常显示（底图就在那儿） -->
+    <view class="mv-hint" v-if="!failed && !hasPoints">
+      <text class="mv-hint-text">{{ hintText }}</text>
+    </view>
+
+    <!-- ODbL 强制署名：右下角，常显，不藏 -->
+    <view class="mv-attr"><text class="mv-attr-text">© OpenStreetMap</text></view>
+
+    <!-- 诊断行（本轮 APK 的核心目的）：webgl / renderjs / maplibre / tiles / err -->
+    <view class="mv-diag"><text class="mv-diag-text">{{ diagText }}</text></view>
+  </view>
+</template>
+
+<script>
+// ===== 逻辑层 =====
+// H5：在这里直接建图（H5 有 DOM，不需要 renderjs）。
+// App：这里不建图，只负责「用 plus.io 把瓦片读出来、分块过桥」以及显示诊断行。
+//      注意 App 逻辑层绝不能引 map-core.js（会把 maplibre 拖进没有 window 的 v8 层）。
+import { readTilesViaPlusIo } from './tiles.js'
+import { makeMapStatus, formatMapStatus } from './map-status.js'
+// #ifdef H5
+import { createTrackMap, probeWebgl, waitForSize } from './map-core.js'
+import { tileUrlCandidates, loadTilesFromUrls } from './tiles.js'
+// #endif
+
+let seq = 0
+// 跨层搬运 base64 的块大小：必须是 4 的倍数（base64 4 字符 = 3 字节），
+// 这样视图层每块都能独立 atob，不用先 join 出一个 15MB 字符串。
+const TILE_CHUNK_CHARS = 512 * 1024
+
+export default {
+  name: 'map-view',
+  props: {
+    // [{ lat, lng, ts, accuracy }]
+    points: { type: Array, default: () => [] },
+    visible: { type: Boolean, default: true },
+    hintText: { type: String, default: '底图已就绪，开始运动后叠加轨迹' },
+  },
+  data() {
+    return {
+      hostId: 'mv-host-' + ++seq,
+      appMode: false, // App：置 true 触发 renderjs 启动（H5 永远 false，renderjs 保持惰性）
+      booted: false, // 本平台是否真的走了建图分支（H5 / App），其它平台直接回退
+      tick: 0, // 每次轨迹更新自增，保证过桥的值一定「变了」
+      chunk: null, // App：跨层搬运的 base64 分块 { i, n, b64 }
+      diagText: '',
+      ready: false,
+      failed: false,
+      status: null,
+      core: null, // H5：map-core 控制器
+      timer: null, // 诊断行定时刷新
+      renderjsAlive: false, // App：视图层是否回过状态
+      renderjsWatchdog: null,
+      // 逻辑层侧的分块状态（App 专用）
+      tileB64: '',
+      tileChunkCount: 0,
+    }
+  },
+  computed: {
+    hasPoints() {
+      return !!(this.points && this.points.length)
+    },
+    // 新对象 + 自增 tick：即使数组引用被复用，change 也一定会触发
+    pointsPayload() {
+      return { n: this.tick, list: this.points }
+    },
+  },
+  watch: {
+    points() {
+      this.tick++
+      // #ifdef H5
+      if (this.core && this.core.setPoints) this.core.setPoints(this.points)
+      // #endif
+    },
+    visible(v) {
+      // #ifdef H5
+      if (this.core && this.core.setVisible) this.core.setVisible(v)
+      // #endif
+    },
+  },
+  mounted() {
+    this.status = makeMapStatus()
+    // #ifdef H5
+    this.booted = true
+    this.status.webgl = probeWebgl() ? 'ok' : 'fail'
+    this.status.renderjs = 'n/a' // H5 走普通 script，不用 renderjs
+    this.pushStatus()
+    this.$nextTick(() => this.bootH5())
+    // #endif
+    // #ifdef APP-PLUS
+    this.booted = true
+    this.status.webgl = '-'
+    this.status.renderjs = '-'
+    this.pushStatus()
+    // 置 true -> 触发 :change:mvappmode -> renderjs 启动
+    this.appMode = true
+    // 视图层迟迟没有任何回调：说明 renderjs 根本没跑起来（和「跑了但 WebGL 不行」
+    // 是两回事）。这条诊断行是这轮 APK 的主要目的，必须能区分开。
+    this.renderjsWatchdog = setTimeout(() => {
+      if (!this.renderjsAlive) {
+        this.status.renderjs = 'fail'
+        this.status.err = 'renderjs 未启动（视图层无回调）'
+        this.pushStatus()
+      }
+    }, 6000)
+    // #endif
+    // 既没有 H5 的 DOM、也没有 App 的 renderjs 的平台（小程序等）：本轮不支持底图，
+    // 立刻上报失败，让父级切回 track-map 自绘层 —— 否则会留下一块空白地图。
+    if (!this.booted) this.$nextTick(() => this.failH5('当前平台不支持离线底图'))
+  },
+  beforeUnmount() {
+    this.clearWatchdog()
+    this.teardownH5()
+  },
+  methods: {
+    pushStatus() {
+      this.diagText = formatMapStatus(this.status)
+    },
+
+    // ===== H5 =====
+    async bootH5() {
+      // #ifdef H5
+      const el = this.resolveHostEl()
+      if (!el) return this.failH5('找不到地图容器 DOM')
+      const size = await waitForSize(el, 6000)
+      if (!size.w || !size.h) return this.failH5('地图容器尺寸为 0（布局未就绪）')
+      let r
+      try {
+        r = await loadTilesFromUrls(tileUrlCandidates())
+      } catch (e) {
+        return this.failH5('读取底图数据异常: ' + ((e && e.message) || e))
+      }
+      if (!r || !r.bytes) return this.failH5('读取底图数据失败: ' + ((r && r.err) || '未知'))
+      this.status.src = r.src
+      this.pushStatus()
+      try {
+        this.core = createTrackMap({
+          container: el,
+          bytes: r.bytes,
+          status: this.status,
+          points: this.points,
+          onOutOfBounds: (b) => this.$emit('outofbounds', b),
+          onReady: () => {
+            this.ready = true
+          },
+        })
+      } catch (e) {
+        return this.failH5('建图异常: ' + ((e && e.message) || e))
+      }
+      this.core.setVisible(this.visible)
+      this.timer = setInterval(() => this.pushStatus(), 1000)
+      // #endif
+    },
+    resolveHostEl() {
+      // #ifdef H5
+      const ref = this.$refs && this.$refs.host
+      const el = (ref && (ref.$el || ref)) || null
+      if (el && el.appendChild) return el
+      return document.getElementById(this.hostId) || null
+      // #endif
+      return null
+    },
+    clearWatchdog() {
+      if (this.renderjsWatchdog) {
+        clearTimeout(this.renderjsWatchdog)
+        this.renderjsWatchdog = null
+      }
+    },
+    teardownH5() {
+      if (this.timer) {
+        clearInterval(this.timer)
+        this.timer = null
+      }
+      // #ifdef H5
+      if (this.core) {
+        this.core.destroy()
+        this.core = null
+      }
+      // #endif
+    },
+    failH5(reason) {
+      this.failed = true
+      if (this.status) {
+        this.status.err = reason
+        this.pushStatus()
+      }
+      this.$emit('fail', reason)
+    },
+
+    // ===== App：renderjs 回调（逻辑层方法，被视图层 callMethod 调用）=====
+    mwStatus(text) {
+      this.renderjsAlive = true
+      this.clearWatchdog()
+      if (text) this.diagText = text
+    },
+    mwReady() {
+      this.ready = true
+    },
+    mwFail(reason) {
+      this.failed = true
+      this.$emit('fail', reason || '底图视图层初始化失败')
+    },
+    mwOutOfBounds(b) {
+      this.$emit('outofbounds', b)
+    },
+    // 视图层自己拿不到字节时，请求逻辑层用 plus.io 读
+    mwNeedTiles() {
+      // #ifdef APP-PLUS
+      this.tileB64 = ''
+      this.tileChunkCount = 0
+      const started = readTilesViaPlusIo(
+        (b64) => {
+          // 分块时按 4 字符对齐（base64 4 字符 = 3 字节），每块都能独立解码
+          this.tileB64 = b64
+          this.tileChunkCount = Math.ceil(b64.length / TILE_CHUNK_CHARS)
+          this.pushChunk(0)
+        },
+        (err) => this.mwFail('逻辑层 plus.io 读瓦片失败: ' + err)
+      )
+      if (!started) this.mwFail('逻辑层 plus.io 不可用')
+      // #endif
+    },
+    // 视图层收一块回一次，别一次性把 15MB 字符串压过桥
+    mwChunkAck(i) {
+      // #ifdef APP-PLUS
+      this.pushChunk(i + 1)
+      // #endif
+    },
+    pushChunk(i) {
+      // 不预先切好整份数组（那会多留一份 ~15MB 拷贝），按需 slice
+      const b64 = this.tileB64
+      const n = this.tileChunkCount
+      if (!b64 || i >= n) {
+        if (b64) this.tileB64 = '' // 发完就放，别攥着 15MB
+        return
+      }
+      this.chunk = { i: i, n: n, b64: b64.slice(i * TILE_CHUNK_CHARS, (i + 1) * TILE_CHUNK_CHARS) }
+    },
+  },
+}
+</script>
+
+<script module="mapView" lang="renderjs">
+// ===== 视图层（App）：只有 renderjs 能拿到 DOM =====
+// 建图逻辑一行都不在这里重复：全部走 map-core.js。
+import { createTrackMap, probeWebgl, waitForSize } from './map-core.js'
+import { makeMapStatus, formatMapStatus } from './map-status.js'
+import {
+  tileUrlCandidates,
+  loadTilesFromUrls,
+  readTilesViaPlusIo,
+  base64ToBytes,
+  hasPlusIo,
+} from './tiles.js'
+
+// 视图层拿到的过桥数据在不同运行时可能是对象、也可能是 JSON 串，两种都认
+function asObj(v) {
+  if (v && typeof v === 'object') return v
+  if (typeof v === 'string') {
+    try {
+      return JSON.parse(v)
+    } catch (e) {
+      return null
+    }
+  }
+  return null
+}
+
+export default {
+  data() {
+    return {
+      core: null,
+      status: null,
+      booting: false,
+      lastPoints: [],
+      hostId: '',
+      el: null,
+      chunkParts: null, // 每块 base64 立刻解码成字节，避免最后拼一个 15MB 字符串
+      chunkN: 0,
+      chunkGot: 0,
+      chunkBytes: 0,
+      timer: null,
+    }
+  },
+  mounted() {
+    this.status = makeMapStatus()
+  },
+  beforeDestroy() {
+    this.stop()
+  },
+  methods: {
+    // 逻辑层第一次把 appMode 推成 true -> 真正启动
+    onAppMode(v) {
+      // #ifdef APP-PLUS
+      if (v && !this.booting && !this.core) this.boot()
+      // #endif
+    },
+    // 兜底：万一拿不到 this.$el（不同运行时差异），还能靠 id 找到容器
+    onHostId(id) {
+      if (typeof id === 'string') this.hostId = id
+    },
+    onPoints(payload) {
+      const p = asObj(payload)
+      const list = (p && p.list) || []
+      this.lastPoints = list
+      if (this.core && this.core.setPoints) this.core.setPoints(list)
+    },
+    onVisible(v) {
+      if (this.core && this.core.setVisible) this.core.setVisible(!!v)
+    },
+    onChunk(payload) {
+      const c = asObj(payload)
+      if (!c || typeof c.i !== 'number' || typeof c.b64 !== 'string') return
+      // 收一块解一块（chunk 按 4 字符对齐切，每块都能独立 atob），
+      // 避免最后 join 出一个 15MB 的 base64 字符串把手机内存顶爆
+      if (!this.chunkParts) this.chunkParts = []
+      try {
+        const u8 = base64ToBytes(c.b64)
+        this.chunkParts[c.i] = u8
+        this.chunkBytes += u8.length
+      } catch (e) {
+        return this.fail('base64 解码失败: ' + ((e && e.message) || e))
+      }
+      if (c.n) this.chunkN = c.n
+      this.chunkGot++
+      // 回执：逻辑层收到回执才发下一块
+      try {
+        this.$ownerInstance.callMethod('mwChunkAck', c.i)
+      } catch (e) {
+        /* ignore */
+      }
+      if (this.chunkN > 0 && this.chunkGot >= this.chunkN) {
+        const parts = this.chunkParts
+        this.chunkParts = null
+        this.chunkGot = 0
+        try {
+          const total = this.chunkBytes
+          const all = new Uint8Array(total)
+          let off = 0
+          for (let i = 0; i < parts.length; i++) {
+            if (!parts[i]) continue
+            all.set(parts[i], off)
+            off += parts[i].length
+          }
+          this.chunkBytes = 0
+          this.setSrc('plusio@logic', total)
+          this.build(all)
+        } catch (e) {
+          this.fail('分块拼装失败: ' + ((e && e.message) || e))
+        }
+      }
+    },
+
+    pushStatus() {
+      try {
+        this.$ownerInstance.callMethod('mwStatus', formatMapStatus(this.status))
+      } catch (e) {
+        /* ignore */
+      }
+    },
+    setSrc(src, extra) {
+      this.status.src = src + (extra ? '(' + extra + ')' : '')
+      this.pushStatus()
+    },
+    fail(reason) {
+      this.status.err = reason
+      this.status.maplibre = 'fail'
+      this.pushStatus()
+      try {
+        this.$ownerInstance.callMethod('mwFail', reason)
+      } catch (e) {
+        /* ignore */
+      }
+    },
+    stop() {
+      if (this.timer) {
+        clearInterval(this.timer)
+        this.timer = null
+      }
+      if (this.core) {
+        this.core.destroy()
+        this.core = null
+      }
+    },
+
+    async boot() {
+      this.booting = true
+      this.status.webgl = probeWebgl() ? 'ok' : 'fail'
+      this.status.renderjs = 'ok'
+      this.pushStatus()
+      if (this.status.webgl !== 'ok') {
+        return this.fail('WebGL 不可用（视图层拿不到 webgl context）')
+      }
+      const el = this.$el || (this.hostId ? document.getElementById(this.hostId) : null)
+      if (!el) return this.fail('拿不到地图容器 DOM（renderjs $el 为空且按 id 也找不到）')
+      this.el = el
+      const size = await waitForSize(el, 8000)
+      if (!size.w || !size.h) return this.fail('地图容器尺寸为 0（布局未就绪）')
+
+      // 路径 1/2：视图层自己 fetch / XHR（相对路径、_www、plus 给出的绝对路径都试）
+      let r = await loadTilesFromUrls(tileUrlCandidates())
+      if (r.bytes) {
+        this.setSrc(r.src)
+        return this.build(r.bytes)
+      }
+      this.status.err = r.err
+      this.pushStatus()
+
+      // 路径 3：视图层若有 plus.io，直接本地读（不过桥，最省事）
+      const p = await this.readViaViewPlusIo()
+      if (p.bytes) {
+        this.setSrc(p.src, p.bytes.length)
+        return this.build(p.bytes)
+      }
+      this.status.err = p.err || this.status.err
+      this.pushStatus()
+
+      // 路径 4：请求逻辑层用 plus.io 读，再分块过桥
+      this.setSrc('bridge:ask-logic')
+      try {
+        this.$ownerInstance.callMethod('mwNeedTiles')
+      } catch (e) {
+        this.fail('无法请求逻辑层读瓦片: ' + ((e && e.message) || e))
+      }
+    },
+
+    readViaViewPlusIo() {
+      return new Promise((resolve) => {
+        let settled = false
+        const done = (bytes, err, src) => {
+          if (!settled) {
+            settled = true
+            resolve({ bytes: bytes || null, err: err || '', src: src || '' })
+          }
+        }
+        if (!hasPlusIo()) return done(null, '视图层无 plus.io', '')
+        readTilesViaPlusIo(
+          (b64) => {
+            try {
+              done(base64ToBytes(b64), '', 'plusio@view')
+            } catch (e) {
+              done(null, '视图层 base64 解码失败: ' + ((e && e.message) || e), '')
+            }
+          },
+          (err) => done(null, '视图层 plus.io: ' + err, '')
+        )
+      })
+    },
+
+    build(bytes) {
+      if (this.core) return
+      try {
+        this.core = createTrackMap({
+          container: this.el || this.$el,
+          bytes: bytes,
+          status: this.status,
+          points: this.lastPoints,
+          onOutOfBounds: (b) => {
+            try {
+              this.$ownerInstance.callMethod('mwOutOfBounds', b)
+            } catch (e) {
+              /* ignore */
+            }
+          },
+          onReady: () => {
+            try {
+              this.$ownerInstance.callMethod('mwReady')
+            } catch (e) {
+              /* ignore */
+            }
+          },
+        })
+      } catch (e) {
+        return this.fail('建图异常: ' + ((e && e.message) || e))
+      }
+      this.setSrc(this.status.src, bytes && bytes.length)
+      // tiles 计数是异步长出来的，定时刷回逻辑层显示
+      this.timer = setInterval(() => this.pushStatus(), 1000)
+    },
+  },
+}
+</script>
+
+<style lang="scss" scoped>
+.mv-root {
+  position: relative;
+  width: 100%;
+  height: 340rpx;
+  border-radius: 24rpx;
+  overflow: hidden;
+  background: #15151a;
+}
+.mv-host {
+  position: relative;
+  width: 100%;
+  height: 340rpx;
+  overflow: hidden;
+}
+.mv-hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.mv-hint-text {
+  font-size: 24rpx;
+  color: rgba(255, 255, 255, 0.72);
+  background: rgba(0, 0, 0, 0.42);
+  padding: 8rpx 20rpx;
+  border-radius: 999rpx;
+}
+.mv-attr {
+  position: absolute;
+  right: 12rpx;
+  bottom: 8rpx;
+  pointer-events: none;
+}
+.mv-attr-text {
+  font-size: 18rpx;
+  color: rgba(255, 255, 255, 0.75);
+  background: rgba(0, 0, 0, 0.45);
+  padding: 2rpx 8rpx;
+  border-radius: 6rpx;
+}
+.mv-diag {
+  position: absolute;
+  left: 8rpx;
+  top: 8rpx;
+  right: 8rpx;
+  pointer-events: none;
+}
+.mv-diag-text {
+  font-size: 16rpx;
+  line-height: 1.35;
+  color: #9fe8b6;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 2rpx 6rpx;
+  border-radius: 6rpx;
+  word-break: break-all;
+}
+</style>
+
+<!-- MapLibre 需要的两条布局规则。不能放进 scoped：canvas 是 MapLibre 自己插进来的，
+     拿不到 scoped 的属性选择器。 -->
+<style>
+.maplibregl-map {
+  position: relative;
+  overflow: hidden;
+  -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
+}
+.maplibregl-canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+</style>

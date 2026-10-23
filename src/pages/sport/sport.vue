@@ -13,9 +13,20 @@
       </view>
     </view>
 
-    <!-- 轨迹图：当前为无底图自绘层（离线兜底），阶段 2 换成青岛离线底图 -->
+    <!-- 轨迹图：优先青岛离线底图 + 轨迹叠加；底图起不来或轨迹越出离线包
+         范围时，整体切回 track-map 自绘层（二选一，绝不同时显示两套）。 -->
     <view class="map-wrap">
-      <track-map :points="trackPoints" :empty-text="mapEmptyText" />
+      <map-view
+        v-if="mapMode === 'basemap'"
+        :points="trackPoints"
+        :hint-text="mapHintText"
+        @fail="onMapFail"
+        @outofbounds="onMapOutOfBounds"
+      />
+      <track-map v-else :points="trackPoints" :empty-text="mapEmptyText" />
+      <text class="map-fallback" v-if="mapMode === 'fallback' && mapFallbackText">
+        已回退自绘轨迹图：{{ mapFallbackText }}
+      </text>
       <text class="gps-err" v-if="gpsError">{{ gpsError }}</text>
     </view>
 
@@ -100,10 +111,14 @@ export default {
       weight: 60,
       diag: '',
       // ===== GPS 轨迹 =====
-      trackPoints: [], // 与 UI 绑定的已过滤轨迹点（每来一个点换一次引用，触发 canvas 重绘）
+      trackPoints: [], // 与 UI 绑定的已过滤轨迹点（每来一个点换一次引用，触发子组件重绘）
       gpsDistance: 0, // 米
       gpsError: '', // 权限 / 定位失败原因，直接显示给用户
       offTrack: null, // track.js 的退订函数
+      // ===== 轨迹图模式：离线底图 或 自绘兜底（二选一）=====
+      mapMode: 'basemap',
+      mapBroken: false, // 底图彻底不可用（整轮会话都不再试）
+      mapFallbackText: '',
     }
   },
   computed: {
@@ -131,6 +146,11 @@ export default {
       if (this.state === 'idle') return '开始运动后显示轨迹'
       return '等待 GPS 定位…（室外更快）'
     },
+    // 底图在 idle 时就已经渲染好了，这里的提示跟自绘层不是一回事
+    mapHintText() {
+      if (this.state === 'idle') return '青岛离线底图已就绪，开始运动后叠加轨迹'
+      return '等待 GPS 定位…（室外更快）'
+    },
   },
   onShow() {
     this.weight = getWeight()
@@ -150,6 +170,17 @@ export default {
       if (this.state !== 'idle') return
       this.mode = key
     },
+    // 底图彻底不可用（WebGL/瓦片读取失败）：本轮不再尝试，直接自绘层兜底
+    onMapFail(reason) {
+      this.mapBroken = true
+      this.mapFallbackText = reason || '底图不可用'
+      this.mapMode = 'fallback'
+    },
+    // 轨迹跑出离线包 bbox：只对本次会话降级，下次开始运动再试底图
+    onMapOutOfBounds() {
+      this.mapFallbackText = '轨迹超出离线底图范围（青岛市区）'
+      this.mapMode = 'fallback'
+    },
     async start() {
       this.state = 'running'
       this.clearTimer()
@@ -162,6 +193,11 @@ export default {
       this.trackPoints = []
       this.gpsDistance = 0
       this.gpsError = ''
+      // 新一轮回到底图（上一轮可能因越界降级了）；底图彻底坏了才继续用自绘层
+      if (!this.mapBroken) {
+        this.mapMode = 'basemap'
+        this.mapFallbackText = ''
+      }
       await startTrack()
       const first = getTrack()
       if (first && first.error) this.gpsError = first.error
@@ -337,6 +373,13 @@ export default {
   font-size: 22rpx;
   color: #f0ad4e;
   line-height: 1.5;
+}
+.map-fallback {
+  display: block;
+  margin-top: 12rpx;
+  font-size: 20rpx;
+  color: $text-muted;
+  line-height: 1.4;
 }
 
 /* 计时器 */
