@@ -43,7 +43,7 @@
 // H5：在这里直接建图（H5 有 DOM，不需要 renderjs）。
 // App：这里不建图，只负责「用 plus.io 把瓦片读出来、分块过桥」以及显示诊断行。
 //      注意 App 逻辑层绝不能引 map-core.js（会把 maplibre 拖进没有 window 的 v8 层）。
-import { readTilesViaPlusIo } from './tiles.js'
+import { readTilesViaPlusIo, TILE_FILES } from './tiles.js'
 import { makeMapStatus, formatMapStatus } from './map-status.js'
 // #ifdef H5
 import { createTrackMap, probeWebgl, waitForSize } from './map-core.js'
@@ -82,6 +82,7 @@ export default {
       // 逻辑层侧的分块状态（App 专用）
       tileB64: '',
       tileChunkCount: 0,
+      currentFile: 0, // 当前正在传的档案下标（多档案逐个过桥）
     }
   },
   computed: {
@@ -175,19 +176,30 @@ export default {
       if (!el) return this.failH5('找不到地图容器 DOM')
       const size = await waitForSize(el, 6000)
       if (!size.w || !size.h) return this.failH5('地图容器尺寸为 0（布局未就绪）')
-      let r
-      try {
-        r = await loadTilesFromUrls(tileUrlCandidates())
-      } catch (e) {
-        return this.failH5('读取底图数据异常: ' + ((e && e.message) || e))
+      // 逐个档案加载，取到几个用几个（缺文件不致命，以后加城市只需往 TILE_FILES 里加）
+      const archives = []
+      const notes = []
+      for (let i = 0; i < TILE_FILES.length; i++) {
+        let r = null
+        try {
+          r = await loadTilesFromUrls(tileUrlCandidates(TILE_FILES[i]))
+        } catch (e) {
+          r = { bytes: null, err: (e && e.message) || String(e) }
+        }
+        if (r && r.bytes) {
+          archives.push({ key: TILE_FILES[i], bytes: r.bytes })
+          notes.push(TILE_FILES[i] + '←' + r.src.replace(/^[a-z]+@/, ''))
+        } else {
+          notes.push(TILE_FILES[i] + '✗')
+        }
       }
-      if (!r || !r.bytes) return this.failH5('读取底图数据失败: ' + ((r && r.err) || '未知'))
-      this.status.src = r.src
+      if (!archives.length) return this.failH5('读取底图数据失败: 一个档案都没读到')
+      this.status.src = notes.join(' ')
       this.pushStatus()
       try {
         this.core = createTrackMap({
           container: el,
-          bytes: r.bytes,
+          archives: archives,
           status: this.status,
           points: this.points,
           onOutOfBounds: (b) => this.$emit('outofbounds', b),
@@ -254,21 +266,35 @@ export default {
     mwOutOfBounds(b) {
       this.$emit('outofbounds', b)
     },
-    // 视图层自己拿不到字节时，请求逻辑层用 plus.io 读
-    mwNeedTiles() {
+    // 视图层自己拿不到字节时，请求逻辑层用 plus.io 读（多档案：payload.f 指哪一份）
+    mwNeedTiles(payload) {
       // #ifdef APP-PLUS
+      const p = payload && typeof payload === 'object' ? payload : {}
+      const f = typeof p.f === 'number' ? p.f : 0
+      const file = TILE_FILES[f]
+      if (!file) {
+        this.chunk = { f: f, i: 0, n: 0, b64: '', err: '档案下标越界: ' + f }
+        return
+      }
+      this.currentFile = f
       this.tileB64 = ''
       this.tileChunkCount = 0
       const started = readTilesViaPlusIo(
+        file,
         (b64) => {
           // 分块时按 4 字符对齐（base64 4 字符 = 3 字节），每块都能独立解码
           this.tileB64 = b64
           this.tileChunkCount = Math.ceil(b64.length / TILE_CHUNK_CHARS)
           this.pushChunk(0)
         },
-        (err) => this.mwFail('逻辑层 plus.io 读瓦片失败: ' + err)
+        // 这一份读失败不该拖垮整个底图：用 n=0 的错误块告诉视图层「跳过这份，继续下一份」
+        (err) => {
+          this.chunk = { f: f, i: 0, n: 0, b64: '', err: String(err) }
+        }
       )
-      if (!started) this.mwFail('逻辑层 plus.io 不可用')
+      if (!started) {
+        this.chunk = { f: f, i: 0, n: 0, b64: '', err: '逻辑层 plus.io 不可用' }
+      }
       // #endif
     },
     // 视图层收一块回一次，别一次性把 15MB 字符串压过桥
@@ -285,7 +311,7 @@ export default {
         if (b64) this.tileB64 = '' // 发完就放，别攥着 15MB
         return
       }
-      this.chunk = { i: i, n: n, b64: b64.slice(i * TILE_CHUNK_CHARS, (i + 1) * TILE_CHUNK_CHARS) }
+      this.chunk = { f: this.currentFile, i: i, n: n, b64: b64.slice(i * TILE_CHUNK_CHARS, (i + 1) * TILE_CHUNK_CHARS) }
     },
   },
 }
@@ -302,6 +328,7 @@ import {
   readTilesViaPlusIo,
   base64ToBytes,
   hasPlusIo,
+  TILE_FILES,
 } from './tiles.js'
 
 // 视图层拿到的过桥数据在不同运行时可能是对象、也可能是 JSON 串，两种都认
@@ -327,6 +354,9 @@ export default {
       hostId: '',
       el: null,
       hostSize: null, // 逻辑层推下来的容器像素尺寸（首选，视图层自己量不到）
+      collected: null, // 已拿到的档案 [{ key, bytes }]
+      pending: null, // 还没拿到、排队走 plus.io 过桥的档案下标
+      curFile: 0, // 当前正在过桥的档案下标
       chunkParts: null, // 每块 base64 立刻解码成字节，避免最后拼一个 15MB 字符串
       chunkN: 0,
       chunkGot: 0,
@@ -367,7 +397,13 @@ export default {
     },
     onChunk(payload) {
       const c = asObj(payload)
-      if (!c || typeof c.i !== 'number' || typeof c.b64 !== 'string') return
+      if (!c || typeof c.i !== 'number') return
+      // n === 0 是「这一份读失败」的控制块：跳过它，接着要下一份，不拖垮整张底图
+      if (!c.n) {
+        if (c.err) this.setSrc('skip:' + (TILE_FILES[c.f] || c.f) + '(' + c.err + ')')
+        return this.askNextFile()
+      }
+      if (typeof c.b64 !== 'string') return
       // 收一块解一块（chunk 按 4 字符对齐切，每块都能独立 atob），
       // 避免最后 join 出一个 15MB 的 base64 字符串把手机内存顶爆
       if (!this.chunkParts) this.chunkParts = []
@@ -401,7 +437,9 @@ export default {
           }
           this.chunkBytes = 0
           this.setSrc('plusio@logic', total)
-          this.build(all)
+          if (!this.collected) this.collected = []
+          this.collected.push({ key: TILE_FILES[c.f] || 'file' + c.f, bytes: all })
+          this.askNextFile()
         } catch (e) {
           this.fail('分块拼装失败: ' + ((e && e.message) || e))
         }
@@ -479,62 +517,61 @@ export default {
         /* 写不进去不致命，MapLibre 会退回父级尺寸 */
       }
 
-      // 路径 1/2：视图层自己 fetch / XHR（相对路径、_www、plus 给出的绝对路径都试）
-      let r = await loadTilesFromUrls(tileUrlCandidates())
-      if (r.bytes) {
-        this.setSrc(r.src)
-        return this.build(r.bytes)
-      }
-      this.status.err = r.err
-      this.pushStatus()
-
-      // 路径 3：视图层若有 plus.io，直接本地读（不过桥，最省事）
-      const p = await this.readViaViewPlusIo()
-      if (p.bytes) {
-        this.setSrc(p.src, p.bytes.length)
-        return this.build(p.bytes)
-      }
-      this.status.err = p.err || this.status.err
-      this.pushStatus()
-
-      // 路径 4：请求逻辑层用 plus.io 读，再分块过桥
-      this.setSrc('bridge:ask-logic')
-      try {
-        this.$ownerInstance.callMethod('mwNeedTiles')
-      } catch (e) {
-        this.fail('无法请求逻辑层读瓦片: ' + ((e && e.message) || e))
-      }
-    },
-
-    readViaViewPlusIo() {
-      return new Promise((resolve) => {
-        let settled = false
-        const done = (bytes, err, src) => {
-          if (!settled) {
-            settled = true
-            resolve({ bytes: bytes || null, err: err || '', src: src || '' })
-          }
+      // 逐个档案加载：先让视图层自己 fetch / XHR（相对路径、_www、plus 绝对路径都试），
+      // 拿不到的排队，最后逐个走 plus.io 过桥。缺文件不致命。
+      const collected = []
+      const pending = []
+      const notes = []
+      for (let i = 0; i < TILE_FILES.length; i++) {
+        const file = TILE_FILES[i]
+        let r = null
+        try {
+          r = await loadTilesFromUrls(tileUrlCandidates(file))
+        } catch (e) {
+          r = null
         }
-        if (!hasPlusIo()) return done(null, '视图层无 plus.io', '')
-        readTilesViaPlusIo(
-          (b64) => {
-            try {
-              done(base64ToBytes(b64), '', 'plusio@view')
-            } catch (e) {
-              done(null, '视图层 base64 解码失败: ' + ((e && e.message) || e), '')
-            }
-          },
-          (err) => done(null, '视图层 plus.io: ' + err, '')
-        )
-      })
+        if (r && r.bytes) {
+          collected.push({ key: file, bytes: r.bytes })
+          notes.push(file + '←' + String(r.src || '').replace(/^[a-z]+@/, ''))
+        } else {
+          pending.push(i)
+          notes.push(file + '?')
+        }
+      }
+      this.collected = collected
+      this.pending = pending
+      this.setSrc(notes.join(' '))
+      if (!pending.length) return this.finishBuild()
+      this.askNextFile()
     },
 
-    build(bytes) {
+    // 一次只过桥一份档案，避免同时压多份 base64 把手机内存顶爆
+    askNextFile() {
+      if (!this.pending || !this.pending.length) return this.finishBuild()
+      this.curFile = this.pending.shift()
+      this.setSrc('bridge:' + TILE_FILES[this.curFile])
+      try {
+        this.$ownerInstance.callMethod('mwNeedTiles', { f: this.curFile })
+      } catch (e) {
+        this.askNextFile() // 问不动就跳过这一份
+      }
+    },
+
+    // 手上有几份就建几份，一份都没有才算失败
+    finishBuild() {
+      if (this.core) return
+      if (!this.collected || !this.collected.length) {
+        return this.fail('一个瓦片档案都没读到')
+      }
+      this.build(this.collected)
+    },
+
+    build(archives) {
       if (this.core) return
       try {
         this.core = createTrackMap({
           container: this.el || this.$el,
-          bytes: bytes,
+          archives: archives,
           status: this.status,
           points: this.lastPoints,
           onOutOfBounds: (b) => {

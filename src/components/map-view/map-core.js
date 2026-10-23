@@ -221,14 +221,18 @@ function fitToCoords(map, coords) {
  */
 export function createTrackMap(opts) {
   const container = opts.container
-  const bytes = opts.bytes
   const status = opts.status || makeMapStatus()
   const onOutOfBounds = typeof opts.onOutOfBounds === 'function' ? opts.onOutOfBounds : null
 
+  // 档案集合：[{ key, bytes }]。多个档案 = 多个 source + 多组图层。
+  // 为什么不用 merge 合成一个：pmtiles merge 要求输入严格不相交，而相邻区域在低缩放级
+  // 必然共享同一批整瓦片（z0 一块瓦片就是整个地球），实测直接报
+  // "2768 overlapping tiles, starting with 0 0 0. Inputs must be disjoint"。
+  const archives = (opts.archives || []).filter((a) => a && a.key && a.bytes)
+  if (!archives.length) throw new Error('没有可用的瓦片档案')
+
   ensureWorker(status)
   const protocol = ensureProtocol()
-  const pmtiles = new PMTiles(memorySource(bytes, SOURCE_KEY))
-  protocol.add(pmtiles)
 
   let bounds = null
   let fitted = false
@@ -236,21 +240,38 @@ export function createTrackMap(opts) {
   let outOfBoundsFired = false
   let destroyed = false
   const tileKeys = {}
+  const instances = []
+  const sourceIds = {}
+  let baseLayers = []
 
-  const baseLayers = basemapLayers('protomaps', namedFlavor('dark'), { lang: 'zh' }).filter(
-    (l) => l.type !== 'symbol' // 离线包没有字体包
-  )
+  for (let ai = 0; ai < archives.length; ai++) {
+    const a = archives[ai]
+    const inst = new PMTiles(memorySource(a.bytes, a.key))
+    protocol.add(inst)
+    instances.push(inst)
+    sourceIds[a.key] = 1
+    // 每个档案要有自己的图层组：basemaps 的 layers() 生成的是绑定到指定 source 名的图层，
+    // 多个档案就得生成多份，并把 id 加前缀避免重复 id 报错。
+    const ls = basemapLayers(a.key, namedFlavor('dark'), { lang: 'zh' }).filter(
+      (l) => l.type !== 'symbol' // 离线包没有字体包
+    )
+    for (let li = 0; li < ls.length; li++) {
+      baseLayers.push(Object.assign({}, ls[li], { id: a.key + ':' + ls[li].id }))
+    }
+  }
+
+  const sources = { track: { type: 'geojson', data: trackGeoJSON(lastPoints) } }
+  for (let ai = 0; ai < archives.length; ai++) {
+    sources[archives[ai].key] = {
+      type: 'vector',
+      url: 'pmtiles://' + archives[ai].key,
+      attribution: ATTRIBUTION,
+    }
+  }
 
   const style = {
     version: 8,
-    sources: {
-      protomaps: {
-        type: 'vector',
-        url: 'pmtiles://' + SOURCE_KEY,
-        attribution: ATTRIBUTION,
-      },
-      track: { type: 'geojson', data: trackGeoJSON(lastPoints) },
-    },
+    sources: sources,
     layers: baseLayers.concat([
       {
         id: 'track-line',
@@ -308,7 +329,7 @@ export function createTrackMap(opts) {
   })
 
   map.on('sourcedata', (e) => {
-    if (!e || !e.tile || e.sourceId !== 'protomaps') return
+    if (!e || !e.tile || !sourceIds[e.sourceId]) return
     try {
       const c = e.tile.tileID && e.tile.tileID.canonical
       if (!c) return
@@ -330,15 +351,29 @@ export function createTrackMap(opts) {
     if (typeof opts.onReady === 'function') opts.onReady(map)
   })
 
-  // 档案头：拿 bbox（越界判断）和中心点（空轨迹时的取景）
-  pmtiles
-    .getHeader()
-    .then((h) => {
-      bounds = { minLon: h.minLon, minLat: h.minLat, maxLon: h.maxLon, maxLat: h.maxLat }
+  // 档案头：bbox 取各档案并集（越界判断用），中心点取第一个档案（空轨迹时的取景）
+  Promise.all(
+    instances.map((p) =>
+      p.getHeader().catch(() => null)
+    )
+  )
+    .then((hs) => {
+      const valid = hs.filter((h) => h && isFinite(h.minLon) && isFinite(h.maxLat))
+      if (!valid.length) return
+      bounds = valid.reduce(
+        (acc, h) => ({
+          minLon: Math.min(acc.minLon, h.minLon),
+          minLat: Math.min(acc.minLat, h.minLat),
+          maxLon: Math.max(acc.maxLon, h.maxLon),
+          maxLat: Math.max(acc.maxLat, h.maxLat),
+        }),
+        { minLon: Infinity, minLat: Infinity, maxLon: -Infinity, maxLat: -Infinity }
+      )
+      const h0 = valid[0]
       if (!collectCoords(lastPoints).length) {
         map.jumpTo({
-          center: [h.centerLon || DEFAULT_CENTER[0], h.centerLat || DEFAULT_CENTER[1]],
-          zoom: Math.min(h.centerZoom || DEFAULT_ZOOM, 13),
+          center: [h0.centerLon || DEFAULT_CENTER[0], h0.centerLat || DEFAULT_CENTER[1]],
+          zoom: Math.min(h0.centerZoom || DEFAULT_ZOOM, 13),
         })
       }
       checkBounds()

@@ -12,11 +12,27 @@
 // PMTiles v3 档案头 7 字节魔数
 const MAGIC = [0x50, 0x4d, 0x54, 0x69, 0x6c, 0x65, 0x73] // "PMTiles"
 
-export const TILE_FILE = 'qingdao.pmtiles'
+// 离线瓦片档案清单：一个档案 = 一个 .pmtiles 文件（放在 src/static/tiles/ 下）。
+// 为什么是多档案而不是合并成一个：pmtiles merge 要求输入严格不相交，而相邻区域在
+// 低缩放级必然共享同一批整瓦片（z0 一块瓦片就是整个地球），实测会被直接拒绝
+// （"2768 overlapping tiles ... Inputs must be disjoint"）。
+// 缺文件不致命：逐个加载，取到几个用几个，以后要加城市就往这个数组里加一项。
+export const TILE_FILES = [
+  'qingdao.pmtiles', // 主城 + 崂山 + 城阳 + 黄岛东部
+  'hd-core.pmtiles', // 黄岛核心：珠山 / 灵山湾 / 黄岛城区（优先切，覆盖常跑区域）
+  'hd-mid.pmtiles', // 黄岛中：珠山 / 灵山湾西
+  'hd-west.pmtiles', // 黄岛西：原胶南 / 董家口
+  'hd-east.pmtiles', // 黄岛东：黄岛城区 / 唐岛湾
+]
+
 /** H5：相对构建产物根目录 */
-export const TILE_REL = 'static/tiles/' + TILE_FILE
+export function tileRel(file) {
+  return 'static/tiles/' + file
+}
 /** App：5+ 运行时里应用资源目录的前缀 */
-export const TILE_WWW = '_www/static/tiles/' + TILE_FILE
+export function tileWww(file) {
+  return '_www/static/tiles/' + file
+}
 
 /** 传进诊断行前把 URL 缩短，别把整条 file:// 路径塞满屏幕 */
 export function shortUrl(u) {
@@ -70,19 +86,21 @@ export function plusLocalPath(p) {
  *  2) App：相对路径、_www 前缀、plus 给出的绝对路径（+ file:// 形式）
  *  3) 兜底：让调用方再走 plus.io
  */
-export function tileUrlCandidates() {
+export function tileUrlCandidates(file) {
+  const rel = tileRel(file)
+  const www = tileWww(file)
   const list = []
   try {
     if (typeof location !== 'undefined' && location.href) {
-      list.push(new URL(TILE_REL, location.href).href)
+      list.push(new URL(rel, location.href).href)
     }
   } catch (e) {
     /* ignore */
   }
-  list.push(TILE_REL)
-  list.push('/' + TILE_REL)
-  list.push(TILE_WWW)
-  const abs = plusLocalPath(TILE_WWW)
+  list.push(rel)
+  list.push('/' + rel)
+  list.push(www)
+  const abs = plusLocalPath(www)
   if (abs) {
     list.push(abs)
     list.push('file://' + (abs[0] === '/' ? abs : '/' + abs))
@@ -180,7 +198,8 @@ export async function loadTilesFromUrls(urls) {
  * 逻辑层与视图层共用：视图层拿到 base64 自己 atob，逻辑层切成块过桥。
  * @returns {boolean} 是否成功发起
  */
-export function readTilesViaPlusIo(onBase64, onError) {
+export function readTilesViaPlusIo(file, onBase64, onError) {
+  const www = tileWww(file)
   const fail = (m) => {
     try {
       onError && onError(m)
@@ -194,7 +213,7 @@ export function readTilesViaPlusIo(onBase64, onError) {
   }
   try {
     plus.io.resolveLocalFileSystemURL(
-      TILE_WWW,
+      www,
       (entry) => {
         entry.file(
           (file) => {
@@ -213,7 +232,7 @@ export function readTilesViaPlusIo(onBase64, onError) {
           (e) => fail('file(): ' + ((e && e.message) || '未知错误'))
         )
       },
-      (e) => fail('resolve(' + TILE_WWW + '): ' + ((e && e.message) || '找不到文件'))
+      (e) => fail('resolve(' + www + '): ' + ((e && e.message) || '找不到文件'))
     )
     return true
   } catch (e) {
