@@ -44,16 +44,32 @@ jobs:
           chmod +x pmtiles
           ./pmtiles version
 
-      - name: Extract region
+      - name: Extract region (with retries)
         run: |
           OUT="${{ github.event.inputs.name }}.pmtiles"
           SRC="https://build.protomaps.com/${{ github.event.inputs.source }}.pmtiles"
           echo "source=$SRC"
           echo "bbox=${{ github.event.inputs.bbox }} maxzoom=${{ github.event.inputs.maxzoom }}"
-          ./pmtiles extract "$SRC" "$OUT" \
-            --bbox="${{ github.event.inputs.bbox }}" \
-            --maxzoom=${{ github.event.inputs.maxzoom }} \
-            --download-threads=8
+          # Cloudflare 会不定时重置这些分块请求（实测本机和 GitHub runner 都会遇到），
+          # 而 extract 不支持断点续传，所以只能在 job 内循环重试。
+          ok=0
+          for i in $(seq 1 12); do
+            rm -f "$OUT"
+            echo "=== attempt $i / 12 ==="
+            if ./pmtiles extract "$SRC" "$OUT" \
+                 --bbox="${{ github.event.inputs.bbox }}" \
+                 --maxzoom=${{ github.event.inputs.maxzoom }} \
+                 --download-threads=6 ; then
+              ok=1
+              break
+            fi
+            echo "attempt $i failed, sleep 8s"
+            sleep 8
+          done
+          if [ "$ok" != "1" ]; then
+            echo "::error::12 次尝试全部失败"
+            exit 1
+          fi
           ls -lh "$OUT"
 
       - name: Verify archive
