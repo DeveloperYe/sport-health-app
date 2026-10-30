@@ -30,7 +30,11 @@ on:
         required: false
         default: ''
       limit:
-        description: '最多切几个（0=不限，试点时可填 3）'
+        description: '本片最多切几个（0=不限；矩阵上限 256，全量请分片）'
+        required: false
+        default: '0'
+      offset:
+        description: '起始偏移（分片用：0/120/240/360）'
         required: false
         default: '0'
 
@@ -58,7 +62,10 @@ jobs:
             if (filter) list = list.filter((c) =>
               c.provinceAdcode === filter || c.adcode === filter || c.province === filter
             );
-            if (limit > 0) list = list.slice(0, limit);
+            const offset = parseInt(process.env.OFFSET || "0", 10);
+            // GitHub 单次 run 的矩阵上限是 256 个作业；370 个必须分片跑，
+            // 否则整个 run 会在"生成矩阵"阶段直接失败（只跑 prepare，cut 根本不出现）。
+            list = list.slice(offset, limit > 0 ? offset + limit : undefined);
             const include = list.map((c) => ({
               adcode: c.adcode,
               name: c.name,
@@ -67,12 +74,13 @@ jobs:
             }));
             fs.appendFileSync(process.env.GITHUB_OUTPUT, "matrix=" + JSON.stringify({ include }) + "\n");
             fs.appendFileSync(process.env.GITHUB_OUTPUT, "total=" + include.length + "\n");
-            console.log("待切 " + include.length + " 个城市");
+            console.log("待切 " + include.length + " 个城市（offset=" + (process.env.OFFSET || "0") + "）");
             for (const c of include.slice(0, 40)) console.log("  " + c.name + " " + c.adcode + " bbox=" + c.bbox);
           '
         env:
           FILTER: ${{ github.event.inputs.filter }}
           LIMIT: ${{ github.event.inputs.limit }}
+          OFFSET: ${{ github.event.inputs.offset }}
 
   cut:
     needs: prepare
