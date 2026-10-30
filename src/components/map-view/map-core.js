@@ -25,6 +25,7 @@
 import * as maplibregl from 'maplibre-gl'
 import { PMTiles, Protocol } from 'pmtiles'
 import { layers as basemapLayers, namedFlavor } from '@protomaps/basemaps'
+import { highContrastDark } from './theme.js'
 import { containerOk, describeValue } from './dom.js'
 // worker 源码以原始字符串内联：?raw 不经过 esbuild，worker 里的 BigInt 与
 // 打包 target 无关；运行时再由 ensureWorker() 转成 blob URL 交给 setWorkerUrl。
@@ -390,7 +391,9 @@ export function createTrackMap(opts) {
     sourceIds[a.key] = 1
     // 每个档案要有自己的图层组：basemaps 的 layers() 生成的是绑定到指定 source 名的图层，
     // 多个档案就得生成多份，并把 id 加前缀避免重复 id 报错。
-    const ls = basemapLayers(a.key, namedFlavor('dark'), { lang: 'zh' }).filter(
+    // 深色高对比配色：原生 dark 的色标层次太浅（地面 12% vs 支路 20%，建筑比地面还暗
+    // 7%），手机上糊成一片。规则见 theme.js 顶部注释。
+    const ls = basemapLayers(a.key, highContrastDark(namedFlavor('dark')), { lang: 'zh' }).filter(
       (l) => l.type !== 'symbol' // 离线包没有字体包
     )
     for (let li = 0; li < ls.length; li++) {
