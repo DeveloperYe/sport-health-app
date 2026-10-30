@@ -362,6 +362,7 @@ export default {
       hostId: '',
       el: null,
       hostSize: null, // 逻辑层推下来的容器像素尺寸（首选，视图层自己量不到）
+      tileAbs: '', // 成功读通瓦片的绝对 URL（用于推导同源 worker 地址）
       collected: null, // 已拿到的档案 [{ key, bytes }]
       pending: null, // 还没拿到、排队走 plus.io 过桥的档案下标
       curFile: 0, // 当前正在过桥的档案下标
@@ -553,8 +554,8 @@ export default {
       if (this.status.webgl !== 'ok') {
         return this.fail('WebGL 不可用（视图层拿不到 webgl context）')
       }
-      // worker 源必须在建图前定好：真机禁 blob:，优先用同源静态文件
-      await prepareWorker(this.status)
+      // worker 源要等瓦片读通后再定：用「真正读成功的那条绝对 URL」推导最可靠，
+      // 见 finishBuild() 里的 prepareWorker(status, tileAbs)。
       this.pushStatus()
       // 容器：绝不能直接信 this.$el（它是包装对象，不是元素），逐候选校验 nodeType
       const found = this.resolveHost()
@@ -594,6 +595,8 @@ export default {
         if (r && r.bytes) {
           collected.push({ key: file, bytes: r.bytes })
           notes.push(file + '←' + String(r.src || '').replace(/^[a-z]+@/, ''))
+          // 记住读通的那条绝对地址：worker 地址由它推导（同一源必可访问）
+          if (r.abs && !this.tileAbs) this.tileAbs = r.abs
         } else {
           pending.push(i)
           notes.push(file + '?')
@@ -619,11 +622,14 @@ export default {
     },
 
     // 手上有几份就建几份，一份都没有才算失败
-    finishBuild() {
+    async finishBuild() {
       if (this.core) return
       if (!this.collected || !this.collected.length) {
         return this.fail('一个瓦片档案都没读到')
       }
+      // 建图前把 worker 源定好（真机禁 blob:，用与瓦片同一源的静态文件）
+      await prepareWorker(this.status, this.tileAbs)
+      this.pushStatus()
       this.build(this.collected)
     },
 

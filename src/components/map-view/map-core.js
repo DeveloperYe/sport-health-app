@@ -30,7 +30,7 @@ import { containerOk, describeValue } from './dom.js'
 // 打包 target 无关；运行时再由 ensureWorker() 转成 blob URL 交给 setWorkerUrl。
 import workerSource from 'maplibre-gl/dist/maplibre-gl-worker.mjs?raw'
 import { makeMapStatus, formatMapStatus, trimStr } from './map-status.js'
-import { toClassicWorkerSource as stripModuleSyntax } from './worker-src.js'
+import { toClassicWorkerSource as stripModuleSyntax, deriveSiblingUrl } from './worker-src.js'
 
 // 诊断行的拼装与状态对象在 map-status.js（逻辑层也要用，但不能引这个文件）
 export { makeMapStatus, formatMapStatus }
@@ -89,43 +89,67 @@ function ensureWorker(status) {
 /** 同源静态 worker 的相对路径（与 static/tiles/* 用同一套取文件方式） */
 const WORKER_REL = 'static/maplibre/worker.js'
 
-function workerUrlCandidates() {
+/**
+ * 候选 worker URL。最可靠的一条来自「已经读通的瓦片绝对地址」：
+ * 它证明了那个源可访问，把尾部换成 worker 路径即可，不用赌 baseURI 长什么样。
+ */
+export function workerUrlCandidates(hintAbs) {
   const list = []
+  const push = (u) => {
+    if (u && list.indexOf(u) < 0) list.push(u)
+  }
+  const h = String(hintAbs || '')
+  const derived = deriveSiblingUrl(h, 'static/tiles', WORKER_REL)
+  if (derived) push(derived)
   try {
     if (typeof document !== 'undefined' && document.baseURI) {
-      list.push(new URL(WORKER_REL, document.baseURI).href)
+      push(new URL(WORKER_REL, document.baseURI).href)
     }
   } catch (e) {
     /* ignore */
   }
-  list.push(WORKER_REL)
-  list.push('./' + WORKER_REL)
-  const seen = {}
-  return list.filter((u) => (u && !seen[u] ? ((seen[u] = 1), true) : false))
+  try {
+    if (typeof location !== 'undefined' && location.href) {
+      push(new URL(WORKER_REL, location.href).href)
+    }
+  } catch (e) {
+    /* ignore */
+  }
+  push(WORKER_REL)
+  push('./' + WORKER_REL)
+  return list
 }
+
+const tail2 = (u) => String(u).split('/').slice(-2).join('/')
 
 /**
  * 准备 worker 源。真机实测：`new Worker(blobURL)` 被 WebView 策略拦（报
- * "Worker failed to load"），而同源静态文件能被 fetch 到 —— 说明 blob: 被禁、
- * `script-src 'self'` 放行。所以优先用同源静态文件，拿不到再退回 blob。
+ * "Worker failed to load"），而同源静态文件 fetch 能通 —— 说明 blob: 被禁。
+ * 所以优先同源静态文件；每个候选都记下失败原因，最后即使退回 blob 也保留原因，
+ * 否则真机上只看得到 blob 成功、看不出文件那条为什么不行（上一轮就吃了这个亏）。
  *
- * 必须在 new maplibregl.Map() 之前完成，故设计成 async、由调用方 await。
+ * 必须在 new maplibregl.Map() 之前完成，故 async、由调用方 await。
  */
-export async function prepareWorker(status) {
+export async function prepareWorker(status, hintAbs) {
   if (workerUrlSet) return workerUrl
-  for (const url of workerUrlCandidates()) {
+  const reasons = []
+  for (const url of workerUrlCandidates(hintAbs)) {
+    // 1) 能不能读到（Range 取 64 字节，不整包）
+    let readOk = false
+    let why = ''
     try {
-      let ok = false
-      try {
-        const head = await fetch(url, { method: 'HEAD' })
-        ok = !!(head && head.ok)
-      } catch (e) {
-        const res = await fetch(url)
-        ok = !!(res && res.ok)
-      }
-      if (!ok) continue
-      // 同步构造一次：origin/CSP 违规会在这里抛，而不是留到 MapLibre 里变成
-      // 一句看不懂的 "Worker failed to load"。
+      const res = await fetch(url, { headers: { Range: 'bytes=0-63' } })
+      readOk = !!(res && (res.ok || res.status === 206))
+      if (!readOk) why = 'HTTP' + (res && res.status)
+    } catch (e) {
+      why = String((e && e.message) || 'fetch-fail').slice(0, 26)
+    }
+    if (!readOk) {
+      reasons.push(tail2(url) + '!' + why)
+      continue
+    }
+    // 2) 该源允不允许建 worker（origin/CSP 违规会在这里同步抛）
+    try {
       const probe = new Worker(url)
       try {
         probe.terminate()
@@ -135,14 +159,18 @@ export async function prepareWorker(status) {
       workerUrl = url
       maplibregl.setWorkerUrl(url)
       workerUrlSet = true
-      if (status) status.worker = 'file:worker.js'
+      if (status) status.worker = 'file:' + tail2(url)
       return workerUrl
     } catch (e) {
-      if (status) status.worker = 'file-err:' + String((e && e.message) || 'x').slice(0, 36)
+      reasons.push(tail2(url) + '!W:' + String((e && e.message) || 'worker-fail').slice(0, 30))
     }
   }
-  // 同源文件不可用才退回 blob（H5 上仍然走这条）
-  return ensureWorker(status)
+  // 同源文件不可用才退回 blob；把原因拼进状态，别被覆盖
+  const r = ensureWorker(status)
+  if (status) {
+    status.worker = 'no-file[' + reasons.slice(0, 2).join(' ') + ']->' + (status.worker || 'blob')
+  }
+  return r
 }
 
 function ensureProtocol() {

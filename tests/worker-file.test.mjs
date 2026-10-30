@@ -18,7 +18,7 @@ async function load(rel) {
   return import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'))
 }
 
-const { toClassicWorkerSource } = await load('worker-src.js')
+const { toClassicWorkerSource, deriveSiblingUrl } = await load('worker-src.js')
 
 const raw = readFileSync(
   fileURLToPath(new URL('../node_modules/maplibre-gl/dist/maplibre-gl-worker.mjs', import.meta.url)),
@@ -47,4 +47,25 @@ test('静态 worker 文件是合法 classic 脚本（不含模块语法）', () 
 
 test('静态 worker 文件保留自启动入口', () => {
   assert.match(committedBody, /self\.worker\s*=\s*new/)
+})
+
+// ---- deriveSiblingUrl：真机上用它把「读通的瓦片地址」换成 worker 地址 ----
+
+test('deriveSiblingUrl：http 源（uni-app 本地服务最常见形态）', () => {
+  assert.equal(
+    deriveSiblingUrl('http://127.0.0.1:13131/static/tiles/a.pmtiles', 'static/tiles', 'static/maplibre/worker.js'),
+    'http://127.0.0.1:13131/static/maplibre/worker.js'
+  )
+})
+
+test('deriveSiblingUrl：带子路径与查询串也能推', () => {
+  assert.equal(
+    deriveSiblingUrl('http://h/apps/X/www/static/tiles/a.pmtiles?v=1', 'static/tiles', 'static/maplibre/worker.js'),
+    'http://h/apps/X/www/static/maplibre/worker.js'
+  )
+})
+
+test('deriveSiblingUrl：不匹配时返回空串（调用方会退回其它候选）', () => {
+  assert.equal(deriveSiblingUrl('http://h/other/a.pmtiles', 'static/tiles', 'static/maplibre/worker.js'), '')
+  assert.equal(deriveSiblingUrl('', 'static/tiles', 'static/maplibre/worker.js'), '')
 })

@@ -181,16 +181,26 @@ function tryXhr(url) {
 export async function loadTilesFromUrls(urls) {
   const errs = []
   const list = urls && urls.length ? urls : tileUrlCandidates()
+  // 把「真正读成功的那条 URL」解析成绝对地址返回出去：
+  // App 端要据此推导同源 worker 地址（tiles 能读通，说明该源可访问）。
+  const absOf = (u) => {
+    try {
+      const base = typeof location !== 'undefined' && location.href ? location.href : undefined
+      return new URL(u, base).href
+    } catch (e) {
+      return u
+    }
+  }
   for (let i = 0; i < list.length; i++) {
     const url = list[i]
     const r1 = await tryFetch(url)
-    if (r1.bytes) return { bytes: r1.bytes, src: 'fetch@' + shortUrl(url), err: '' }
+    if (r1.bytes) return { bytes: r1.bytes, src: 'fetch@' + shortUrl(url), err: '', url: url, abs: absOf(url) }
     errs.push('fetch(' + shortUrl(url) + '): ' + r1.err)
     const r2 = await tryXhr(url)
-    if (r2.bytes) return { bytes: r2.bytes, src: 'xhr@' + shortUrl(url), err: '' }
+    if (r2.bytes) return { bytes: r2.bytes, src: 'xhr@' + shortUrl(url), err: '', url: url, abs: absOf(url) }
     errs.push('xhr(' + shortUrl(url) + '): ' + r2.err)
   }
-  return { bytes: null, src: '', err: errs.slice(0, 4).join(' | ') }
+  return { bytes: null, src: '', err: errs.slice(0, 4).join(' | '), url: '', abs: '' }
 }
 
 /**

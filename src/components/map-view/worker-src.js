@@ -32,3 +32,23 @@ export function isClassicScript(src) {
     return false
   }
 }
+
+/**
+ * 由「已经读通的文件绝对 URL」推导同源的兄弟文件地址。
+ *
+ * 真机场景：`fetch('.../static/tiles/x.pmtiles')` 能通，而 `new Worker(blobURL)` 被禁。
+ * 既然那个源可访问，把尾部换成 worker 路径即可，不必猜 document.baseURI 长什么样。
+ *
+ * @param {string} hintAbs 已读通的绝对 URL，如 http://127.0.0.1:8080/static/tiles/a.pmtiles
+ * @param {string} fromDir 目录前缀（相对），如 'static/tiles'
+ * @param {string} toPath  目标文件（相对），如 'static/maplibre/worker.js'
+ * @returns {string} 推导结果；无法匹配返回空串
+ */
+export function deriveSiblingUrl(hintAbs, fromDir, toPath) {
+  const h = String(hintAbs || '')
+  const dir = String(fromDir || '').replace(/^\/+|\/+$/g, '')
+  if (!h || !dir) return ''
+  const esc = dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const m = h.match(new RegExp('^(.*/)' + esc + '/[^/?#]+'))
+  return m ? m[1] + String(toPath).replace(/^\/+/, '') : ''
+}
