@@ -86,91 +86,121 @@ function ensureWorker(status) {
   return workerUrl
 }
 
-/** 同源静态 worker 的相对路径（与 static/tiles/* 用同一套取文件方式） */
-const WORKER_REL = 'static/maplibre/worker.js'
+/** 同源静态 worker 目录（worker.js 与 probe.js 同放此处） */
+const WORKER_DIR = 'static/maplibre/'
+const WORKER_REL = WORKER_DIR + 'worker.js'
+const PROBE_REL = WORKER_DIR + 'probe.js'
 
 /**
- * 候选 worker URL。最可靠的一条来自「已经读通的瓦片绝对地址」：
- * 它证明了那个源可访问，把尾部换成 worker 路径即可，不用赌 baseURI 长什么样。
+ * 候选「目录」列表（不是文件）：probe 与 worker 同目录，探测一个就能推断另一个。
+ * 最可靠的一条来自「已经读通的瓦片绝对地址」——它证明那个源可访问。
  */
-export function workerUrlCandidates(hintAbs) {
+export function workerDirCandidates(hintAbs) {
   const list = []
-  const push = (u) => {
-    if (u && list.indexOf(u) < 0) list.push(u)
+  const push = (d) => {
+    if (d && list.indexOf(d) < 0) list.push(d)
   }
-  const h = String(hintAbs || '')
-  const derived = deriveSiblingUrl(h, 'static/tiles', WORKER_REL)
+  const derived = deriveSiblingUrl(String(hintAbs || ''), 'static/tiles', WORKER_DIR)
   if (derived) push(derived)
   try {
     if (typeof document !== 'undefined' && document.baseURI) {
-      push(new URL(WORKER_REL, document.baseURI).href)
+      push(new URL(WORKER_DIR, document.baseURI).href)
     }
   } catch (e) {
     /* ignore */
   }
   try {
     if (typeof location !== 'undefined' && location.href) {
-      push(new URL(WORKER_REL, location.href).href)
+      push(new URL(WORKER_DIR, location.href).href)
     }
   } catch (e) {
     /* ignore */
   }
-  push(WORKER_REL)
-  push('./' + WORKER_REL)
+  push(WORKER_DIR)
   return list
 }
 
-const tail2 = (u) => String(u).split('/').slice(-2).join('/')
+const tail2 = (u) => String(u).split('/').filter(Boolean).slice(-2).join('/')
 
 /**
- * 准备 worker 源。真机实测：`new Worker(blobURL)` 被 WebView 策略拦（报
- * "Worker failed to load"），而同源静态文件 fetch 能通 —— 说明 blob: 被禁。
- * 所以优先同源静态文件；每个候选都记下失败原因，最后即使退回 blob 也保留原因，
- * 否则真机上只看得到 blob 成功、看不出文件那条为什么不行（上一轮就吃了这个亏）。
+ * 用真实 Worker 握手探测一个 URL 能不能当 worker 源。
+ * 为什么不用 fetch：真机实测带 `Range` 头的 fetch 会触发 CORS 预检而直接
+ * "Failed to fetch"，而 **worker 加载并不走预检** —— 用 fetch 当探针会误判。
+ * 这里直接建 worker 并等它回一句话，最贴近真实条件。
+ */
+export function probeWorker(url, timeoutMs) {
+  return new Promise((resolve) => {
+    let settled = false
+    const done = (v) => {
+      if (!settled) {
+        settled = true
+        resolve(v)
+      }
+    }
+    let w = null
+    try {
+      w = new Worker(url)
+    } catch (e) {
+      // origin/CSP 违规在这一步同步抛出
+      return done('W:' + String((e && e.message) || 'construct').slice(0, 28))
+    }
+    const t = setTimeout(() => {
+      done('timeout')
+      try {
+        w.terminate()
+      } catch (e) {
+        /* ignore */
+      }
+    }, timeoutMs || 1200)
+    w.onmessage = (ev) => {
+      clearTimeout(t)
+      done(ev && ev.data === 'ok' ? 'ok' : 'bad-msg')
+      try {
+        w.terminate()
+      } catch (e) {
+        /* ignore */
+      }
+    }
+    w.onerror = (ev) => {
+      clearTimeout(t)
+      done('E:' + String((ev && ev.message) || 'load-error').slice(0, 28))
+      try {
+        w.terminate()
+      } catch (e) {
+        /* ignore */
+      }
+    }
+  })
+}
+
+/**
+ * 准备 worker 源。真机实测：`new Worker(blobURL)` 被 WebView 策略拦，而瓦片的
+ * 同源静态文件能读 —— 说明 blob: 被禁、同源文件可访问。所以优先用同源静态文件，
+ * 拿不到再退回 blob；每个候选的失败原因都累积，退回时保留，避免又被覆盖掉。
  *
  * 必须在 new maplibregl.Map() 之前完成，故 async、由调用方 await。
  */
 export async function prepareWorker(status, hintAbs) {
   if (workerUrlSet) return workerUrl
   const reasons = []
-  for (const url of workerUrlCandidates(hintAbs)) {
-    // 1) 能不能读到（Range 取 64 字节，不整包）
-    let readOk = false
-    let why = ''
-    try {
-      const res = await fetch(url, { headers: { Range: 'bytes=0-63' } })
-      readOk = !!(res && (res.ok || res.status === 206))
-      if (!readOk) why = 'HTTP' + (res && res.status)
-    } catch (e) {
-      why = String((e && e.message) || 'fetch-fail').slice(0, 26)
-    }
-    if (!readOk) {
-      reasons.push(tail2(url) + '!' + why)
+  for (const dir of workerDirCandidates(hintAbs)) {
+    const r = await probeWorker(dir + 'probe.js', 1200)
+    if (r !== 'ok') {
+      reasons.push(tail2(dir) + '!' + r)
       continue
     }
-    // 2) 该源允不允许建 worker（origin/CSP 违规会在这里同步抛）
-    try {
-      const probe = new Worker(url)
-      try {
-        probe.terminate()
-      } catch (e) {
-        /* ignore */
-      }
-      workerUrl = url
-      maplibregl.setWorkerUrl(url)
-      workerUrlSet = true
-      if (status) status.worker = 'file:' + tail2(url)
-      return workerUrl
-    } catch (e) {
-      reasons.push(tail2(url) + '!W:' + String((e && e.message) || 'worker-fail').slice(0, 30))
-    }
+    workerUrl = dir + 'worker.js'
+    maplibregl.setWorkerUrl(workerUrl)
+    workerUrlSet = true
+    if (status) status.worker = 'file:' + tail2(dir) + '/worker.js'
+    return workerUrl
   }
   // 同源文件不可用才退回 blob；把原因拼进状态，别被覆盖
-  const r = ensureWorker(status)
+  const r2 = ensureWorker(status)
   if (status) {
     status.worker = 'no-file[' + reasons.slice(0, 2).join(' ') + ']->' + (status.worker || 'blob')
   }
-  return r
+  return r2
 }
 
 function ensureProtocol() {

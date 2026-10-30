@@ -69,3 +69,10 @@ test('deriveSiblingUrl：不匹配时返回空串（调用方会退回其它候�
   assert.equal(deriveSiblingUrl('http://h/other/a.pmtiles', 'static/tiles', 'static/maplibre/worker.js'), '')
   assert.equal(deriveSiblingUrl('', 'static/tiles', 'static/maplibre/worker.js'), '')
 })
+
+test('deriveSiblingUrl：toPath 带尾斜杠时用于推导目录（prepareWorker 就是这种用法）', () => {
+  assert.equal(
+    deriveSiblingUrl('http://127.0.0.1:13131/static/tiles/a.pmtiles', 'static/tiles', 'static/maplibre/'),
+    'http://127.0.0.1:13131/static/maplibre/'
+  )
+})

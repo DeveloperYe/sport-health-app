@@ -43,3 +43,5 @@ android/app/keystore.properties
 assets/
 # 构建时才能生成的 App 资源（由 uni build -p app 产生并复制进来）
 android/app/src/main/assets/apps/__UNI__74D4914/www/
+# 离线瓦片包：21MB 二进制不入库，走 Release 分发（CI 在构建前按哈希下载）
+src/static/tiles/*.pmtiles

@@ -39,6 +39,25 @@ jobs:
       - name: Unit tests
         run: npm run test:unit
 
+      # 0.5) 离线瓦片包不入库（21MB 二进制，走 Release 分发；git 里只留清单与哈希）
+      #      期望哈希写死，包被换掉会在这里直接失败，而不是静默打进 APK。
+      - name: Fetch offline tile pack
+        run: |
+          TILE=src/static/tiles/qingdao-all.pmtiles
+          WANT_SHA=a169683779fb4ac74cc3e77e797de3293f7ebecd368402d2d8b19d0dafcb4041
+          mkdir -p src/static/tiles
+          if [ ! -f "$TILE" ]; then
+            echo "本地无该文件，从 Release 下载…"
+            curl -fL --retry 5 --retry-delay 3 --max-time 600 -o "$TILE" \
+              "https://github.com/${{ github.repository }}/releases/download/tiles-qingdao-all-5/qingdao-all.pmtiles"
+          fi
+          GOT_SHA=$(sha256sum "$TILE" | cut -d' ' -f1)
+          echo "tile pack: $(du -h "$TILE" | cut -f1)  sha256=$GOT_SHA"
+          if [ "$GOT_SHA" != "$WANT_SHA" ]; then
+            echo "::error::瓦片包哈希不匹配，期望 $WANT_SHA 实际 $GOT_SHA"
+            exit 1
+          fi
+
       # 1) uni-app 编译出 App 离线资源到 dist/build/app
       - name: Build uni-app resources
         run: npm run build:app
