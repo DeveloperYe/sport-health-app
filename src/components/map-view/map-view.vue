@@ -320,7 +320,7 @@ export default {
 <script module="mapView" lang="renderjs">
 // ===== 视图层（App）：只有 renderjs 能拿到 DOM =====
 // 建图逻辑一行都不在这里重复：全部走 map-core.js。
-import { createTrackMap, probeWebgl, waitForSize } from './map-core.js'
+import { createTrackMap, probeWebgl, waitForSize, prepareWorker } from './map-core.js'
 import { looksLikeElement, describeValue } from './dom.js'
 import { makeMapStatus, formatMapStatus } from './map-status.js'
 import {
@@ -553,6 +553,9 @@ export default {
       if (this.status.webgl !== 'ok') {
         return this.fail('WebGL 不可用（视图层拿不到 webgl context）')
       }
+      // worker 源必须在建图前定好：真机禁 blob:，优先用同源静态文件
+      await prepareWorker(this.status)
+      this.pushStatus()
       // 容器：绝不能直接信 this.$el（它是包装对象，不是元素），逐候选校验 nodeType
       const found = this.resolveHost()
       if (!found) {

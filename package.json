@@ -7,6 +7,7 @@
     "dev:app-android": "uni-launch app-android",
     "build:h5": "uni build",
     "test:unit": "node --test",
+    "gen:worker": "node scripts/gen-worker.mjs",
     "build:app": "uni build -p app",
     "build:mp-weixin": "uni build -p mp-weixin",
     "logcat:web": "uni-logcat web",

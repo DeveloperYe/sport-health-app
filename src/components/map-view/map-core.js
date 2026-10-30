@@ -86,6 +86,65 @@ function ensureWorker(status) {
   return workerUrl
 }
 
+/** 同源静态 worker 的相对路径（与 static/tiles/* 用同一套取文件方式） */
+const WORKER_REL = 'static/maplibre/worker.js'
+
+function workerUrlCandidates() {
+  const list = []
+  try {
+    if (typeof document !== 'undefined' && document.baseURI) {
+      list.push(new URL(WORKER_REL, document.baseURI).href)
+    }
+  } catch (e) {
+    /* ignore */
+  }
+  list.push(WORKER_REL)
+  list.push('./' + WORKER_REL)
+  const seen = {}
+  return list.filter((u) => (u && !seen[u] ? ((seen[u] = 1), true) : false))
+}
+
+/**
+ * 准备 worker 源。真机实测：`new Worker(blobURL)` 被 WebView 策略拦（报
+ * "Worker failed to load"），而同源静态文件能被 fetch 到 —— 说明 blob: 被禁、
+ * `script-src 'self'` 放行。所以优先用同源静态文件，拿不到再退回 blob。
+ *
+ * 必须在 new maplibregl.Map() 之前完成，故设计成 async、由调用方 await。
+ */
+export async function prepareWorker(status) {
+  if (workerUrlSet) return workerUrl
+  for (const url of workerUrlCandidates()) {
+    try {
+      let ok = false
+      try {
+        const head = await fetch(url, { method: 'HEAD' })
+        ok = !!(head && head.ok)
+      } catch (e) {
+        const res = await fetch(url)
+        ok = !!(res && res.ok)
+      }
+      if (!ok) continue
+      // 同步构造一次：origin/CSP 违规会在这里抛，而不是留到 MapLibre 里变成
+      // 一句看不懂的 "Worker failed to load"。
+      const probe = new Worker(url)
+      try {
+        probe.terminate()
+      } catch (e) {
+        /* ignore */
+      }
+      workerUrl = url
+      maplibregl.setWorkerUrl(url)
+      workerUrlSet = true
+      if (status) status.worker = 'file:worker.js'
+      return workerUrl
+    } catch (e) {
+      if (status) status.worker = 'file-err:' + String((e && e.message) || 'x').slice(0, 36)
+    }
+  }
+  // 同源文件不可用才退回 blob（H5 上仍然走这条）
+  return ensureWorker(status)
+}
+
 function ensureProtocol() {
   if (!protocolInstance) protocolInstance = new Protocol()
   if (!protocolRegistered) {
