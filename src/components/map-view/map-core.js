@@ -65,75 +65,25 @@ export function toClassicWorkerSource(src) {
 
 /**
  * 把 worker 源码变成可用的 blob URL。
- * 同时做两件事便于真机诊断：
- *  - 用 new Function() 做一次语法预检（能编译 = classic 脚本合法）；
- *  - 把结果写进 status.worker，真机截图即可判断卡在哪一步。
+ * 预检只做**纯字符串**判断，不用 new Function：部分 WebView 禁 eval，
+ * 且对 506KB 字符串做一次即时编译会拖慢首帧（真机上没必要）。
  */
 function ensureWorker(status) {
   if (workerUrlSet) return workerUrl
   workerUrlSet = true
   const classic = toClassicWorkerSource(workerSource)
-  let syntax = 'ok'
-  try {
-    // 只编译不执行：验证剥掉模块语法后是合法 classic 脚本
-    // eslint-disable-next-line no-new-func
-    new Function(classic)
-  } catch (e) {
-    syntax = 'syntax-err:' + ((e && e.message) || 'unknown')
-  }
+  const clean =
+    classic.length > 1000 &&
+    !/\bexport\s*\{/.test(classic) &&
+    !/^[ \t]*import\s.*from\s*['"]/m.test(classic)
   try {
     workerUrl = URL.createObjectURL(new Blob([classic], { type: 'text/javascript' }))
     maplibregl.setWorkerUrl(workerUrl)
-    if (status) status.worker = 'blob-classic(' + syntax + ')'
+    if (status) status.worker = 'blob-classic(' + (clean ? 'ok' : 'dirty') + ')'
   } catch (e) {
     if (status) status.worker = 'default(' + ((e && e.message) || 'blob 失败') + ')'
   }
   return workerUrl
-}
-
-/**
- * 探针：单独造一个极小的 classic blob worker，确认「blob worker 本身」能不能跑。
- * 用来区分两种失败：blob 被禁（环境问题）vs 源码语法问题（我们的问题）。
- * 返回 Promise<'ok' | 'err:...'>，超时 1500ms。
- */
-export function probeBlobWorker(timeoutMs) {
-  return new Promise((resolve) => {
-    let done = false
-    const finish = (v) => {
-      if (!done) {
-        done = true
-        resolve(v)
-      }
-    }
-    let w = null
-    try {
-      const url = URL.createObjectURL(
-        new Blob(["self.postMessage('wk-ok')"], { type: 'text/javascript' })
-      )
-      w = new Worker(url)
-      const t = setTimeout(() => finish('err:timeout'), timeoutMs || 1500)
-      w.onmessage = (ev) => {
-        clearTimeout(t)
-        finish(ev && ev.data === 'wk-ok' ? 'ok' : 'err:bad-message')
-        try {
-          w.terminate()
-        } catch (e) {
-          /* ignore */
-        }
-      }
-      w.onerror = (ev) => {
-        clearTimeout(t)
-        finish('err:' + ((ev && ev.message) || 'load-error'))
-        try {
-          w.terminate()
-        } catch (e) {
-          /* ignore */
-        }
-      }
-    } catch (e) {
-      finish('err:' + ((e && e.message) || 'construct-failed'))
-    }
-  })
 }
 
 function ensureProtocol() {
