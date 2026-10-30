@@ -45,3 +45,29 @@ asset: <adcode>.pmtiles                  例：370200.pmtiles
 > 注意：APK 内置的 `src/static/tiles/qingdao-all.pmtiles` 是默认城市（青岛），
 > 其余城市走下载。切包源一旦过期（Protomaps 日构建只留约 5 天）无法重切，
 > 已切好的包要长期保留在 Release 上。
+
+## cities-index.json（成品索引，App 直接用这个）
+
+由 `gen-city-index.mjs` 从 Releases API 汇总生成：每个城市的包已切好并挂到 Release，
+资产自带 `size` 与 `digest(sha256)`，无需下载回来算哈希。
+
+| 字段 | 说明 |
+|---|---|
+| `file` | 资产文件名，即 `<adcode>.pmtiles` |
+| `bytes` | 资产字节数（下载后必须校验） |
+| `sha256` | 资产摘要（下载后必须校验） |
+| `url` | 下载直链 `https://github.com/<repo>/releases/download/city-<adcode>-<source>/<adcode>.pmtiles` |
+| `ready` | 该城市包是否已发布 |
+
+顶层还有 `source`（切包所用 Protomaps 日期）、`ready`、`totalBytes`。
+
+**当前状态（2026-10-30，source=20261029）**：370/370 就绪，合计 11.59 GB。
+抽检 4 个（北京 93.84MB / 三沙 78.25MB / 成都 52.16MB / 澳门 4.63MB）：
+大小与 sha256 全部一致，`pmtiles show` 的 bounds 与索引 `bboxPadded` 逐项吻合。
+
+### 已知边界
+
+- **三沙市**包 78MB 但覆盖的是南海大片海域（150 万瓦片），实际跑步用不到，可按需不下载。
+- 城市包是**按行政区外接矩形**切的，相邻城市会有少量重叠（各自独立，互不影响）。
+- 切包源为 Protomaps 日构建，**只保留约 5 天**：已切好的包必须长期留在 Release，
+  过期后无法按同一天重切（但可用新日期切出等价包）。
