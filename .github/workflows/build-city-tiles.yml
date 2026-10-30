@@ -55,7 +55,9 @@ jobs:
             const filter = process.env.FILTER || "";
             const limit = parseInt(process.env.LIMIT || "0", 10);
             let list = cities;
-            if (filter) list = list.filter((c) => c.province === filter || c.adcode === filter);
+            if (filter) list = list.filter((c) =>
+              c.provinceAdcode === filter || c.adcode === filter || c.province === filter
+            );
             if (limit > 0) list = list.slice(0, limit);
             const include = list.map((c) => ({
               adcode: c.adcode,

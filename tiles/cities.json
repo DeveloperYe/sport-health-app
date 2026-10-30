@@ -1,11 +1,12 @@
 {
- "generatedAt": "2026-10-30T09:31:51.057Z",
+ "generatedAt": "2026-10-30T09:34:48.167Z",
  "count": 370,
  "cities": [
   {
    "adcode": "110000",
    "name": "北京市",
    "province": "北京市",
+   "provinceAdcode": "110000",
    "kind": "municipality",
    "bbox": [
     115.426264,
@@ -29,6 +30,7 @@
    "adcode": "120000",
    "name": "天津市",
    "province": "天津市",
+   "provinceAdcode": "120000",
    "kind": "municipality",
    "bbox": [
     116.708034,
@@ -52,6 +54,7 @@
    "adcode": "130100",
    "name": "石家庄市",
    "province": "河北省",
+   "provinceAdcode": "130000",
    "kind": "city",
    "bbox": [
     113.5255,
@@ -75,6 +78,7 @@
    "adcode": "130200",
    "name": "唐山市",
    "province": "河北省",
+   "provinceAdcode": "130000",
    "kind": "city",
    "bbox": [
     117.5074,
@@ -98,6 +102,7 @@
    "adcode": "130300",
    "name": "秦皇岛市",
    "province": "河北省",
+   "provinceAdcode": "130000",
    "kind": "city",
    "bbox": [
     118.5689,
@@ -121,6 +126,7 @@
    "adcode": "130400",
    "name": "邯郸市",
    "province": "河北省",
+   "provinceAdcode": "130000",
    "kind": "city",
    "bbox": [
     113.4654,
@@ -144,6 +150,7 @@
    "adcode": "130500",
    "name": "邢台市",
    "province": "河北省",
+   "provinceAdcode": "130000",
    "kind": "city",
    "bbox": [
     113.7582,
@@ -167,6 +174,7 @@
    "adcode": "130600",
    "name": "保定市",
    "province": "河北省",
+   "provinceAdcode": "130000",
    "kind": "city",
    "bbox": [
     113.7675,
@@ -190,6 +198,7 @@
    "adcode": "130700",
    "name": "张家口市",
    "province": "河北省",
+   "provinceAdcode": "130000",
    "kind": "city",
    "bbox": [
     113.8203,
@@ -213,6 +222,7 @@
    "adcode": "130800",
    "name": "承德市",
    "province": "河北省",
+   "provinceAdcode": "130000",
    "kind": "city",
    "bbox": [
     115.91,
@@ -236,6 +246,7 @@
    "adcode": "130900",
    "name": "沧州市",
    "province": "河北省",
+   "provinceAdcode": "130000",
    "kind": "city",
    "bbox": [
     115.7053,
@@ -259,6 +270,7 @@
    "adcode": "131000",
    "name": "廊坊市",
    "province": "河北省",
+   "provinceAdcode": "130000",
    "kind": "city",
    "bbox": [
     116.1168,
@@ -282,6 +294,7 @@
    "adcode": "131100",
    "name": "衡水市",
    "province": "河北省",
+   "provinceAdcode": "130000",
    "kind": "city",
    "bbox": [
     115.1728,
@@ -305,6 +318,7 @@
    "adcode": "140100",
    "name": "太原市",
    "province": "山西省",
+   "provinceAdcode": "140000",
    "kind": "city",
    "bbox": [
     111.5159,
@@ -328,6 +342,7 @@
    "adcode": "140200",
    "name": "大同市",
    "province": "山西省",
+   "provinceAdcode": "140000",
    "kind": "city",
    "bbox": [
     112.5804,
@@ -351,6 +366,7 @@
    "adcode": "140300",
    "name": "阳泉市",
    "province": "山西省",
+   "provinceAdcode": "140000",
    "kind": "city",
    "bbox": [
     112.9199,
@@ -374,6 +390,7 @@
    "adcode": "140400",
    "name": "长治市",
    "province": "山西省",
+   "provinceAdcode": "140000",
    "kind": "city",
    "bbox": [
     111.9855,
@@ -397,6 +414,7 @@
    "adcode": "140500",
    "name": "晋城市",
    "province": "山西省",
+   "provinceAdcode": "140000",
    "kind": "city",
    "bbox": [
     111.9422,
@@ -420,6 +438,7 @@
    "adcode": "140600",
    "name": "朔州市",
    "province": "山西省",
+   "provinceAdcode": "140000",
    "kind": "city",
    "bbox": [
     111.8958,
@@ -443,6 +462,7 @@
    "adcode": "140700",
    "name": "晋中市",
    "province": "山西省",
+   "provinceAdcode": "140000",
    "kind": "city",
    "bbox": [
     111.4141,
@@ -466,6 +486,7 @@
    "adcode": "140800",
    "name": "运城市",
    "province": "山西省",
+   "provinceAdcode": "140000",
    "kind": "city",
    "bbox": [
     110.2296,
@@ -489,6 +510,7 @@
    "adcode": "140900",
    "name": "忻州市",
    "province": "山西省",
+   "provinceAdcode": "140000",
    "kind": "city",
    "bbox": [
     110.9453,
@@ -512,6 +534,7 @@
    "adcode": "141000",
    "name": "临汾市",
    "province": "山西省",
+   "provinceAdcode": "140000",
    "kind": "city",
    "bbox": [
     110.376,
@@ -535,6 +558,7 @@
    "adcode": "141100",
    "name": "吕梁市",
    "province": "山西省",
+   "provinceAdcode": "140000",
    "kind": "city",
    "bbox": [
     110.3771,
@@ -558,6 +582,7 @@
    "adcode": "150100",
    "name": "呼和浩特市",
    "province": "内蒙古自治区",
+   "provinceAdcode": "150000",
    "kind": "city",
    "bbox": [
     110.5194,
@@ -581,6 +606,7 @@
    "adcode": "150200",
    "name": "包头市",
    "province": "内蒙古自治区",
+   "provinceAdcode": "150000",
    "kind": "city",
    "bbox": [
     109.2774,
@@ -604,6 +630,7 @@
    "adcode": "150300",
    "name": "乌海市",
    "province": "内蒙古自治区",
+   "provinceAdcode": "150000",
    "kind": "city",
    "bbox": [
     106.6114,
@@ -627,6 +654,7 @@
    "adcode": "150400",
    "name": "赤峰市",
    "province": "内蒙古自治区",
+   "provinceAdcode": "150000",
    "kind": "city",
    "bbox": [
     116.3566,
@@ -650,6 +678,7 @@
    "adcode": "150500",
    "name": "通辽市",
    "province": "内蒙古自治区",
+   "provinceAdcode": "150000",
    "kind": "city",
    "bbox": [
     119.2481,
@@ -673,6 +702,7 @@
    "adcode": "150600",
    "name": "鄂尔多斯市",
    "province": "内蒙古自治区",
+   "provinceAdcode": "150000",
    "kind": "city",
    "bbox": [
     106.4825,
@@ -696,6 +726,7 @@
    "adcode": "150700",
    "name": "呼伦贝尔市",
    "province": "内蒙古自治区",
+   "provinceAdcode": "150000",
    "kind": "city",
    "bbox": [
     115.5294,
@@ -719,6 +750,7 @@
    "adcode": "150800",
    "name": "巴彦淖尔市",
    "province": "内蒙古自治区",
+   "provinceAdcode": "150000",
    "kind": "city",
    "bbox": [
     105.2015,
@@ -742,6 +774,7 @@
    "adcode": "150900",
    "name": "乌兰察布市",
    "province": "内蒙古自治区",
+   "provinceAdcode": "150000",
    "kind": "city",
    "bbox": [
     110.3399,
@@ -765,6 +798,7 @@
    "adcode": "152200",
    "name": "兴安盟",
    "province": "内蒙古自治区",
+   "provinceAdcode": "150000",
    "kind": "city",
    "bbox": [
     119.4834,
@@ -788,6 +822,7 @@
    "adcode": "152500",
    "name": "锡林郭勒盟",
    "province": "内蒙古自治区",
+   "provinceAdcode": "150000",
    "kind": "city",
    "bbox": [
     111.1509,
@@ -811,6 +846,7 @@
    "adcode": "152900",
    "name": "阿拉善盟",
    "province": "内蒙古自治区",
+   "provinceAdcode": "150000",
    "kind": "city",
    "bbox": [
     97.1728,
@@ -834,6 +870,7 @@
    "adcode": "210100",
    "name": "沈阳市",
    "province": "辽宁省",
+   "provinceAdcode": "210000",
    "kind": "city",
    "bbox": [
     122.4235,
@@ -857,6 +894,7 @@
    "adcode": "210200",
    "name": "大连市",
    "province": "辽宁省",
+   "provinceAdcode": "210000",
    "kind": "city",
    "bbox": [
     120.9764,
@@ -880,6 +918,7 @@
    "adcode": "210300",
    "name": "鞍山市",
    "province": "辽宁省",
+   "provinceAdcode": "210000",
    "kind": "city",
    "bbox": [
     122.1923,
@@ -903,6 +942,7 @@
    "adcode": "210400",
    "name": "抚顺市",
    "province": "辽宁省",
+   "provinceAdcode": "210000",
    "kind": "city",
    "bbox": [
     123.6655,
@@ -926,6 +966,7 @@
    "adcode": "210500",
    "name": "本溪市",
    "province": "辽宁省",
+   "provinceAdcode": "210000",
    "kind": "city",
    "bbox": [
     123.5823,
@@ -949,6 +990,7 @@
    "adcode": "210600",
    "name": "丹东市",
    "province": "辽宁省",
+   "provinceAdcode": "210000",
    "kind": "city",
    "bbox": [
     123.3771,
@@ -972,6 +1014,7 @@
    "adcode": "210700",
    "name": "锦州市",
    "province": "辽宁省",
+   "provinceAdcode": "210000",
    "kind": "city",
    "bbox": [
     120.7203,
@@ -995,6 +1038,7 @@
    "adcode": "210800",
    "name": "营口市",
    "province": "辽宁省",
+   "provinceAdcode": "210000",
    "kind": "city",
    "bbox": [
     121.9359,
@@ -1018,6 +1062,7 @@
    "adcode": "210900",
    "name": "阜新市",
    "province": "辽宁省",
+   "provinceAdcode": "210000",
    "kind": "city",
    "bbox": [
     121.0275,
@@ -1041,6 +1086,7 @@
    "adcode": "211000",
    "name": "辽阳市",
    "province": "辽宁省",
+   "provinceAdcode": "210000",
    "kind": "city",
    "bbox": [
     122.5951,
@@ -1064,6 +1110,7 @@
    "adcode": "211100",
    "name": "盘锦市",
    "province": "辽宁省",
+   "provinceAdcode": "210000",
    "kind": "city",
    "bbox": [
     121.5473,
@@ -1087,6 +1134,7 @@
    "adcode": "211200",
    "name": "铁岭市",
    "province": "辽宁省",
+   "provinceAdcode": "210000",
    "kind": "city",
    "bbox": [
     123.4496,
@@ -1110,6 +1158,7 @@
    "adcode": "211300",
    "name": "朝阳市",
    "province": "辽宁省",
+   "provinceAdcode": "210000",
    "kind": "city",
    "bbox": [
     118.8462,
@@ -1133,6 +1182,7 @@
    "adcode": "211400",
    "name": "葫芦岛市",
    "province": "辽宁省",
+   "provinceAdcode": "210000",
    "kind": "city",
    "bbox": [
     119.2198,
@@ -1156,6 +1206,7 @@
    "adcode": "220100",
    "name": "长春市",
    "province": "吉林省",
+   "provinceAdcode": "220000",
    "kind": "city",
    "bbox": [
     124.0157,
@@ -1179,6 +1230,7 @@
    "adcode": "220200",
    "name": "吉林市",
    "province": "吉林省",
+   "provinceAdcode": "220000",
    "kind": "city",
    "bbox": [
     125.6457,
@@ -1202,6 +1254,7 @@
    "adcode": "220300",
    "name": "四平市",
    "province": "吉林省",
+   "provinceAdcode": "220000",
    "kind": "city",
    "bbox": [
     123.3045,
@@ -1225,6 +1278,7 @@
    "adcode": "220400",
    "name": "辽源市",
    "province": "吉林省",
+   "provinceAdcode": "220000",
    "kind": "city",
    "bbox": [
     124.8408,
@@ -1248,6 +1302,7 @@
    "adcode": "220500",
    "name": "通化市",
    "province": "吉林省",
+   "provinceAdcode": "220000",
    "kind": "city",
    "bbox": [
     125.2629,
@@ -1271,6 +1326,7 @@
    "adcode": "220600",
    "name": "白山市",
    "province": "吉林省",
+   "provinceAdcode": "220000",
    "kind": "city",
    "bbox": [
     126.1208,
@@ -1294,6 +1350,7 @@
    "adcode": "220700",
    "name": "松原市",
    "province": "吉林省",
+   "provinceAdcode": "220000",
    "kind": "city",
    "bbox": [
     123.1145,
@@ -1317,6 +1374,7 @@
    "adcode": "220800",
    "name": "白城市",
    "province": "吉林省",
+   "provinceAdcode": "220000",
    "kind": "city",
    "bbox": [
     121.6444,
@@ -1340,6 +1398,7 @@
    "adcode": "222400",
    "name": "延边朝鲜族自治州",
    "province": "吉林省",
+   "provinceAdcode": "220000",
    "kind": "city",
    "bbox": [
     127.4698,
@@ -1363,6 +1422,7 @@
    "adcode": "230100",
    "name": "哈尔滨市",
    "province": "黑龙江省",
+   "provinceAdcode": "230000",
    "kind": "city",
    "bbox": [
     125.688,
@@ -1386,6 +1446,7 @@
    "adcode": "230200",
    "name": "齐齐哈尔市",
    "province": "黑龙江省",
+   "provinceAdcode": "230000",
    "kind": "city",
    "bbox": [
     122.4182,
@@ -1409,6 +1470,7 @@
    "adcode": "230300",
    "name": "鸡西市",
    "province": "黑龙江省",
+   "provinceAdcode": "230000",
    "kind": "city",
    "bbox": [
     130.3988,
@@ -1432,6 +1494,7 @@
    "adcode": "230400",
    "name": "鹤岗市",
    "province": "黑龙江省",
+   "provinceAdcode": "230000",
    "kind": "city",
    "bbox": [
     129.675,
@@ -1455,6 +1518,7 @@
    "adcode": "230500",
    "name": "双鸭山市",
    "province": "黑龙江省",
+   "provinceAdcode": "230000",
    "kind": "city",
    "bbox": [
     130.6572,
@@ -1478,6 +1542,7 @@
    "adcode": "230600",
    "name": "大庆市",
    "province": "黑龙江省",
+   "provinceAdcode": "230000",
    "kind": "city",
    "bbox": [
     123.7545,
@@ -1501,6 +1566,7 @@
    "adcode": "230700",
    "name": "伊春市",
    "province": "黑龙江省",
+   "provinceAdcode": "230000",
    "kind": "city",
    "bbox": [
     127.6329,
@@ -1524,6 +1590,7 @@
    "adcode": "230800",
    "name": "佳木斯市",
    "province": "黑龙江省",
+   "provinceAdcode": "230000",
    "kind": "city",
    "bbox": [
     129.5014,
@@ -1547,6 +1614,7 @@
    "adcode": "230900",
    "name": "七台河市",
    "province": "黑龙江省",
+   "provinceAdcode": "230000",
    "kind": "city",
    "bbox": [
     130.1051,
@@ -1570,6 +1638,7 @@
    "adcode": "231000",
    "name": "牡丹江市",
    "province": "黑龙江省",
+   "provinceAdcode": "230000",
    "kind": "city",
    "bbox": [
     128.2321,
@@ -1593,6 +1662,7 @@
    "adcode": "231100",
    "name": "黑河市",
    "province": "黑龙江省",
+   "provinceAdcode": "230000",
    "kind": "city",
    "bbox": [
     124.7495,
@@ -1616,6 +1686,7 @@
    "adcode": "231200",
    "name": "绥化市",
    "province": "黑龙江省",
+   "provinceAdcode": "230000",
    "kind": "city",
    "bbox": [
     124.8759,
@@ -1639,6 +1710,7 @@
    "adcode": "232700",
    "name": "大兴安岭地区",
    "province": "黑龙江省",
+   "provinceAdcode": "230000",
    "kind": "city",
    "bbox": [
     121.1824,
@@ -1662,6 +1734,7 @@
    "adcode": "310000",
    "name": "上海市",
    "province": "上海市",
+   "provinceAdcode": "310000",
    "kind": "municipality",
    "bbox": [
     120.859465,
@@ -1685,6 +1758,7 @@
    "adcode": "320100",
    "name": "南京市",
    "province": "江苏省",
+   "provinceAdcode": "320000",
    "kind": "city",
    "bbox": [
     118.3644,
@@ -1708,6 +1782,7 @@
    "adcode": "320200",
    "name": "无锡市",
    "province": "江苏省",
+   "provinceAdcode": "320000",
    "kind": "city",
    "bbox": [
     119.52,
@@ -1731,6 +1806,7 @@
    "adcode": "320300",
    "name": "徐州市",
    "province": "江苏省",
+   "provinceAdcode": "320000",
    "kind": "city",
    "bbox": [
     116.3638,
@@ -1754,6 +1830,7 @@
    "adcode": "320400",
    "name": "常州市",
    "province": "江苏省",
+   "provinceAdcode": "320000",
    "kind": "city",
    "bbox": [
     119.1409,
@@ -1777,6 +1854,7 @@
    "adcode": "320500",
    "name": "苏州市",
    "province": "江苏省",
+   "provinceAdcode": "320000",
    "kind": "city",
    "bbox": [
     119.92,
@@ -1800,6 +1878,7 @@
    "adcode": "320600",
    "name": "南通市",
    "province": "江苏省",
+   "provinceAdcode": "320000",
    "kind": "city",
    "bbox": [
     120.2023,
@@ -1823,6 +1902,7 @@
    "adcode": "320700",
    "name": "连云港市",
    "province": "江苏省",
+   "provinceAdcode": "320000",
    "kind": "city",
    "bbox": [
     118.4082,
@@ -1846,6 +1926,7 @@
    "adcode": "320800",
    "name": "淮安市",
    "province": "江苏省",
+   "provinceAdcode": "320000",
    "kind": "city",
    "bbox": [
     118.2029,
@@ -1869,6 +1950,7 @@
    "adcode": "320900",
    "name": "盐城市",
    "province": "江苏省",
+   "provinceAdcode": "320000",
    "kind": "city",
    "bbox": [
     119.4565,
@@ -1892,6 +1974,7 @@
    "adcode": "321000",
    "name": "扬州市",
    "province": "江苏省",
+   "provinceAdcode": "320000",
    "kind": "city",
    "bbox": [
     119.0164,
@@ -1915,6 +1998,7 @@
    "adcode": "321100",
    "name": "镇江市",
    "province": "江苏省",
+   "provinceAdcode": "320000",
    "kind": "city",
    "bbox": [
     118.9695,
@@ -1938,6 +2022,7 @@
    "adcode": "321200",
    "name": "泰州市",
    "province": "江苏省",
+   "provinceAdcode": "320000",
    "kind": "city",
    "bbox": [
     119.6403,
@@ -1961,6 +2046,7 @@
    "adcode": "321300",
    "name": "宿迁市",
    "province": "江苏省",
+   "provinceAdcode": "320000",
    "kind": "city",
    "bbox": [
     117.939,
@@ -1984,6 +2070,7 @@
    "adcode": "330100",
    "name": "杭州市",
    "province": "浙江省",
+   "provinceAdcode": "330000",
    "kind": "city",
    "bbox": [
     118.345,
@@ -2007,6 +2094,7 @@
    "adcode": "330200",
    "name": "宁波市",
    "province": "浙江省",
+   "provinceAdcode": "330000",
    "kind": "city",
    "bbox": [
     120.867,
@@ -2030,6 +2118,7 @@
    "adcode": "330300",
    "name": "温州市",
    "province": "浙江省",
+   "provinceAdcode": "330000",
    "kind": "city",
    "bbox": [
     119.6265,
@@ -2053,6 +2142,7 @@
    "adcode": "330400",
    "name": "嘉兴市",
    "province": "浙江省",
+   "provinceAdcode": "330000",
    "kind": "city",
    "bbox": [
     120.296,
@@ -2076,6 +2166,7 @@
    "adcode": "330500",
    "name": "湖州市",
    "province": "浙江省",
+   "provinceAdcode": "330000",
    "kind": "city",
    "bbox": [
     119.2369,
@@ -2099,6 +2190,7 @@
    "adcode": "330600",
    "name": "绍兴市",
    "province": "浙江省",
+   "provinceAdcode": "330000",
    "kind": "city",
    "bbox": [
     119.8891,
@@ -2122,6 +2214,7 @@
    "adcode": "330700",
    "name": "金华市",
    "province": "浙江省",
+   "provinceAdcode": "330000",
    "kind": "city",
    "bbox": [
     119.2334,
@@ -2145,6 +2238,7 @@
    "adcode": "330800",
    "name": "衢州市",
    "province": "浙江省",
+   "provinceAdcode": "330000",
    "kind": "city",
    "bbox": [
     118.0284,
@@ -2168,6 +2262,7 @@
    "adcode": "330900",
    "name": "舟山市",
    "province": "浙江省",
+   "provinceAdcode": "330000",
    "kind": "city",
    "bbox": [
     121.6177,
@@ -2191,6 +2286,7 @@
    "adcode": "331000",
    "name": "台州市",
    "province": "浙江省",
+   "provinceAdcode": "330000",
    "kind": "city",
    "bbox": [
     120.2909,
@@ -2214,6 +2310,7 @@
    "adcode": "331100",
    "name": "丽水市",
    "province": "浙江省",
+   "provinceAdcode": "330000",
    "kind": "city",
    "bbox": [
     118.7002,
@@ -2237,6 +2334,7 @@
    "adcode": "340100",
    "name": "合肥市",
    "province": "安徽省",
+   "provinceAdcode": "340000",
    "kind": "city",
    "bbox": [
     116.6925,
@@ -2260,6 +2358,7 @@
    "adcode": "340200",
    "name": "芜湖市",
    "province": "安徽省",
+   "provinceAdcode": "340000",
    "kind": "city",
    "bbox": [
     117.4839,
@@ -2283,6 +2382,7 @@
    "adcode": "340300",
    "name": "蚌埠市",
    "province": "安徽省",
+   "provinceAdcode": "340000",
    "kind": "city",
    "bbox": [
     116.7357,
@@ -2306,6 +2406,7 @@
    "adcode": "340400",
    "name": "淮南市",
    "province": "安徽省",
+   "provinceAdcode": "340000",
    "kind": "city",
    "bbox": [
     116.3652,
@@ -2329,6 +2430,7 @@
    "adcode": "340500",
    "name": "马鞍山市",
    "province": "安徽省",
+   "provinceAdcode": "340000",
    "kind": "city",
    "bbox": [
     117.9014,
@@ -2352,6 +2454,7 @@
    "adcode": "340600",
    "name": "淮北市",
    "province": "安徽省",
+   "provinceAdcode": "340000",
    "kind": "city",
    "bbox": [
     116.3937,
@@ -2375,6 +2478,7 @@
    "adcode": "340700",
    "name": "铜陵市",
    "province": "安徽省",
+   "provinceAdcode": "340000",
    "kind": "city",
    "bbox": [
     116.9206,
@@ -2398,6 +2502,7 @@
    "adcode": "340800",
    "name": "安庆市",
    "province": "安徽省",
+   "provinceAdcode": "340000",
    "kind": "city",
    "bbox": [
     115.7625,
@@ -2421,6 +2526,7 @@
    "adcode": "341000",
    "name": "黄山市",
    "province": "安徽省",
+   "provinceAdcode": "340000",
    "kind": "city",
    "bbox": [
     117.2031,
@@ -2444,6 +2550,7 @@
    "adcode": "341100",
    "name": "滁州市",
    "province": "安徽省",
+   "provinceAdcode": "340000",
    "kind": "city",
    "bbox": [
     117.1613,
@@ -2467,6 +2574,7 @@
    "adcode": "341200",
    "name": "阜阳市",
    "province": "安徽省",
+   "provinceAdcode": "340000",
    "kind": "city",
    "bbox": [
     114.8834,
@@ -2490,6 +2598,7 @@
    "adcode": "341300",
    "name": "宿州市",
    "province": "安徽省",
+   "provinceAdcode": "340000",
    "kind": "city",
    "bbox": [
     116.1621,
@@ -2513,6 +2622,7 @@
    "adcode": "341500",
    "name": "六安市",
    "province": "安徽省",
+   "provinceAdcode": "340000",
    "kind": "city",
    "bbox": [
     115.3712,
@@ -2536,6 +2646,7 @@
    "adcode": "341600",
    "name": "亳州市",
    "province": "安徽省",
+   "provinceAdcode": "340000",
    "kind": "city",
    "bbox": [
     115.5462,
@@ -2559,6 +2670,7 @@
    "adcode": "341700",
    "name": "池州市",
    "province": "安徽省",
+   "provinceAdcode": "340000",
    "kind": "city",
    "bbox": [
     116.6519,
@@ -2582,6 +2694,7 @@
    "adcode": "341800",
    "name": "宣城市",
    "province": "安徽省",
+   "provinceAdcode": "340000",
    "kind": "city",
    "bbox": [
     117.9701,
@@ -2605,6 +2718,7 @@
    "adcode": "350100",
    "name": "福州市",
    "province": "福建省",
+   "provinceAdcode": "350000",
    "kind": "city",
    "bbox": [
     118.3821,
@@ -2628,6 +2742,7 @@
    "adcode": "350200",
    "name": "厦门市",
    "province": "福建省",
+   "provinceAdcode": "350000",
    "kind": "city",
    "bbox": [
     117.886,
@@ -2651,6 +2766,7 @@
    "adcode": "350300",
    "name": "莆田市",
    "province": "福建省",
+   "provinceAdcode": "350000",
    "kind": "city",
    "bbox": [
     118.4601,
@@ -2674,6 +2790,7 @@
    "adcode": "350400",
    "name": "三明市",
    "province": "福建省",
+   "provinceAdcode": "350000",
    "kind": "city",
    "bbox": [
     116.3854,
@@ -2697,6 +2814,7 @@
    "adcode": "350500",
    "name": "泉州市",
    "province": "福建省",
+   "provinceAdcode": "350000",
    "kind": "city",
    "bbox": [
     117.5554,
@@ -2720,6 +2838,7 @@
    "adcode": "350600",
    "name": "漳州市",
    "province": "福建省",
+   "provinceAdcode": "350000",
    "kind": "city",
    "bbox": [
     116.8961,
@@ -2743,6 +2862,7 @@
    "adcode": "350700",
    "name": "南平市",
    "province": "福建省",
+   "provinceAdcode": "350000",
    "kind": "city",
    "bbox": [
     117.0034,
@@ -2766,6 +2886,7 @@
    "adcode": "350800",
    "name": "龙岩市",
    "province": "福建省",
+   "provinceAdcode": "350000",
    "kind": "city",
    "bbox": [
     115.8534,
@@ -2789,6 +2910,7 @@
    "adcode": "350900",
    "name": "宁德市",
    "province": "福建省",
+   "provinceAdcode": "350000",
    "kind": "city",
    "bbox": [
     118.5496,
@@ -2812,6 +2934,7 @@
    "adcode": "360100",
    "name": "南昌市",
    "province": "江西省",
+   "provinceAdcode": "360000",
    "kind": "city",
    "bbox": [
     115.4387,
@@ -2835,6 +2958,7 @@
    "adcode": "360200",
    "name": "景德镇市",
    "province": "江西省",
+   "provinceAdcode": "360000",
    "kind": "city",
    "bbox": [
     116.9571,
@@ -2858,6 +2982,7 @@
    "adcode": "360300",
    "name": "萍乡市",
    "province": "江西省",
+   "provinceAdcode": "360000",
    "kind": "city",
    "bbox": [
     113.5788,
@@ -2881,6 +3006,7 @@
    "adcode": "360400",
    "name": "九江市",
    "province": "江西省",
+   "provinceAdcode": "360000",
    "kind": "city",
    "bbox": [
     113.942,
@@ -2904,6 +3030,7 @@
    "adcode": "360500",
    "name": "新余市",
    "province": "江西省",
+   "provinceAdcode": "360000",
    "kind": "city",
    "bbox": [
     114.4856,
@@ -2927,6 +3054,7 @@
    "adcode": "360600",
    "name": "鹰潭市",
    "province": "江西省",
+   "provinceAdcode": "360000",
    "kind": "city",
    "bbox": [
     116.6922,
@@ -2950,6 +3078,7 @@
    "adcode": "360700",
    "name": "赣州市",
    "province": "江西省",
+   "provinceAdcode": "360000",
    "kind": "city",
    "bbox": [
     113.9138,
@@ -2973,6 +3102,7 @@
    "adcode": "360800",
    "name": "吉安市",
    "province": "江西省",
+   "provinceAdcode": "360000",
    "kind": "city",
    "bbox": [
     113.8358,
@@ -2996,6 +3126,7 @@
    "adcode": "360900",
    "name": "宜春市",
    "province": "江西省",
+   "provinceAdcode": "360000",
    "kind": "city",
    "bbox": [
     113.8912,
@@ -3019,6 +3150,7 @@
    "adcode": "361000",
    "name": "抚州市",
    "province": "江西省",
+   "provinceAdcode": "360000",
    "kind": "city",
    "bbox": [
     115.5919,
@@ -3042,6 +3174,7 @@
    "adcode": "361100",
    "name": "上饶市",
    "province": "江西省",
+   "provinceAdcode": "360000",
    "kind": "city",
    "bbox": [
     116.2381,
@@ -3065,6 +3198,7 @@
    "adcode": "370100",
    "name": "济南市",
    "province": "山东省",
+   "provinceAdcode": "370000",
    "kind": "city",
    "bbox": [
     116.2261,
@@ -3088,6 +3222,7 @@
    "adcode": "370200",
    "name": "青岛市",
    "province": "山东省",
+   "provinceAdcode": "370000",
    "kind": "city",
    "bbox": [
     119.5148,
@@ -3111,6 +3246,7 @@
    "adcode": "370300",
    "name": "淄博市",
    "province": "山东省",
+   "provinceAdcode": "370000",
    "kind": "city",
    "bbox": [
     117.5513,
@@ -3134,6 +3270,7 @@
    "adcode": "370400",
    "name": "枣庄市",
    "province": "山东省",
+   "provinceAdcode": "370000",
    "kind": "city",
    "bbox": [
     116.8112,
@@ -3157,6 +3294,7 @@
    "adcode": "370500",
    "name": "东营市",
    "province": "山东省",
+   "provinceAdcode": "370000",
    "kind": "city",
    "bbox": [
     118.1128,
@@ -3180,6 +3318,7 @@
    "adcode": "370600",
    "name": "烟台市",
    "province": "山东省",
+   "provinceAdcode": "370000",
    "kind": "city",
    "bbox": [
     119.5596,
@@ -3203,6 +3342,7 @@
    "adcode": "370700",
    "name": "潍坊市",
    "province": "山东省",
+   "provinceAdcode": "370000",
    "kind": "city",
    "bbox": [
     118.177,
@@ -3226,6 +3366,7 @@
    "adcode": "370800",
    "name": "济宁市",
    "province": "山东省",
+   "provinceAdcode": "370000",
    "kind": "city",
    "bbox": [
     115.8724,
@@ -3249,6 +3390,7 @@
    "adcode": "370900",
    "name": "泰安市",
    "province": "山东省",
+   "provinceAdcode": "370000",
    "kind": "city",
    "bbox": [
     116.0487,
@@ -3272,6 +3414,7 @@
    "adcode": "371000",
    "name": "威海市",
    "province": "山东省",
+   "provinceAdcode": "370000",
    "kind": "city",
    "bbox": [
     121.1776,
@@ -3295,6 +3438,7 @@
    "adcode": "371100",
    "name": "日照市",
    "province": "山东省",
+   "provinceAdcode": "370000",
    "kind": "city",
    "bbox": [
     118.6014,
@@ -3318,6 +3462,7 @@
    "adcode": "371300",
    "name": "临沂市",
    "province": "山东省",
+   "provinceAdcode": "370000",
    "kind": "city",
    "bbox": [
     117.4192,
@@ -3341,6 +3486,7 @@
    "adcode": "371400",
    "name": "德州市",
    "province": "山东省",
+   "provinceAdcode": "370000",
    "kind": "city",
    "bbox": [
     115.762,
@@ -3364,6 +3510,7 @@
    "adcode": "371500",
    "name": "聊城市",
    "province": "山东省",
+   "provinceAdcode": "370000",
    "kind": "city",
    "bbox": [
     115.2728,
@@ -3387,6 +3534,7 @@
    "adcode": "371600",
    "name": "滨州市",
    "province": "山东省",
+   "provinceAdcode": "370000",
    "kind": "city",
    "bbox": [
     117.2734,
@@ -3410,6 +3558,7 @@
    "adcode": "371700",
    "name": "菏泽市",
    "province": "山东省",
+   "provinceAdcode": "370000",
    "kind": "city",
    "bbox": [
     114.8193,
@@ -3433,6 +3582,7 @@
    "adcode": "410100",
    "name": "郑州市",
    "province": "河南省",
+   "provinceAdcode": "410000",
    "kind": "city",
    "bbox": [
     112.7218,
@@ -3456,6 +3606,7 @@
    "adcode": "410200",
    "name": "开封市",
    "province": "河南省",
+   "provinceAdcode": "410000",
    "kind": "city",
    "bbox": [
     113.8782,
@@ -3479,6 +3630,7 @@
    "adcode": "410300",
    "name": "洛阳市",
    "province": "河南省",
+   "provinceAdcode": "410000",
    "kind": "city",
    "bbox": [
     111.1384,
@@ -3502,6 +3654,7 @@
    "adcode": "410400",
    "name": "平顶山市",
    "province": "河南省",
+   "provinceAdcode": "410000",
    "kind": "city",
    "bbox": [
     112.248,
@@ -3525,6 +3678,7 @@
    "adcode": "410500",
    "name": "安阳市",
    "province": "河南省",
+   "provinceAdcode": "410000",
    "kind": "city",
    "bbox": [
     113.6369,
@@ -3548,6 +3702,7 @@
    "adcode": "410600",
    "name": "鹤壁市",
    "province": "河南省",
+   "provinceAdcode": "410000",
    "kind": "city",
    "bbox": [
     113.996,
@@ -3571,6 +3726,7 @@
    "adcode": "410700",
    "name": "新乡市",
    "province": "河南省",
+   "provinceAdcode": "410000",
    "kind": "city",
    "bbox": [
     113.3832,
@@ -3594,6 +3750,7 @@
    "adcode": "410800",
    "name": "焦作市",
    "province": "河南省",
+   "provinceAdcode": "410000",
    "kind": "city",
    "bbox": [
     112.5692,
@@ -3617,6 +3774,7 @@
    "adcode": "410900",
    "name": "濮阳市",
    "province": "河南省",
+   "provinceAdcode": "410000",
    "kind": "city",
    "bbox": [
     114.8744,
@@ -3640,6 +3798,7 @@
    "adcode": "411000",
    "name": "许昌市",
    "province": "河南省",
+   "provinceAdcode": "410000",
    "kind": "city",
    "bbox": [
     113.067,
@@ -3663,6 +3822,7 @@
    "adcode": "411100",
    "name": "漯河市",
    "province": "河南省",
+   "provinceAdcode": "410000",
    "kind": "city",
    "bbox": [
     113.4665,
@@ -3686,6 +3846,7 @@
    "adcode": "411200",
    "name": "三门峡市",
    "province": "河南省",
+   "provinceAdcode": "410000",
    "kind": "city",
    "bbox": [
     110.3605,
@@ -3709,6 +3870,7 @@
    "adcode": "411300",
    "name": "南阳市",
    "province": "河南省",
+   "provinceAdcode": "410000",
    "kind": "city",
    "bbox": [
     110.9829,
@@ -3732,6 +3894,7 @@
    "adcode": "411400",
    "name": "商丘市",
    "province": "河南省",
+   "provinceAdcode": "410000",
    "kind": "city",
    "bbox": [
     114.8284,
@@ -3755,6 +3918,7 @@
    "adcode": "411500",
    "name": "信阳市",
    "province": "河南省",
+   "provinceAdcode": "410000",
    "kind": "city",
    "bbox": [
     113.7106,
@@ -3778,6 +3942,7 @@
    "adcode": "411600",
    "name": "周口市",
    "province": "河南省",
+   "provinceAdcode": "410000",
    "kind": "city",
    "bbox": [
     114.0915,
@@ -3801,6 +3966,7 @@
    "adcode": "411700",
    "name": "驻马店市",
    "province": "河南省",
+   "provinceAdcode": "410000",
    "kind": "city",
    "bbox": [
     113.0978,
@@ -3824,6 +3990,7 @@
    "adcode": "419001",
    "name": "济源市",
    "province": "河南省",
+   "provinceAdcode": "410000",
    "kind": "city",
    "bbox": [
     112.0351,
@@ -3847,6 +4014,7 @@
    "adcode": "420100",
    "name": "武汉市",
    "province": "湖北省",
+   "provinceAdcode": "420000",
    "kind": "city",
    "bbox": [
     113.7023,
@@ -3870,6 +4038,7 @@
    "adcode": "420200",
    "name": "黄石市",
    "province": "湖北省",
+   "provinceAdcode": "420000",
    "kind": "city",
    "bbox": [
     114.5323,
@@ -3893,6 +4062,7 @@
    "adcode": "420300",
    "name": "十堰市",
    "province": "湖北省",
+   "provinceAdcode": "420000",
    "kind": "city",
    "bbox": [
     109.4389,
@@ -3916,6 +4086,7 @@
    "adcode": "420500",
    "name": "宜昌市",
    "province": "湖北省",
+   "provinceAdcode": "420000",
    "kind": "city",
    "bbox": [
     110.2557,
@@ -3939,6 +4110,7 @@
    "adcode": "420600",
    "name": "襄阳市",
    "province": "湖北省",
+   "provinceAdcode": "420000",
    "kind": "city",
    "bbox": [
     110.7654,
@@ -3962,6 +4134,7 @@
    "adcode": "420700",
    "name": "鄂州市",
    "province": "湖北省",
+   "provinceAdcode": "420000",
    "kind": "city",
    "bbox": [
     114.5055,
@@ -3985,6 +4158,7 @@
    "adcode": "420800",
    "name": "荆门市",
    "province": "湖北省",
+   "provinceAdcode": "420000",
    "kind": "city",
    "bbox": [
     111.8615,
@@ -4008,6 +4182,7 @@
    "adcode": "420900",
    "name": "孝感市",
    "province": "湖北省",
+   "provinceAdcode": "420000",
    "kind": "city",
    "bbox": [
     113.3167,
@@ -4031,6 +4206,7 @@
    "adcode": "421000",
    "name": "荆州市",
    "province": "湖北省",
+   "provinceAdcode": "420000",
    "kind": "city",
    "bbox": [
     111.2438,
@@ -4054,6 +4230,7 @@
    "adcode": "421100",
    "name": "黄冈市",
    "province": "湖北省",
+   "provinceAdcode": "420000",
    "kind": "city",
    "bbox": [
     114.4022,
@@ -4077,6 +4254,7 @@
    "adcode": "421200",
    "name": "咸宁市",
    "province": "湖北省",
+   "provinceAdcode": "420000",
    "kind": "city",
    "bbox": [
     113.5384,
@@ -4100,6 +4278,7 @@
    "adcode": "421300",
    "name": "随州市",
    "province": "湖北省",
+   "provinceAdcode": "420000",
    "kind": "city",
    "bbox": [
     112.7294,
@@ -4123,6 +4302,7 @@
    "adcode": "422800",
    "name": "恩施土家族苗族自治州",
    "province": "湖北省",
+   "provinceAdcode": "420000",
    "kind": "city",
    "bbox": [
     108.367,
@@ -4146,6 +4326,7 @@
    "adcode": "429004",
    "name": "仙桃市",
    "province": "湖北省",
+   "provinceAdcode": "420000",
    "kind": "city",
    "bbox": [
     112.9434,
@@ -4169,6 +4350,7 @@
    "adcode": "429005",
    "name": "潜江市",
    "province": "湖北省",
+   "provinceAdcode": "420000",
    "kind": "city",
    "bbox": [
     112.5023,
@@ -4192,6 +4374,7 @@
    "adcode": "429006",
    "name": "天门市",
    "province": "湖北省",
+   "provinceAdcode": "420000",
    "kind": "city",
    "bbox": [
     112.5931,
@@ -4215,6 +4398,7 @@
    "adcode": "429021",
    "name": "神农架林区",
    "province": "湖北省",
+   "provinceAdcode": "420000",
    "kind": "city",
    "bbox": [
     109.9406,
@@ -4238,6 +4422,7 @@
    "adcode": "430100",
    "name": "长沙市",
    "province": "湖南省",
+   "provinceAdcode": "430000",
    "kind": "city",
    "bbox": [
     111.8964,
@@ -4261,6 +4446,7 @@
    "adcode": "430200",
    "name": "株洲市",
    "province": "湖南省",
+   "provinceAdcode": "430000",
    "kind": "city",
    "bbox": [
     112.9694,
@@ -4284,6 +4470,7 @@
    "adcode": "430300",
    "name": "湘潭市",
    "province": "湖南省",
+   "provinceAdcode": "430000",
    "kind": "city",
    "bbox": [
     111.9997,
@@ -4307,6 +4494,7 @@
    "adcode": "430400",
    "name": "衡阳市",
    "province": "湖南省",
+   "provinceAdcode": "430000",
    "kind": "city",
    "bbox": [
     111.5436,
@@ -4330,6 +4518,7 @@
    "adcode": "430500",
    "name": "邵阳市",
    "province": "湖南省",
+   "provinceAdcode": "430000",
    "kind": "city",
    "bbox": [
     109.8268,
@@ -4353,6 +4542,7 @@
    "adcode": "430600",
    "name": "岳阳市",
    "province": "湖南省",
+   "provinceAdcode": "430000",
    "kind": "city",
    "bbox": [
     112.3157,
@@ -4376,6 +4566,7 @@
    "adcode": "430700",
    "name": "常德市",
    "province": "湖南省",
+   "provinceAdcode": "430000",
    "kind": "city",
    "bbox": [
     110.4916,
@@ -4399,6 +4590,7 @@
    "adcode": "430800",
    "name": "张家界市",
    "province": "湖南省",
+   "provinceAdcode": "430000",
    "kind": "city",
    "bbox": [
     109.7012,
@@ -4422,6 +4614,7 @@
    "adcode": "430900",
    "name": "益阳市",
    "province": "湖南省",
+   "provinceAdcode": "430000",
    "kind": "city",
    "bbox": [
     110.7211,
@@ -4445,6 +4638,7 @@
    "adcode": "431000",
    "name": "郴州市",
    "province": "湖南省",
+   "provinceAdcode": "430000",
    "kind": "city",
    "bbox": [
     112.2303,
@@ -4468,6 +4662,7 @@
    "adcode": "431100",
    "name": "永州市",
    "province": "湖南省",
+   "provinceAdcode": "430000",
    "kind": "city",
    "bbox": [
     110.9519,
@@ -4491,6 +4686,7 @@
    "adcode": "431200",
    "name": "怀化市",
    "province": "湖南省",
+   "provinceAdcode": "430000",
    "kind": "city",
    "bbox": [
     108.7922,
@@ -4514,6 +4710,7 @@
    "adcode": "431300",
    "name": "娄底市",
    "province": "湖南省",
+   "provinceAdcode": "430000",
    "kind": "city",
    "bbox": [
     110.7678,
@@ -4537,6 +4734,7 @@
    "adcode": "433100",
    "name": "湘西土家族苗族自治州",
    "province": "湖南省",
+   "provinceAdcode": "430000",
    "kind": "city",
    "bbox": [
     109.1814,
@@ -4560,6 +4758,7 @@
    "adcode": "440100",
    "name": "广州市",
    "province": "广东省",
+   "provinceAdcode": "440000",
    "kind": "city",
    "bbox": [
     112.9602,
@@ -4583,6 +4782,7 @@
    "adcode": "440200",
    "name": "韶关市",
    "province": "广东省",
+   "provinceAdcode": "440000",
    "kind": "city",
    "bbox": [
     112.8518,
@@ -4606,6 +4806,7 @@
    "adcode": "440300",
    "name": "深圳市",
    "province": "广东省",
+   "provinceAdcode": "440000",
    "kind": "city",
    "bbox": [
     113.7514,
@@ -4629,6 +4830,7 @@
    "adcode": "440400",
    "name": "珠海市",
    "province": "广东省",
+   "provinceAdcode": "440000",
    "kind": "city",
    "bbox": [
     113.0872,
@@ -4652,6 +4854,7 @@
    "adcode": "440500",
    "name": "汕头市",
    "province": "广东省",
+   "provinceAdcode": "440000",
    "kind": "city",
    "bbox": [
     116.2445,
@@ -4675,6 +4878,7 @@
    "adcode": "440600",
    "name": "佛山市",
    "province": "广东省",
+   "provinceAdcode": "440000",
    "kind": "city",
    "bbox": [
     112.3925,
@@ -4698,6 +4902,7 @@
    "adcode": "440700",
    "name": "江门市",
    "province": "广东省",
+   "provinceAdcode": "440000",
    "kind": "city",
    "bbox": [
     112.0043,
@@ -4721,6 +4926,7 @@
    "adcode": "440800",
    "name": "湛江市",
    "province": "广东省",
+   "provinceAdcode": "440000",
    "kind": "city",
    "bbox": [
     109.6549,
@@ -4744,6 +4950,7 @@
    "adcode": "440900",
    "name": "茂名市",
    "province": "广东省",
+   "provinceAdcode": "440000",
    "kind": "city",
    "bbox": [
     110.3261,
@@ -4767,6 +4974,7 @@
    "adcode": "441200",
    "name": "肇庆市",
    "province": "广东省",
+   "provinceAdcode": "440000",
    "kind": "city",
    "bbox": [
     111.362,
@@ -4790,6 +4998,7 @@
    "adcode": "441300",
    "name": "惠州市",
    "province": "广东省",
+   "provinceAdcode": "440000",
    "kind": "city",
    "bbox": [
     113.8167,
@@ -4813,6 +5022,7 @@
    "adcode": "441400",
    "name": "梅州市",
    "province": "广东省",
+   "provinceAdcode": "440000",
    "kind": "city",
    "bbox": [
     115.3172,
@@ -4836,6 +5046,7 @@
    "adcode": "441500",
    "name": "汕尾市",
    "province": "广东省",
+   "provinceAdcode": "440000",
    "kind": "city",
    "bbox": [
     114.9178,
@@ -4859,6 +5070,7 @@
    "adcode": "441600",
    "name": "河源市",
    "province": "广东省",
+   "provinceAdcode": "440000",
    "kind": "city",
    "bbox": [
     114.242,
@@ -4882,6 +5094,7 @@
    "adcode": "441700",
    "name": "阳江市",
    "province": "广东省",
+   "provinceAdcode": "440000",
    "kind": "city",
    "bbox": [
     111.2833,
@@ -4905,6 +5118,7 @@
    "adcode": "441800",
    "name": "清远市",
    "province": "广东省",
+   "provinceAdcode": "440000",
    "kind": "city",
    "bbox": [
     111.9275,
@@ -4928,6 +5142,7 @@
    "adcode": "441900",
    "name": "东莞市",
    "province": "广东省",
+   "provinceAdcode": "440000",
    "kind": "city",
    "bbox": [
     113.5229,
@@ -4951,6 +5166,7 @@
    "adcode": "442000",
    "name": "中山市",
    "province": "广东省",
+   "provinceAdcode": "440000",
    "kind": "city",
    "bbox": [
     113.157,
@@ -4974,6 +5190,7 @@
    "adcode": "445100",
    "name": "潮州市",
    "province": "广东省",
+   "provinceAdcode": "440000",
    "kind": "city",
    "bbox": [
     116.3685,
@@ -4997,6 +5214,7 @@
    "adcode": "445200",
    "name": "揭阳市",
    "province": "广东省",
+   "provinceAdcode": "440000",
    "kind": "city",
    "bbox": [
     115.6065,
@@ -5020,6 +5238,7 @@
    "adcode": "445300",
    "name": "云浮市",
    "province": "广东省",
+   "provinceAdcode": "440000",
    "kind": "city",
    "bbox": [
     111.0605,
@@ -5043,6 +5262,7 @@
    "adcode": "450100",
    "name": "南宁市",
    "province": "广西壮族自治区",
+   "provinceAdcode": "450000",
    "kind": "city",
    "bbox": [
     107.3303,
@@ -5066,6 +5286,7 @@
    "adcode": "450200",
    "name": "柳州市",
    "province": "广西壮族自治区",
+   "provinceAdcode": "450000",
    "kind": "city",
    "bbox": [
     108.5877,
@@ -5089,6 +5310,7 @@
    "adcode": "450300",
    "name": "桂林市",
    "province": "广西壮族自治区",
+   "provinceAdcode": "450000",
    "kind": "city",
    "bbox": [
     109.6191,
@@ -5112,6 +5334,7 @@
    "adcode": "450400",
    "name": "梧州市",
    "province": "广西壮族自治区",
+   "provinceAdcode": "450000",
    "kind": "city",
    "bbox": [
     110.3169,
@@ -5135,6 +5358,7 @@
    "adcode": "450500",
    "name": "北海市",
    "province": "广西壮族自治区",
+   "provinceAdcode": "450000",
    "kind": "city",
    "bbox": [
     108.8503,
@@ -5158,6 +5382,7 @@
    "adcode": "450600",
    "name": "防城港市",
    "province": "广西壮族自治区",
+   "provinceAdcode": "450000",
    "kind": "city",
    "bbox": [
     107.4815,
@@ -5181,6 +5406,7 @@
    "adcode": "450700",
    "name": "钦州市",
    "province": "广西壮族自治区",
+   "provinceAdcode": "450000",
    "kind": "city",
    "bbox": [
     108.185,
@@ -5204,6 +5430,7 @@
    "adcode": "450800",
    "name": "贵港市",
    "province": "广西壮族自治区",
+   "provinceAdcode": "450000",
    "kind": "city",
    "bbox": [
     109.207,
@@ -5227,6 +5454,7 @@
    "adcode": "450900",
    "name": "玉林市",
    "province": "广西壮族自治区",
+   "provinceAdcode": "450000",
    "kind": "city",
    "bbox": [
     109.55,
@@ -5250,6 +5478,7 @@
    "adcode": "451000",
    "name": "百色市",
    "province": "广西壮族自治区",
+   "provinceAdcode": "450000",
    "kind": "city",
    "bbox": [
     104.4509,
@@ -5273,6 +5502,7 @@
    "adcode": "451100",
    "name": "贺州市",
    "province": "广西壮族自治区",
+   "provinceAdcode": "450000",
    "kind": "city",
    "bbox": [
     110.5675,
@@ -5296,6 +5526,7 @@
    "adcode": "451200",
    "name": "河池市",
    "province": "广西壮族自治区",
+   "provinceAdcode": "450000",
    "kind": "city",
    "bbox": [
     106.5712,
@@ -5319,6 +5550,7 @@
    "adcode": "451300",
    "name": "来宾市",
    "province": "广西壮族自治区",
+   "provinceAdcode": "450000",
    "kind": "city",
    "bbox": [
     108.416,
@@ -5342,6 +5574,7 @@
    "adcode": "451400",
    "name": "崇左市",
    "province": "广西壮族自治区",
+   "provinceAdcode": "450000",
    "kind": "city",
    "bbox": [
     106.562,
@@ -5365,6 +5598,7 @@
    "adcode": "460100",
    "name": "海口市",
    "province": "海南省",
+   "provinceAdcode": "460000",
    "kind": "city",
    "bbox": [
     110.1065,
@@ -5388,6 +5622,7 @@
    "adcode": "460200",
    "name": "三亚市",
    "province": "海南省",
+   "provinceAdcode": "460000",
    "kind": "city",
    "bbox": [
     108.9324,
@@ -5411,6 +5646,7 @@
    "adcode": "460300",
    "name": "三沙市",
    "province": "海南省",
+   "provinceAdcode": "460000",
    "kind": "city",
    "bbox": [
     109.464,
@@ -5434,6 +5670,7 @@
    "adcode": "460400",
    "name": "儋州市",
    "province": "海南省",
+   "provinceAdcode": "460000",
    "kind": "city",
    "bbox": [
     108.9287,
@@ -5457,6 +5694,7 @@
    "adcode": "469001",
    "name": "五指山市",
    "province": "海南省",
+   "provinceAdcode": "460000",
    "kind": "city",
    "bbox": [
     109.3264,
@@ -5480,6 +5718,7 @@
    "adcode": "469002",
    "name": "琼海市",
    "province": "海南省",
+   "provinceAdcode": "460000",
    "kind": "city",
    "bbox": [
     110.1152,
@@ -5503,6 +5742,7 @@
    "adcode": "469005",
    "name": "文昌市",
    "province": "海南省",
+   "provinceAdcode": "460000",
    "kind": "city",
    "bbox": [
     110.4699,
@@ -5526,6 +5766,7 @@
    "adcode": "469006",
    "name": "万宁市",
    "province": "海南省",
+   "provinceAdcode": "460000",
    "kind": "city",
    "bbox": [
     110.015,
@@ -5549,6 +5790,7 @@
    "adcode": "469007",
    "name": "东方市",
    "province": "海南省",
+   "provinceAdcode": "460000",
    "kind": "city",
    "bbox": [
     108.5911,
@@ -5572,6 +5814,7 @@
    "adcode": "469021",
    "name": "定安县",
    "province": "海南省",
+   "provinceAdcode": "460000",
    "kind": "city",
    "bbox": [
     110.1313,
@@ -5595,6 +5838,7 @@
    "adcode": "469022",
    "name": "屯昌县",
    "province": "海南省",
+   "provinceAdcode": "460000",
    "kind": "city",
    "bbox": [
     109.8227,
@@ -5618,6 +5862,7 @@
    "adcode": "469023",
    "name": "澄迈县",
    "province": "海南省",
+   "provinceAdcode": "460000",
    "kind": "city",
    "bbox": [
     109.7282,
@@ -5641,6 +5886,7 @@
    "adcode": "469024",
    "name": "临高县",
    "province": "海南省",
+   "provinceAdcode": "460000",
    "kind": "city",
    "bbox": [
     109.4987,
@@ -5664,6 +5910,7 @@
    "adcode": "469025",
    "name": "白沙黎族自治县",
    "province": "海南省",
+   "provinceAdcode": "460000",
    "kind": "city",
    "bbox": [
     109.0437,
@@ -5687,6 +5934,7 @@
    "adcode": "469026",
    "name": "昌江黎族自治县",
    "province": "海南省",
+   "provinceAdcode": "460000",
    "kind": "city",
    "bbox": [
     108.6448,
@@ -5710,6 +5958,7 @@
    "adcode": "469027",
    "name": "乐东黎族自治县",
    "province": "海南省",
+   "provinceAdcode": "460000",
    "kind": "city",
    "bbox": [
     108.6411,
@@ -5733,6 +5982,7 @@
    "adcode": "469028",
    "name": "陵水黎族自治县",
    "province": "海南省",
+   "provinceAdcode": "460000",
    "kind": "city",
    "bbox": [
     109.7562,
@@ -5756,6 +6006,7 @@
    "adcode": "469029",
    "name": "保亭黎族苗族自治县",
    "province": "海南省",
+   "provinceAdcode": "460000",
    "kind": "city",
    "bbox": [
     109.4051,
@@ -5779,6 +6030,7 @@
    "adcode": "469030",
    "name": "琼中黎族苗族自治县",
    "province": "海南省",
+   "provinceAdcode": "460000",
    "kind": "city",
    "bbox": [
     109.524,
@@ -5802,6 +6054,7 @@
    "adcode": "500000",
    "name": "重庆市",
    "province": "重庆市",
+   "provinceAdcode": "500000",
    "kind": "municipality",
    "bbox": [
     105.296526,
@@ -5825,6 +6078,7 @@
    "adcode": "510100",
    "name": "成都市",
    "province": "四川省",
+   "provinceAdcode": "510000",
    "kind": "city",
    "bbox": [
     102.9929,
@@ -5848,6 +6102,7 @@
    "adcode": "510300",
    "name": "自贡市",
    "province": "四川省",
+   "provinceAdcode": "510000",
    "kind": "city",
    "bbox": [
     104.0527,
@@ -5871,6 +6126,7 @@
    "adcode": "510400",
    "name": "攀枝花市",
    "province": "四川省",
+   "provinceAdcode": "510000",
    "kind": "city",
    "bbox": [
     101.1374,
@@ -5894,6 +6150,7 @@
    "adcode": "510500",
    "name": "泸州市",
    "province": "四川省",
+   "provinceAdcode": "510000",
    "kind": "city",
    "bbox": [
     105.1451,
@@ -5917,6 +6174,7 @@
    "adcode": "510600",
    "name": "德阳市",
    "province": "四川省",
+   "provinceAdcode": "510000",
    "kind": "city",
    "bbox": [
     103.7958,
@@ -5940,6 +6198,7 @@
    "adcode": "510700",
    "name": "绵阳市",
    "province": "四川省",
+   "provinceAdcode": "510000",
    "kind": "city",
    "bbox": [
     103.7549,
@@ -5963,6 +6222,7 @@
    "adcode": "510800",
    "name": "广元市",
    "province": "四川省",
+   "provinceAdcode": "510000",
    "kind": "city",
    "bbox": [
     104.6177,
@@ -5986,6 +6246,7 @@
    "adcode": "510900",
    "name": "遂宁市",
    "province": "四川省",
+   "provinceAdcode": "510000",
    "kind": "city",
    "bbox": [
     105.06,
@@ -6009,6 +6270,7 @@
    "adcode": "511000",
    "name": "内江市",
    "province": "四川省",
+   "provinceAdcode": "510000",
    "kind": "city",
    "bbox": [
     104.2696,
@@ -6032,6 +6294,7 @@
    "adcode": "511100",
    "name": "乐山市",
    "province": "四川省",
+   "provinceAdcode": "510000",
    "kind": "city",
    "bbox": [
     102.909,
@@ -6055,6 +6318,7 @@
    "adcode": "511300",
    "name": "南充市",
    "province": "四川省",
+   "provinceAdcode": "510000",
    "kind": "city",
    "bbox": [
     105.442,
@@ -6078,6 +6342,7 @@
    "adcode": "511400",
    "name": "眉山市",
    "province": "四川省",
+   "provinceAdcode": "510000",
    "kind": "city",
    "bbox": [
     102.8231,
@@ -6101,6 +6366,7 @@
    "adcode": "511500",
    "name": "宜宾市",
    "province": "四川省",
+   "provinceAdcode": "510000",
    "kind": "city",
    "bbox": [
     103.6139,
@@ -6124,6 +6390,7 @@
    "adcode": "511600",
    "name": "广安市",
    "province": "四川省",
+   "provinceAdcode": "510000",
    "kind": "city",
    "bbox": [
     105.9483,
@@ -6147,6 +6414,7 @@
    "adcode": "511700",
    "name": "达州市",
    "province": "四川省",
+   "provinceAdcode": "510000",
    "kind": "city",
    "bbox": [
     106.6664,
@@ -6170,6 +6438,7 @@
    "adcode": "511800",
    "name": "雅安市",
    "province": "四川省",
+   "provinceAdcode": "510000",
    "kind": "city",
    "bbox": [
     101.936,
@@ -6193,6 +6462,7 @@
    "adcode": "511900",
    "name": "巴中市",
    "province": "四川省",
+   "provinceAdcode": "510000",
    "kind": "city",
    "bbox": [
     106.3664,
@@ -6216,6 +6486,7 @@
    "adcode": "512000",
    "name": "资阳市",
    "province": "四川省",
+   "provinceAdcode": "510000",
    "kind": "city",
    "bbox": [
     104.4371,
@@ -6239,6 +6510,7 @@
    "adcode": "513200",
    "name": "阿坝藏族羌族自治州",
    "province": "四川省",
+   "provinceAdcode": "510000",
    "kind": "city",
    "bbox": [
     100.5272,
@@ -6262,6 +6534,7 @@
    "adcode": "513300",
    "name": "甘孜藏族自治州",
    "province": "四川省",
+   "provinceAdcode": "510000",
    "kind": "city",
    "bbox": [
     97.3501,
@@ -6285,6 +6558,7 @@
    "adcode": "513400",
    "name": "凉山彝族自治州",
    "province": "四川省",
+   "provinceAdcode": "510000",
    "kind": "city",
    "bbox": [
     100.0615,
@@ -6308,6 +6582,7 @@
    "adcode": "520100",
    "name": "贵阳市",
    "province": "贵州省",
+   "provinceAdcode": "520000",
    "kind": "city",
    "bbox": [
     106.1251,
@@ -6331,6 +6606,7 @@
    "adcode": "520200",
    "name": "六盘水市",
    "province": "贵州省",
+   "provinceAdcode": "520000",
    "kind": "city",
    "bbox": [
     104.3085,
@@ -6354,6 +6630,7 @@
    "adcode": "520300",
    "name": "遵义市",
    "province": "贵州省",
+   "provinceAdcode": "520000",
    "kind": "city",
    "bbox": [
     105.6093,
@@ -6377,6 +6654,7 @@
    "adcode": "520400",
    "name": "安顺市",
    "province": "贵州省",
+   "provinceAdcode": "520000",
    "kind": "city",
    "bbox": [
     105.2486,
@@ -6400,6 +6678,7 @@
    "adcode": "520500",
    "name": "毕节市",
    "province": "贵州省",
+   "provinceAdcode": "520000",
    "kind": "city",
    "bbox": [
     103.6014,
@@ -6423,6 +6702,7 @@
    "adcode": "520600",
    "name": "铜仁市",
    "province": "贵州省",
+   "provinceAdcode": "520000",
    "kind": "city",
    "bbox": [
     107.7552,
@@ -6446,6 +6726,7 @@
    "adcode": "522300",
    "name": "黔西南布依族苗族自治州",
    "province": "贵州省",
+   "provinceAdcode": "520000",
    "kind": "city",
    "bbox": [
     104.5287,
@@ -6469,6 +6750,7 @@
    "adcode": "522600",
    "name": "黔东南苗族侗族自治州",
    "province": "贵州省",
+   "provinceAdcode": "520000",
    "kind": "city",
    "bbox": [
     107.3019,
@@ -6492,6 +6774,7 @@
    "adcode": "522700",
    "name": "黔南布依族苗族自治州",
    "province": "贵州省",
+   "provinceAdcode": "520000",
    "kind": "city",
    "bbox": [
     106.2119,
@@ -6515,6 +6798,7 @@
    "adcode": "530100",
    "name": "昆明市",
    "province": "云南省",
+   "provinceAdcode": "530000",
    "kind": "city",
    "bbox": [
     102.1711,
@@ -6538,6 +6822,7 @@
    "adcode": "530300",
    "name": "曲靖市",
    "province": "云南省",
+   "provinceAdcode": "530000",
    "kind": "city",
    "bbox": [
     103.0596,
@@ -6561,6 +6846,7 @@
    "adcode": "530400",
    "name": "玉溪市",
    "province": "云南省",
+   "provinceAdcode": "530000",
    "kind": "city",
    "bbox": [
     101.2771,
@@ -6584,6 +6870,7 @@
    "adcode": "530500",
    "name": "保山市",
    "province": "云南省",
+   "provinceAdcode": "530000",
    "kind": "city",
    "bbox": [
     98.0894,
@@ -6607,6 +6894,7 @@
    "adcode": "530600",
    "name": "昭通市",
    "province": "云南省",
+   "provinceAdcode": "530000",
    "kind": "city",
    "bbox": [
     102.8726,
@@ -6630,6 +6918,7 @@
    "adcode": "530700",
    "name": "丽江市",
    "province": "云南省",
+   "provinceAdcode": "530000",
    "kind": "city",
    "bbox": [
     99.3834,
@@ -6653,6 +6942,7 @@
    "adcode": "530800",
    "name": "普洱市",
    "province": "云南省",
+   "provinceAdcode": "530000",
    "kind": "city",
    "bbox": [
     99.1584,
@@ -6676,6 +6966,7 @@
    "adcode": "530900",
    "name": "临沧市",
    "province": "云南省",
+   "provinceAdcode": "530000",
    "kind": "city",
    "bbox": [
     98.6688,
@@ -6699,6 +6990,7 @@
    "adcode": "532300",
    "name": "楚雄彝族自治州",
    "province": "云南省",
+   "provinceAdcode": "530000",
    "kind": "city",
    "bbox": [
     100.7206,
@@ -6722,6 +7014,7 @@
    "adcode": "532500",
    "name": "红河哈尼族彝族自治州",
    "province": "云南省",
+   "provinceAdcode": "530000",
    "kind": "city",
    "bbox": [
     101.8003,
@@ -6745,6 +7038,7 @@
    "adcode": "532600",
    "name": "文山壮族苗族自治州",
    "province": "云南省",
+   "provinceAdcode": "530000",
    "kind": "city",
    "bbox": [
     103.5749,
@@ -6768,6 +7062,7 @@
    "adcode": "532800",
    "name": "西双版纳傣族自治州",
    "province": "云南省",
+   "provinceAdcode": "530000",
    "kind": "city",
    "bbox": [
     99.9442,
@@ -6791,6 +7086,7 @@
    "adcode": "532900",
    "name": "大理白族自治州",
    "province": "云南省",
+   "provinceAdcode": "530000",
    "kind": "city",
    "bbox": [
     98.8647,
@@ -6814,6 +7110,7 @@
    "adcode": "533100",
    "name": "德宏傣族景颇族自治州",
    "province": "云南省",
+   "provinceAdcode": "530000",
    "kind": "city",
    "bbox": [
     97.5287,
@@ -6837,6 +7134,7 @@
    "adcode": "533300",
    "name": "怒江傈僳族自治州",
    "province": "云南省",
+   "provinceAdcode": "530000",
    "kind": "city",
    "bbox": [
     98.1324,
@@ -6860,6 +7158,7 @@
    "adcode": "533400",
    "name": "迪庆藏族自治州",
    "province": "云南省",
+   "provinceAdcode": "530000",
    "kind": "city",
    "bbox": [
     98.5942,
@@ -6883,6 +7182,7 @@
    "adcode": "540100",
    "name": "拉萨市",
    "province": "西藏自治区",
+   "provinceAdcode": "540000",
    "kind": "city",
    "bbox": [
     89.7547,
@@ -6906,6 +7206,7 @@
    "adcode": "540200",
    "name": "日喀则市",
    "province": "西藏自治区",
+   "provinceAdcode": "540000",
    "kind": "city",
    "bbox": [
     82.1435,
@@ -6929,6 +7230,7 @@
    "adcode": "540300",
    "name": "昌都市",
    "province": "西藏自治区",
+   "provinceAdcode": "540000",
    "kind": "city",
    "bbox": [
     93.5987,
@@ -6952,6 +7254,7 @@
    "adcode": "540400",
    "name": "林芝市",
    "province": "西藏自治区",
+   "provinceAdcode": "540000",
    "kind": "city",
    "bbox": [
     92.1669,
@@ -6975,6 +7278,7 @@
    "adcode": "540500",
    "name": "山南市",
    "province": "西藏自治区",
+   "provinceAdcode": "540000",
    "kind": "city",
    "bbox": [
     90.0637,
@@ -6998,6 +7302,7 @@
    "adcode": "540600",
    "name": "那曲市",
    "province": "西藏自治区",
+   "provinceAdcode": "540000",
    "kind": "city",
    "bbox": [
     85.0561,
@@ -7021,6 +7326,7 @@
    "adcode": "542500",
    "name": "阿里地区",
    "province": "西藏自治区",
+   "provinceAdcode": "540000",
    "kind": "city",
    "bbox": [
     78.3955,
@@ -7044,6 +7350,7 @@
    "adcode": "610100",
    "name": "西安市",
    "province": "陕西省",
+   "provinceAdcode": "610000",
    "kind": "city",
    "bbox": [
     107.6658,
@@ -7067,6 +7374,7 @@
    "adcode": "610200",
    "name": "铜川市",
    "province": "陕西省",
+   "provinceAdcode": "610000",
    "kind": "city",
    "bbox": [
     108.5835,
@@ -7090,6 +7398,7 @@
    "adcode": "610300",
    "name": "宝鸡市",
    "province": "陕西省",
+   "provinceAdcode": "610000",
    "kind": "city",
    "bbox": [
     106.314,
@@ -7113,6 +7422,7 @@
    "adcode": "610400",
    "name": "咸阳市",
    "province": "陕西省",
+   "provinceAdcode": "610000",
    "kind": "city",
    "bbox": [
     107.6519,
@@ -7136,6 +7446,7 @@
    "adcode": "610500",
    "name": "渭南市",
    "province": "陕西省",
+   "provinceAdcode": "610000",
    "kind": "city",
    "bbox": [
     108.9673,
@@ -7159,6 +7470,7 @@
    "adcode": "610600",
    "name": "延安市",
    "province": "陕西省",
+   "provinceAdcode": "610000",
    "kind": "city",
    "bbox": [
     107.66,
@@ -7182,6 +7494,7 @@
    "adcode": "610700",
    "name": "汉中市",
    "province": "陕西省",
+   "provinceAdcode": "610000",
    "kind": "city",
    "bbox": [
     105.4935,
@@ -7205,6 +7518,7 @@
    "adcode": "610800",
    "name": "榆林市",
    "province": "陕西省",
+   "provinceAdcode": "610000",
    "kind": "city",
    "bbox": [
     107.2579,
@@ -7228,6 +7542,7 @@
    "adcode": "610900",
    "name": "安康市",
    "province": "陕西省",
+   "provinceAdcode": "610000",
    "kind": "city",
    "bbox": [
     108.0218,
@@ -7251,6 +7566,7 @@
    "adcode": "611000",
    "name": "商洛市",
    "province": "陕西省",
+   "provinceAdcode": "610000",
    "kind": "city",
    "bbox": [
     108.5699,
@@ -7274,6 +7590,7 @@
    "adcode": "620100",
    "name": "兰州市",
    "province": "甘肃省",
+   "provinceAdcode": "620000",
    "kind": "city",
    "bbox": [
     102.6013,
@@ -7297,6 +7614,7 @@
    "adcode": "620200",
    "name": "嘉峪关市",
    "province": "甘肃省",
+   "provinceAdcode": "620000",
    "kind": "city",
    "bbox": [
     97.8557,
@@ -7320,6 +7638,7 @@
    "adcode": "620300",
    "name": "金昌市",
    "province": "甘肃省",
+   "provinceAdcode": "620000",
    "kind": "city",
    "bbox": [
     101.3378,
@@ -7343,6 +7662,7 @@
    "adcode": "620400",
    "name": "白银市",
    "province": "甘肃省",
+   "provinceAdcode": "620000",
    "kind": "city",
    "bbox": [
     103.5477,
@@ -7366,6 +7686,7 @@
    "adcode": "620500",
    "name": "天水市",
    "province": "甘肃省",
+   "provinceAdcode": "620000",
    "kind": "city",
    "bbox": [
     104.5772,
@@ -7389,6 +7710,7 @@
    "adcode": "620600",
    "name": "武威市",
    "province": "甘肃省",
+   "provinceAdcode": "620000",
    "kind": "city",
    "bbox": [
     101.8309,
@@ -7412,6 +7734,7 @@
    "adcode": "620700",
    "name": "张掖市",
    "province": "甘肃省",
+   "provinceAdcode": "620000",
    "kind": "city",
    "bbox": [
     97.3951,
@@ -7435,6 +7758,7 @@
    "adcode": "620800",
    "name": "平凉市",
    "province": "甘肃省",
+   "provinceAdcode": "620000",
    "kind": "city",
    "bbox": [
     105.3455,
@@ -7458,6 +7782,7 @@
    "adcode": "620900",
    "name": "酒泉市",
    "province": "甘肃省",
+   "provinceAdcode": "620000",
    "kind": "city",
    "bbox": [
     92.3401,
@@ -7481,6 +7806,7 @@
    "adcode": "621000",
    "name": "庆阳市",
    "province": "甘肃省",
+   "provinceAdcode": "620000",
    "kind": "city",
    "bbox": [
     106.3642,
@@ -7504,6 +7830,7 @@
    "adcode": "621100",
    "name": "定西市",
    "province": "甘肃省",
+   "provinceAdcode": "620000",
    "kind": "city",
    "bbox": [
     103.4711,
@@ -7527,6 +7854,7 @@
    "adcode": "621200",
    "name": "陇南市",
    "province": "甘肃省",
+   "provinceAdcode": "620000",
    "kind": "city",
    "bbox": [
     104.0266,
@@ -7550,6 +7878,7 @@
    "adcode": "622900",
    "name": "临夏回族自治州",
    "province": "甘肃省",
+   "provinceAdcode": "620000",
    "kind": "city",
    "bbox": [
     102.686,
@@ -7573,6 +7902,7 @@
    "adcode": "623000",
    "name": "甘南藏族自治州",
    "province": "甘肃省",
+   "provinceAdcode": "620000",
    "kind": "city",
    "bbox": [
     100.7644,
@@ -7596,6 +7926,7 @@
    "adcode": "630100",
    "name": "西宁市",
    "province": "青海省",
+   "provinceAdcode": "630000",
    "kind": "city",
    "bbox": [
     100.8693,
@@ -7619,6 +7950,7 @@
    "adcode": "630200",
    "name": "海东市",
    "province": "青海省",
+   "provinceAdcode": "630000",
    "kind": "city",
    "bbox": [
     101.6669,
@@ -7642,6 +7974,7 @@
    "adcode": "632200",
    "name": "海北藏族自治州",
    "province": "青海省",
+   "provinceAdcode": "630000",
    "kind": "city",
    "bbox": [
     98.0933,
@@ -7665,6 +7998,7 @@
    "adcode": "632300",
    "name": "黄南藏族自治州",
    "province": "青海省",
+   "provinceAdcode": "630000",
    "kind": "city",
    "bbox": [
     100.6876,
@@ -7688,6 +8022,7 @@
    "adcode": "632500",
    "name": "海南藏族自治州",
    "province": "青海省",
+   "provinceAdcode": "630000",
    "kind": "city",
    "bbox": [
     98.9212,
@@ -7711,6 +8046,7 @@
    "adcode": "632600",
    "name": "果洛藏族自治州",
    "province": "青海省",
+   "provinceAdcode": "630000",
    "kind": "city",
    "bbox": [
     96.9353,
@@ -7734,6 +8070,7 @@
    "adcode": "632700",
    "name": "玉树藏族自治州",
    "province": "青海省",
+   "provinceAdcode": "630000",
    "kind": "city",
    "bbox": [
     89.4047,
@@ -7757,6 +8094,7 @@
    "adcode": "632800",
    "name": "海西蒙古族藏族自治州",
    "province": "青海省",
+   "provinceAdcode": "630000",
    "kind": "city",
    "bbox": [
     89.635,
@@ -7780,6 +8118,7 @@
    "adcode": "640100",
    "name": "银川市",
    "province": "宁夏回族自治区",
+   "provinceAdcode": "640000",
    "kind": "city",
    "bbox": [
     105.8218,
@@ -7803,6 +8142,7 @@
    "adcode": "640200",
    "name": "石嘴山市",
    "province": "宁夏回族自治区",
+   "provinceAdcode": "640000",
    "kind": "city",
    "bbox": [
     105.9689,
@@ -7826,6 +8166,7 @@
    "adcode": "640300",
    "name": "吴忠市",
    "province": "宁夏回族自治区",
+   "provinceAdcode": "640000",
    "kind": "city",
    "bbox": [
     105.5613,
@@ -7849,6 +8190,7 @@
    "adcode": "640400",
    "name": "固原市",
    "province": "宁夏回族自治区",
+   "provinceAdcode": "640000",
    "kind": "city",
    "bbox": [
     105.3251,
@@ -7872,6 +8214,7 @@
    "adcode": "640500",
    "name": "中卫市",
    "province": "宁夏回族自治区",
+   "provinceAdcode": "640000",
    "kind": "city",
    "bbox": [
     104.2872,
@@ -7895,6 +8238,7 @@
    "adcode": "650100",
    "name": "乌鲁木齐市",
    "province": "新疆维吾尔自治区",
+   "provinceAdcode": "650000",
    "kind": "city",
    "bbox": [
     86.798,
@@ -7918,6 +8262,7 @@
    "adcode": "650200",
    "name": "克拉玛依市",
    "province": "新疆维吾尔自治区",
+   "provinceAdcode": "650000",
    "kind": "city",
    "bbox": [
     84.5794,
@@ -7941,6 +8286,7 @@
    "adcode": "650400",
    "name": "吐鲁番市",
    "province": "新疆维吾尔自治区",
+   "provinceAdcode": "650000",
    "kind": "city",
    "bbox": [
     87.368,
@@ -7964,6 +8310,7 @@
    "adcode": "650500",
    "name": "哈密市",
    "province": "新疆维吾尔自治区",
+   "provinceAdcode": "650000",
    "kind": "city",
    "bbox": [
     91.154,
@@ -7987,6 +8334,7 @@
    "adcode": "652300",
    "name": "昌吉回族自治州",
    "province": "新疆维吾尔自治区",
+   "provinceAdcode": "650000",
    "kind": "city",
    "bbox": [
     85.5799,
@@ -8010,6 +8358,7 @@
    "adcode": "652700",
    "name": "博尔塔拉蒙古自治州",
    "province": "新疆维吾尔自治区",
+   "provinceAdcode": "650000",
    "kind": "city",
    "bbox": [
     79.8879,
@@ -8033,6 +8382,7 @@
    "adcode": "652800",
    "name": "巴音郭楞蒙古自治州",
    "province": "新疆维吾尔自治区",
+   "provinceAdcode": "650000",
    "kind": "city",
    "bbox": [
     82.4704,
@@ -8056,6 +8406,7 @@
    "adcode": "652900",
    "name": "阿克苏地区",
    "province": "新疆维吾尔自治区",
+   "provinceAdcode": "650000",
    "kind": "city",
    "bbox": [
     78.0313,
@@ -8079,6 +8430,7 @@
    "adcode": "653000",
    "name": "克孜勒苏柯尔克孜自治州",
    "province": "新疆维吾尔自治区",
+   "provinceAdcode": "650000",
    "kind": "city",
    "bbox": [
     73.5065,
@@ -8102,6 +8454,7 @@
    "adcode": "653100",
    "name": "喀什地区",
    "province": "新疆维吾尔自治区",
+   "provinceAdcode": "650000",
    "kind": "city",
    "bbox": [
     74.4651,
@@ -8125,6 +8478,7 @@
    "adcode": "653200",
    "name": "和田地区",
    "province": "新疆维吾尔自治区",
+   "provinceAdcode": "650000",
    "kind": "city",
    "bbox": [
     77.4077,
@@ -8148,6 +8502,7 @@
    "adcode": "654000",
    "name": "伊犁哈萨克自治州",
    "province": "新疆维吾尔自治区",
+   "provinceAdcode": "650000",
    "kind": "city",
    "bbox": [
     80.1639,
@@ -8171,6 +8526,7 @@
    "adcode": "654200",
    "name": "塔城地区",
    "province": "新疆维吾尔自治区",
+   "provinceAdcode": "650000",
    "kind": "city",
    "bbox": [
     82.2667,
@@ -8194,6 +8550,7 @@
    "adcode": "654300",
    "name": "阿勒泰地区",
    "province": "新疆维吾尔自治区",
+   "provinceAdcode": "650000",
    "kind": "city",
    "bbox": [
     85.5318,
@@ -8217,6 +8574,7 @@
    "adcode": "659001",
    "name": "石河子市",
    "province": "新疆维吾尔自治区",
+   "provinceAdcode": "650000",
    "kind": "city",
    "bbox": [
     85.9048,
@@ -8240,6 +8598,7 @@
    "adcode": "659002",
    "name": "阿拉尔市",
    "province": "新疆维吾尔自治区",
+   "provinceAdcode": "650000",
    "kind": "city",
    "bbox": [
     80.5923,
@@ -8263,6 +8622,7 @@
    "adcode": "659003",
    "name": "图木舒克市",
    "province": "新疆维吾尔自治区",
+   "provinceAdcode": "650000",
    "kind": "city",
    "bbox": [
     78.6574,
@@ -8286,6 +8646,7 @@
    "adcode": "659004",
    "name": "五家渠市",
    "province": "新疆维吾尔自治区",
+   "provinceAdcode": "650000",
    "kind": "city",
    "bbox": [
     87.3706,
@@ -8309,6 +8670,7 @@
    "adcode": "659005",
    "name": "北屯市",
    "province": "新疆维吾尔自治区",
+   "provinceAdcode": "650000",
    "kind": "city",
    "bbox": [
     87.4813,
@@ -8332,6 +8694,7 @@
    "adcode": "659006",
    "name": "铁门关市",
    "province": "新疆维吾尔自治区",
+   "provinceAdcode": "650000",
    "kind": "city",
    "bbox": [
     85.3577,
@@ -8355,6 +8718,7 @@
    "adcode": "659007",
    "name": "双河市",
    "province": "新疆维吾尔自治区",
+   "provinceAdcode": "650000",
    "kind": "city",
    "bbox": [
     81.9404,
@@ -8378,6 +8742,7 @@
    "adcode": "659008",
    "name": "可克达拉市",
    "province": "新疆维吾尔自治区",
+   "provinceAdcode": "650000",
    "kind": "city",
    "bbox": [
     80.4408,
@@ -8401,6 +8766,7 @@
    "adcode": "659009",
    "name": "昆玉市",
    "province": "新疆维吾尔自治区",
+   "provinceAdcode": "650000",
    "kind": "city",
    "bbox": [
     78.3307,
@@ -8424,6 +8790,7 @@
    "adcode": "659010",
    "name": "胡杨河市",
    "province": "新疆维吾尔自治区",
+   "provinceAdcode": "650000",
    "kind": "city",
    "bbox": [
     84.5165,
@@ -8447,6 +8814,7 @@
    "adcode": "710000",
    "name": "台湾省",
    "province": "台湾省",
+   "provinceAdcode": "710000",
    "kind": "province",
    "bbox": [
     119.421247,
@@ -8470,6 +8838,7 @@
    "adcode": "810000",
    "name": "香港特别行政区",
    "province": "香港特别行政区",
+   "provinceAdcode": "810000",
    "kind": "sar",
    "bbox": [
     113.8433,
@@ -8493,6 +8862,7 @@
    "adcode": "820000",
    "name": "澳门特别行政区",
    "province": "澳门特别行政区",
+   "provinceAdcode": "820000",
    "kind": "sar",
    "bbox": [
     113.534715,
