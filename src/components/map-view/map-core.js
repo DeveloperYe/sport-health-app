@@ -25,6 +25,7 @@
 import * as maplibregl from 'maplibre-gl'
 import { PMTiles, Protocol } from 'pmtiles'
 import { layers as basemapLayers, namedFlavor } from '@protomaps/basemaps'
+import { containerOk, describeValue } from './dom.js'
 // worker 源码以原始字符串内联：?raw 不经过 esbuild，worker 里的 BigInt 与
 // 打包 target 无关；运行时再由 ensureWorker() 转成 blob URL 交给 setWorkerUrl。
 import workerSource from 'maplibre-gl/dist/maplibre-gl-worker.mjs?raw'
@@ -306,6 +307,13 @@ export function createTrackMap(opts) {
         },
       },
     ]),
+  }
+
+  // 容器校验：MapLibre 只接受选择器字符串或真实元素，否则抛
+  // "Invalid type: 'container' must be a String or HTMLElement."。这里提前拦，
+  // 把「实际拿到的是什么」写进错误消息，免得又在真机上猜。
+  if (!containerOk(container)) {
+    throw new Error('container 非法：' + describeValue(container) + '（需要 DOM 元素或选择器字符串）')
   }
 
   const map = new maplibregl.Map({

@@ -321,6 +321,7 @@ export default {
 // ===== 视图层（App）：只有 renderjs 能拿到 DOM =====
 // 建图逻辑一行都不在这里重复：全部走 map-core.js。
 import { createTrackMap, probeWebgl, waitForSize } from './map-core.js'
+import { looksLikeElement, describeValue } from './dom.js'
 import { makeMapStatus, formatMapStatus } from './map-status.js'
 import {
   tileUrlCandidates,
@@ -343,6 +344,13 @@ function asObj(v) {
   }
   return null
 }
+
+// 真机实测：renderjs 里的 `this.$el` 不是 DOM 元素（是个真值包装对象），
+// 直接当 container 传给 MapLibre 会抛：
+//   Invalid type: 'container' must be a String or HTMLElement.
+// 所以容器一律按 nodeType 校验（looksLikeElement 见 dom.js），并缓存在模块作用域
+// ——不随 data() 重建而丢失。
+let HOST_EL = null
 
 export default {
   data() {
@@ -478,6 +486,29 @@ export default {
       }
     },
 
+    // 按可靠性顺序找容器：id（最稳）-> 选择器 -> 模块缓存 -> data.el -> $el
+    // 每个候选都要过 looksLikeElement，$el 放最后且必须校验——真机上它不是元素。
+    resolveHost() {
+      const cands = []
+      const push = (el, from) => {
+        if (looksLikeElement(el)) cands.push({ el: el, from: from })
+      }
+      try {
+        if (this.hostId) push(document.getElementById(this.hostId), 'byId')
+        push(document.querySelector('.mv-host'), 'selector')
+        push(HOST_EL, 'cached')
+        push(this.el, 'data')
+        push(this.$el, '$el')
+      } catch (e) {
+        /* ignore */
+      }
+      return cands[0] || null
+    },
+    // 把可疑候选描述成短字符串，进诊断行，下次真机一眼看出它到底是什么
+    describeEl(v) {
+      return describeValue(v)
+    },
+
     // 尺寸解析：逻辑层推来的 -> 自己量 -> 视口反推（对齐 .mv-host 的 340rpx）
     async resolveSize(el) {
       const deadline = Date.now() + 3000
@@ -502,8 +533,15 @@ export default {
       if (this.status.webgl !== 'ok') {
         return this.fail('WebGL 不可用（视图层拿不到 webgl context）')
       }
-      const el = this.$el || (this.hostId ? document.getElementById(this.hostId) : null)
-      if (!el) return this.fail('拿不到地图容器 DOM（renderjs $el 为空且按 id 也找不到）')
+      // 容器：绝不能直接信 this.$el（它是包装对象，不是元素），逐候选校验 nodeType
+      const found = this.resolveHost()
+      if (!found) {
+        return this.fail(
+          '拿不到地图容器 DOM（id=' + this.hostId + '，$el=' + this.describeEl(this.$el) + '）'
+        )
+      }
+      const el = found.el
+      HOST_EL = el
       this.el = el
       // 尺寸来源优先级：逻辑层推下来的 hostSize -> 视图层自己量 -> 按视口反推 340rpx。
       // 真机实测视图层量 .mv-host 恒为 0（uni-view 此刻尚未布局），所以不能只靠它。
@@ -568,9 +606,19 @@ export default {
 
     build(archives) {
       if (this.core) return
+      // 建图这一步必须重新确认容器：组件重渲染可能让 data 里的 el 失效，
+      // 而 $el 不是元素。拿不到元素就明确报错，别把 undefined 丢给 MapLibre。
+      const found = this.resolveHost()
+      if (!found) {
+        return this.fail(
+          '建图前容器丢失（id=' + this.hostId + '，$el=' + this.describeEl(this.$el) + '）'
+        )
+      }
+      HOST_EL = found.el
+      this.el = found.el
       try {
         this.core = createTrackMap({
-          container: this.el || this.$el,
+          container: found.el,
           archives: archives,
           status: this.status,
           points: this.lastPoints,
@@ -592,7 +640,8 @@ export default {
       } catch (e) {
         return this.fail('建图异常: ' + ((e && e.message) || e))
       }
-      this.setSrc(this.status.src, bytes && bytes.length)
+      // src 末尾补上容器来源（byId/selector/cached/data/$el），真机诊断用
+      this.setSrc(this.status.src || '', 'host:' + found.from)
       // tiles 计数是异步长出来的，定时刷回逻辑层显示
       this.timer = setInterval(() => this.pushStatus(), 1000)
     },
