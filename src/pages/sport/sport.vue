@@ -81,7 +81,8 @@
 </template>
 
 <script>
-import { MODES, calcCaloriesBySteps, getWorkoutSteps, getTodaySteps } from '@/utils/health.js'
+import { MODES, calcCaloriesBySteps, getTodaySteps, getStepBranches } from '@/utils/health.js'
+import { sessionSteps, branchDelta, baseUsable } from '@/utils/steps-math.js'
 // #ifdef APP-PLUS
 import { getStepDiag } from '@/utils/health.js'
 // #endif
@@ -101,11 +102,15 @@ export default {
       timer: null,
       /**
        * 运动会话真实计步：
-       * stepBaseline 进入页面开始运动时记录的累计步数基线，
-       * liveSteps 运动中实时累计的本场步数（= 当前累计 - 基线）。
-       * 结束用真实差值入账，不再伪造。
+       * stepBase 进入运动时记录的「两路各自」的累计读数基线
+       *   { counter: 开机累计（TYPE_STEP_COUNTER）, det: 检测器累计（TYPE_STEP_DETECTOR） }
+       * liveSteps 运动中实时累计的本场步数。
+       *
+       * 为什么必须两路各记基线：早期把两路先 max 合并、再减同一个基线，
+       * 一旦数值大的那一路卡住（很多机型息屏后 counter 冻住），另一路的增量
+       * 就被 max 整块吞掉 —— 走了 71 步、界面恒为 0。见 utils/steps-math.js。
        */
-      stepBaseline: -1,
+      stepBase: { counter: -1, det: -1 },
       liveSteps: 0,
       stepTimer: null,
       weight: 60,
@@ -184,8 +189,11 @@ export default {
     async start() {
       this.state = 'running'
       this.clearTimer()
-      // 基线 = 会话开始时的累计读数（0 是合法值；-1 表示读取失败，由首个有效读数兜底）
-      this.stepBaseline = await getWorkoutSteps()
+      // 基线 = 会话开始时两路各自的读数（-1 表示该路尚未就绪，由首个有效读数兜底）
+      const base0 = await getStepBranches()
+      this.stepBase = base0.ok
+        ? { counter: base0.counter, det: base0.det }
+        : { counter: -1, det: -1 }
       this.liveSteps = 0
 
       // 启动 GPS 轨迹采集：App 端 track.js 会传 type='wgs84'，
@@ -241,16 +249,22 @@ export default {
       // #ifdef APP-PLUS
       // Android 原生计步可廉价轮询，实时刷新本场步数
       this.stepTimer = setInterval(async () => {
-        const cur = await getWorkoutSteps()
-        if (this.stepBaseline < 0) {
-          // 开始时读取失败：首个有效读数即作为基线
-          if (cur >= 0) this.stepBaseline = cur
-        } else if (cur >= this.stepBaseline) {
-          this.liveSteps = cur - this.stepBaseline
+        const cur = await getStepBranches()
+        if (cur.ok) {
+          if (!baseUsable(this.stepBase)) {
+            // 开始时读取失败：首个有效读数即作为基线
+            this.stepBase = { counter: cur.counter, det: cur.det }
+          } else {
+            const s = sessionSteps(cur, this.stepBase)
+            if (s >= 0) this.liveSteps = s
+          }
         }
-        // 临时诊断（定位后移除）
+        // 临时诊断（定位后移除）：c+/d+ 分别是两路自基线起的增量，
+        // 走动时两路至少有一路应该增长；都停住才是传感器问题。
         const d = getStepDiag()
-        this.diag = `sen:${d.sensorFound ? 1 : 0} dt:${d.detFound ? 1 : 0} cb:${d.cb} ev:${d.ev} comp:${d.comp} base:${this.stepBaseline}${d.err ? ' err:' + d.err : ''}`
+        const dc = branchDelta(cur.counter, this.stepBase.counter)
+        const dd = branchDelta(cur.det, this.stepBase.det)
+        this.diag = `sen:${d.sensorFound ? 1 : 0} dt:${d.detFound ? 1 : 0} cb:${d.cb} ev:${d.ev} c+${dc} d+${dd} comp:${d.comp}${d.err ? ' err:' + d.err : ''}`
       }, 2000)
       // #endif
     },
@@ -280,11 +294,14 @@ export default {
         return
       }
 
-      // 结束读取一次累计步数，真实差值 = 当前累计 - 基线（不伪造）
-      const cur = await getWorkoutSteps()
-      if (this.stepBaseline < 0 && cur >= 0) this.stepBaseline = cur // 读取失败时的懒基线兜底
-      const realSteps =
-        this.stepBaseline >= 0 && cur >= this.stepBaseline ? cur - this.stepBaseline : 0
+      // 结束读取一次两路读数，按各自增量取 max（不伪造）
+      const cur = await getStepBranches()
+      if (cur.ok && !baseUsable(this.stepBase)) {
+        // 全程没读到过基线（极少见）：用当前读数兜底，避免把历史值算进本场
+        this.stepBase = { counter: cur.counter, det: cur.det }
+      }
+      const counted = cur.ok ? sessionSteps(cur, this.stepBase) : -1
+      const realSteps = counted > 0 ? counted : this.liveSteps > 0 ? this.liveSteps : 0
 
       const record = {
         id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
@@ -321,7 +338,7 @@ export default {
       this.state = 'idle'
       this.seconds = 0
       this.liveSteps = 0
-      this.stepBaseline = -1
+      this.stepBase = { counter: -1, det: -1 }
       this.trackPoints = []
       this.gpsDistance = 0
       this.diag = ''

@@ -33,8 +33,11 @@
     <!-- ODbL 强制署名：右下角，常显，不藏 -->
     <view class="mv-attr"><text class="mv-attr-text">© OpenStreetMap</text></view>
 
-    <!-- 诊断行（本轮 APK 的核心目的）：webgl / renderjs / maplibre / tiles / err -->
-    <view class="mv-diag"><text class="mv-diag-text">{{ diagText }}</text></view>
+    <!-- 诊断行：正常时 CSS 隐藏（不占可视面积），一旦有异常自动浮现。
+         仍保留 DOM，方便自动化脚本读取 diagText。 -->
+    <view class="mv-diag" :class="{ 'mv-diag-off': !diagShow }">
+      <text class="mv-diag-text">{{ diagText }}</text>
+    </view>
   </view>
 </template>
 
@@ -72,6 +75,7 @@ export default {
       tick: 0, // 每次轨迹更新自增，保证过桥的值一定「变了」
       chunk: null, // App：跨层搬运的 base64 分块 { i, n, b64 }
       diagText: '',
+      diagShow: false, // 诊断行是否可见：正常时隐藏，出错才露出
       ready: false,
       failed: false,
       status: null,
@@ -147,6 +151,16 @@ export default {
   methods: {
     pushStatus() {
       this.diagText = formatMapStatus(this.status)
+      // 只有「出问题」时才把诊断行露出来：正常跑步时不该有一行调试字挡在地图上。
+      // 判断口径：硬失败 / 视图层或建图失败 / err 里有非空内容。
+      const s = this.status || {}
+      const err = String(s.err || '').trim()
+      this.diagShow = !!(
+        this.failed ||
+        s.renderjs === 'fail' ||
+        s.maplibre === 'fail' ||
+        (err && err !== '-')
+      )
     },
 
     // 逻辑层量地图容器尺寸，跨层推给 renderjs（视图层自己量不到，见 mounted 注释）。
@@ -730,6 +744,10 @@ export default {
   top: 8rpx;
   right: 8rpx;
   pointer-events: none;
+}
+/* 一切正常时整行不显示：调试信息只在出问题时才有价值，平时别挡地图 */
+.mv-diag-off {
+  display: none;
 }
 .mv-diag-text {
   font-size: 16rpx;

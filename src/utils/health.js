@@ -178,6 +178,41 @@ function compositeTotal() {
   return Math.max(counterDelta, detTotal)
 }
 
+// 读取两路原始累计值（不做 max 合并）：供运动页按「每路各记基线」算本场步数。
+// 必须先合并再减基线的做法会见 sport 页注释：数值大的那一路卡住会吞掉另一路的增量。
+// 返回 { ok, counter, det }；counter 为开机累计（-1=未就绪），det 为寄存器起算的每步计数。
+function readBranches() {
+  return new Promise((resolve) => {
+    requestActivityRecognition(() => {
+      if (!ensureSensorListener()) {
+        resolve({ ok: detEvents > 0, counter: -1, det: detTotal })
+        return
+      }
+      const ready = () => sensorTotal >= 0 || detEvents > 0
+      const out = () => resolve({ ok: ready(), counter: sensorTotal, det: detTotal })
+      if (ready()) {
+        out()
+        return
+      }
+      const t0 = Date.now()
+      const iv = setInterval(() => {
+        if (ready()) {
+          clearInterval(iv)
+          out()
+        } else if (Date.now() - t0 > 3000) {
+          clearInterval(iv)
+          out()
+        }
+      }, 60)
+    })
+  })
+}
+
+/** 两路原始读数（运动页内部用；普通页面请用 getTodaySteps / getWorkoutSteps） */
+export function getStepBranches() {
+  return readBranches()
+}
+
 // 读取累计步数；两路都无数据 / 3 秒内无回调返回 -1
 function readComposite() {
   return new Promise((resolve) => {
@@ -362,6 +397,12 @@ export function getWorkoutSteps() {
     })
   })
 }
+
+// 小程序没有系统步数传感器，只有微信运动这一个累计值：
+// 把它当作单调计数器放进 det 路（counter 路不可用），运动页的 max 逻辑照常工作。
+export function getStepBranches() {
+  return getWorkoutSteps().then((v) => ({ ok: true, counter: -1, det: v }))
+}
 // #endif
 
 // #ifndef APP-PLUS
@@ -371,6 +412,11 @@ export function getTodaySteps() {
 }
 export function getWorkoutSteps() {
   return Promise.resolve(0)
+}
+// 非 App 端没有系统计步传感器：两路都不可用（ok:false），
+// 运动页据此跳过步数计算，不会把 undefined 当成读数。
+export function getStepBranches() {
+  return Promise.resolve({ ok: false, counter: -1, det: -1 })
 }
 // #endif
 // #endif
