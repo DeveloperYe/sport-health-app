@@ -30,6 +30,7 @@ import { containerOk, describeValue } from './dom.js'
 // 打包 target 无关；运行时再由 ensureWorker() 转成 blob URL 交给 setWorkerUrl。
 import workerSource from 'maplibre-gl/dist/maplibre-gl-worker.mjs?raw'
 import { makeMapStatus, formatMapStatus, trimStr } from './map-status.js'
+import { toClassicWorkerSource as stripModuleSyntax } from './worker-src.js'
 
 // 诊断行的拼装与状态对象在 map-status.js（逻辑层也要用，但不能引这个文件）
 export { makeMapStatus, formatMapStatus }
@@ -53,17 +54,86 @@ let protocolRegistered = false
 let workerUrl = ''
 let workerUrlSet = false
 
+// maplibre 的 worker.mjs 是 ES 模块，结尾有 `export{dC as default};`；
+// 而它按「URL 是否 .mjs/.cjs」决定用 module worker，我们的 blob URL 没有后缀，
+// 于是被当成 classic worker —— classic 脚本里出现 export 就是语法错误，真机报
+//   Worker failed to load. Check that the worker URL is correct.
+// 源码本身是自包含的（末尾 self.worker=new dC(self) 会自启动），所以剥掉模块语法即可。
+export function toClassicWorkerSource(src) {
+  return stripModuleSyntax(src)
+}
+
+/**
+ * 把 worker 源码变成可用的 blob URL。
+ * 同时做两件事便于真机诊断：
+ *  - 用 new Function() 做一次语法预检（能编译 = classic 脚本合法）；
+ *  - 把结果写进 status.worker，真机截图即可判断卡在哪一步。
+ */
 function ensureWorker(status) {
   if (workerUrlSet) return workerUrl
   workerUrlSet = true
+  const classic = toClassicWorkerSource(workerSource)
+  let syntax = 'ok'
   try {
-    workerUrl = URL.createObjectURL(new Blob([workerSource], { type: 'text/javascript' }))
+    // 只编译不执行：验证剥掉模块语法后是合法 classic 脚本
+    // eslint-disable-next-line no-new-func
+    new Function(classic)
+  } catch (e) {
+    syntax = 'syntax-err:' + ((e && e.message) || 'unknown')
+  }
+  try {
+    workerUrl = URL.createObjectURL(new Blob([classic], { type: 'text/javascript' }))
     maplibregl.setWorkerUrl(workerUrl)
-    if (status) status.worker = 'blob'
+    if (status) status.worker = 'blob-classic(' + syntax + ')'
   } catch (e) {
     if (status) status.worker = 'default(' + ((e && e.message) || 'blob 失败') + ')'
   }
   return workerUrl
+}
+
+/**
+ * 探针：单独造一个极小的 classic blob worker，确认「blob worker 本身」能不能跑。
+ * 用来区分两种失败：blob 被禁（环境问题）vs 源码语法问题（我们的问题）。
+ * 返回 Promise<'ok' | 'err:...'>，超时 1500ms。
+ */
+export function probeBlobWorker(timeoutMs) {
+  return new Promise((resolve) => {
+    let done = false
+    const finish = (v) => {
+      if (!done) {
+        done = true
+        resolve(v)
+      }
+    }
+    let w = null
+    try {
+      const url = URL.createObjectURL(
+        new Blob(["self.postMessage('wk-ok')"], { type: 'text/javascript' })
+      )
+      w = new Worker(url)
+      const t = setTimeout(() => finish('err:timeout'), timeoutMs || 1500)
+      w.onmessage = (ev) => {
+        clearTimeout(t)
+        finish(ev && ev.data === 'wk-ok' ? 'ok' : 'err:bad-message')
+        try {
+          w.terminate()
+        } catch (e) {
+          /* ignore */
+        }
+      }
+      w.onerror = (ev) => {
+        clearTimeout(t)
+        finish('err:' + ((ev && ev.message) || 'load-error'))
+        try {
+          w.terminate()
+        } catch (e) {
+          /* ignore */
+        }
+      }
+    } catch (e) {
+      finish('err:' + ((e && e.message) || 'construct-failed'))
+    }
+  })
 }
 
 function ensureProtocol() {

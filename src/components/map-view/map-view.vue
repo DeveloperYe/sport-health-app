@@ -320,7 +320,7 @@ export default {
 <script module="mapView" lang="renderjs">
 // ===== 视图层（App）：只有 renderjs 能拿到 DOM =====
 // 建图逻辑一行都不在这里重复：全部走 map-core.js。
-import { createTrackMap, probeWebgl, waitForSize } from './map-core.js'
+import { createTrackMap, probeWebgl, waitForSize, probeBlobWorker } from './map-core.js'
 import { looksLikeElement, describeValue } from './dom.js'
 import { makeMapStatus, formatMapStatus } from './map-status.js'
 import {
@@ -362,6 +362,7 @@ export default {
       hostId: '',
       el: null,
       hostSize: null, // 逻辑层推下来的容器像素尺寸（首选，视图层自己量不到）
+      wkProbe: '', // blob worker 能力探针结果（ok / err:...），进诊断行
       collected: null, // 已拿到的档案 [{ key, bytes }]
       pending: null, // 还没拿到、排队走 plus.io 过桥的档案下标
       curFile: 0, // 当前正在过桥的档案下标
@@ -533,6 +534,9 @@ export default {
       if (this.status.webgl !== 'ok') {
         return this.fail('WebGL 不可用（视图层拿不到 webgl context）')
       }
+      // blob worker 能力探针：区分「环境禁 blob worker」与「worker 源码语法问题」，
+      // 结果进诊断行（src 末尾 wk:...），真机截图即可判断下一步该往哪修。
+      this.wkProbe = await probeBlobWorker(1500)
       // 容器：绝不能直接信 this.$el（它是包装对象，不是元素），逐候选校验 nodeType
       const found = this.resolveHost()
       if (!found) {
@@ -640,8 +644,8 @@ export default {
       } catch (e) {
         return this.fail('建图异常: ' + ((e && e.message) || e))
       }
-      // src 末尾补上容器来源（byId/selector/cached/data/$el），真机诊断用
-      this.setSrc(this.status.src || '', 'host:' + found.from)
+      // src 末尾补上容器来源与 worker 探针结果，真机诊断用
+      this.setSrc(this.status.src || '', 'host:' + found.from + ' wk:' + (this.wkProbe || '?'))
       // tiles 计数是异步长出来的，定时刷回逻辑层显示
       this.timer = setInterval(() => this.pushStatus(), 1000)
     },
