@@ -1,9 +1,9 @@
 {
 	"pages": [
 		{
-			"path": "pages/index/index",
+			"path": "pages/diet/diet",
 			"style": {
-				"navigationBarTitleText": "运动健康"
+				"navigationBarTitleText": "饮食"
 			}
 		},
 		{
@@ -13,15 +13,9 @@
 			}
 		},
 		{
-			"path": "pages/mine/mine",
-			"style": {
-				"navigationBarTitleText": "我的"
-			}
-		},
-		{
 			"path": "pages/profile/profile",
 			"style": {
-				"navigationBarTitleText": "个人档案"
+				"navigationBarTitleText": "我的"
 			}
 		}
 	],
@@ -38,10 +32,10 @@
 		"borderStyle": "black",
 		"list": [
 			{
-				"pagePath": "pages/index/index",
-				"text": "首页",
-				"iconPath": "static/tabbar/home.png",
-				"selectedIconPath": "static/tabbar/home-active.png"
+				"pagePath": "pages/diet/diet",
+				"text": "饮食",
+				"iconPath": "static/tabbar/diet.png",
+				"selectedIconPath": "static/tabbar/diet-active.png"
 			},
 			{
 				"pagePath": "pages/sport/sport",
@@ -50,7 +44,7 @@
 				"selectedIconPath": "static/tabbar/sport-active.png"
 			},
 			{
-				"pagePath": "pages/mine/mine",
+				"pagePath": "pages/profile/profile",
 				"text": "我的",
 				"iconPath": "static/tabbar/mine.png",
 				"selectedIconPath": "static/tabbar/mine-active.png"

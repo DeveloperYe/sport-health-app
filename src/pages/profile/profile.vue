@@ -1,134 +1,354 @@
 <template>
   <view class="page">
-    <!-- 顶栏：标题 + 编辑/保存图标按钮 -->
-    <view class="topbar">
-      <view class="topbar-title">
-        <text class="topbar-name">个人档案</text>
-        <text class="topbar-sub">{{ editing ? '完善你的基础信息' : '基本信息' }}</text>
+    <!-- 身体信息 -->
+    <view class="card">
+      <view class="card-head">
+        <text class="card-title">身体信息</text>
+        <text class="card-extra">用于推算基础代谢与目标</text>
       </view>
-      <view
-        class="icon-btn"
-        :class="editing ? 'icon-btn-save' : 'icon-btn-edit'"
-        @click="toggleEdit"
-      >
-        <!-- 铅笔(编辑) / 对勾(保存) 图标 -->
-        <text v-if="!editing" class="icon-edit">✎</text>
-        <text v-else class="icon-save">✓</text>
+
+      <view class="field">
+        <text class="field-label">性别</text>
+        <view class="seg">
+          <view class="seg-item" :class="{ on: form.sex === 'male' }" @click="form.sex = 'male'">男</view>
+          <view class="seg-item" :class="{ on: form.sex === 'female' }" @click="form.sex = 'female'">女</view>
+        </view>
       </view>
+
+      <view class="field">
+        <text class="field-label">年龄</text>
+        <input class="field-inp" type="number" v-model="form.age" placeholder="岁" placeholder-class="ph" />
+        <text class="field-unit">岁</text>
+      </view>
+      <view class="field">
+        <text class="field-label">身高</text>
+        <input class="field-inp" type="digit" v-model="form.height" placeholder="cm" placeholder-class="ph" />
+        <text class="field-unit">cm</text>
+      </view>
+      <view class="field">
+        <text class="field-label">体重</text>
+        <input class="field-inp" type="digit" v-model="form.weight" placeholder="kg" placeholder-class="ph" />
+        <text class="field-unit">kg</text>
+      </view>
+      <view class="field">
+        <text class="field-label">体脂率</text>
+        <input
+          class="field-inp"
+          type="digit"
+          v-model="form.bodyFat"
+          placeholder="不填则按身高年龄估算"
+          placeholder-class="ph"
+        />
+        <text class="field-unit">%</text>
+      </view>
+      <view class="field">
+        <text class="field-label">活动量</text>
+        <picker :range="activityLabels" :value="activityIndex" @change="onActivityChange">
+          <view class="picker-value">{{ activityLabels[activityIndex] }}</view>
+        </picker>
+      </view>
+
+      <text class="hint">{{ bmrHint }}</text>
+      <view class="btn" @click="saveBodyInfo">保存并计算</view>
     </view>
 
-    <!-- 档案卡片 -->
-    <view class="profile-card">
-      <!-- 身高 -->
-      <view class="field">
-        <view class="field-label">
-          <view class="field-ico ico-height"></view>
-          <text class="field-name">身高</text>
-        </view>
-        <view class="field-input-wrap">
-          <input
-            v-if="editing"
-            class="field-input"
-            type="number"
-            v-model="height"
-            placeholder="如 170"
-          />
-          <text v-else class="field-value">{{ height || '--' }}</text>
-          <text class="field-unit">cm</text>
-        </view>
+    <!-- 计算成果 -->
+    <view class="card">
+      <text class="card-title">计算成果</text>
+      <view class="big-num-row">
+        <text class="big-num">{{ bmr }}</text>
+        <text class="big-unit">kcal / 天（基础代谢 BMR）</text>
       </view>
-
-      <!-- 体重 -->
-      <view class="field">
-        <view class="field-label">
-          <view class="field-ico ico-weight"></view>
-          <text class="field-name">体重</text>
-        </view>
-        <view class="field-input-wrap">
-          <input
-            v-if="editing"
-            class="field-input"
-            type="number"
-            v-model="weight"
-            placeholder="如 60"
-          />
-          <text v-else class="field-value">{{ weight || '--' }}</text>
-          <text class="field-unit">kg</text>
-        </view>
+      <view class="kv"><text class="kv-k">瘦体重</text><text class="kv-v">{{ leanMass || '—' }} kg</text></view>
+      <view class="kv">
+        <text class="kv-k">BMI</text>
+        <text class="kv-v">{{ bmi || '—' }} {{ bmiTag ? '（' + bmiTag + '）' : '' }}</text>
       </view>
-
-      <!-- 年龄 -->
-      <view class="field">
-        <view class="field-label">
-          <view class="field-ico ico-age"></view>
-          <text class="field-name">年龄</text>
-        </view>
-        <view class="field-input-wrap">
-          <input
-            v-if="editing"
-            class="field-input"
-            type="number"
-            v-model="age"
-            placeholder="如 25"
-          />
-          <text v-else class="field-value">{{ age || '--' }}</text>
-          <text class="field-unit">岁</text>
-        </view>
+      <view class="kv"><text class="kv-k">活动系数</text><text class="kv-v">{{ form.activity }}</text></view>
+      <view class="kv">
+        <text class="kv-k">每日总消耗 TDEE</text>
+        <text class="kv-v strong">{{ tdee }} kcal</text>
       </view>
+      <text class="hint">TDEE = BMR × 活动系数，不含运动；运动消耗在「运动」页记录后叠加。</text>
     </view>
 
-    <!-- 提示 -->
-    <text class="tip">体重用于估算运动热量，身高与年龄用于后续健康指标</text>
+    <!-- 每日目标 -->
+    <view class="card">
+      <view class="card-head">
+        <text class="card-title">每日目标</text>
+        <text class="rec-btn" @click="applyRecommend">一键推荐</text>
+      </view>
+      <view class="field">
+        <text class="field-label">热量</text>
+        <input class="field-inp" type="number" v-model="goals.calorie" placeholder="留空则不设" placeholder-class="ph" />
+        <text class="field-unit">kcal</text>
+      </view>
+      <view class="field">
+        <text class="field-label">饮水</text>
+        <input class="field-inp" type="number" v-model="goals.water" placeholder="杯" placeholder-class="ph" />
+        <text class="field-unit">杯</text>
+      </view>
+      <view class="field">
+        <text class="field-label">蛋白质</text>
+        <input class="field-inp" type="number" v-model="goals.protein" placeholder="g" placeholder-class="ph" />
+        <text class="field-unit">g</text>
+      </view>
+      <view class="field">
+        <text class="field-label">目标体重</text>
+        <input class="field-inp" type="digit" v-model="goals.weight" placeholder="kg" placeholder-class="ph" />
+        <text class="field-unit">kg</text>
+      </view>
+      <view class="btn" @click="saveGoalInfo">保存目标</view>
+    </view>
+
+    <!-- 体重记录与趋势 -->
+    <view class="card">
+      <view class="card-head">
+        <text class="card-title">体重记录</text>
+        <text class="card-extra">今天 {{ todayDate }}</text>
+      </view>
+      <view class="field">
+        <text class="field-label">今天体重</text>
+        <input class="field-inp" type="digit" v-model="weightInput" placeholder="如 72.6" placeholder-class="ph" />
+        <text class="field-unit">kg</text>
+        <text class="save-mini" @click="saveTodayWeight">记下</text>
+      </view>
+      <view class="kv" v-if="weightCount">
+        <text class="kv-k">最近一次</text>
+        <text class="kv-v">{{ lastWeight }} kg（{{ lastWeightDate }}）</text>
+      </view>
+      <view class="kv" v-if="weightCount >= 2">
+        <text class="kv-k">趋势</text>
+        <text class="kv-v">{{ slopeText }}</text>
+      </view>
+      <view class="kv" v-if="forecastText">
+        <text class="kv-k">按当前趋势</text>
+        <text class="kv-v">{{ forecastText }}</text>
+      </view>
+      <text class="hint" v-if="!weightCount">还没有体重记录；建议每周固定时间称一次，趋势才准。</text>
+    </view>
+
+    <!-- 数据备份 -->
+    <view class="card">
+      <text class="card-title">数据备份</text>
+      <text class="hint">数据只存在这台设备上。换手机前先导出，粘到备忘录或发给自己即可。</text>
+      <view class="btn-row">
+        <view class="btn ghost" @click="exportData">导出到剪贴板</view>
+        <view class="btn ghost" @click="importData">从剪贴板导入</view>
+      </view>
+    </view>
   </view>
 </template>
 
 <script>
-import { getHeight, saveHeight, getWeight, saveWeight, getAge, saveAge } from '@/utils/storage.js'
+import {
+  getBody, saveBody, getGoals, saveGoals,
+  getWeightLog, upsertWeight, today,
+} from '@/utils/body-store.js'
+import {
+  ACTIVITY_OPTIONS, calcBMR, calcBMI, calcLeanMass, calcTDEE, recommendGoals,
+  calcWeightSlope, forecastDaysToGoal, bmiLabel as bmiTagOf,
+} from '@/utils/body-calc.js'
+import { getRecords } from '@/utils/storage.js'
 
 export default {
   data() {
     return {
-      editing: false,
-      height: '',
-      weight: '',
-      age: '',
+      todayDate: today(),
+      form: { sex: 'male', age: '', height: '', weight: '', bodyFat: '', activity: 1.2 },
+      goals: { calorie: '', water: 8, protein: '', weight: '' },
+      weightInput: '',
+      weightCount: 0,
+      lastWeight: '',
+      lastWeightDate: '',
+      slope: 0,
+      activityLabels: ACTIVITY_OPTIONS.map((o) => o.label),
     }
   },
+  computed: {
+    activityIndex() {
+      const i = ACTIVITY_OPTIONS.findIndex((o) => Number(o.value) === Number(this.form.activity))
+      return i < 0 ? 0 : i
+    },
+    bmrInfo() {
+      return calcBMR(this.form)
+    },
+    bmr() {
+      return this.bmrInfo.value
+    },
+    bmrHint() {
+      const f = this.bmrInfo.formula
+      if (f === 'katch') return '已按体脂率用 Katch-McArdle 公式计算（更准）'
+      if (f === 'mifflin') return '未填体脂率，用 Mifflin-St Jeor 公式按身高/年龄/性别估算'
+      return '填上体重，再加身高年龄（或体脂率）就能算出基础代谢'
+    },
+    leanMass() {
+      return calcLeanMass(this.form.weight, this.form.bodyFat)
+    },
+    bmi() {
+      return calcBMI(this.form.weight, this.form.height)
+    },
+    bmiTag() {
+      return bmiTagOf(this.bmi)
+    },
+    tdee() {
+      return calcTDEE(this.bmr, this.form.activity, 0)
+    },
+    slopeText() {
+      const v = this.slope
+      if (!v) return '基本持平'
+      const abs = Math.abs(v)
+      return `${v < 0 ? '下降' : '上升'}中 · 每天约 ${abs.toFixed(2)} kg（每周约 ${(abs * 7).toFixed(2)} kg）`
+    },
+    forecastText() {
+      const goal = Number(this.goals.weight)
+      if (!(goal > 0) || !this.lastWeight) return ''
+      const days = forecastDaysToGoal(Number(this.lastWeight), this.slope, goal)
+      if (days === 0) return '已经到目标体重了'
+      if (days < 0) return '按当前趋势还到不了目标，先稳定记录'
+      return `约 ${days} 天到 ${goal} kg`
+    },
+  },
   onShow() {
-    this.load()
+    this.reload()
   },
   methods: {
-    load() {
-      this.height = getHeight()
-      this.weight = getWeight()
-      this.age = getAge()
-    },
-    toggleEdit() {
-      if (this.editing) {
-        this.save()
-        return
+    reload() {
+      const body = getBody()
+      this.form = {
+        sex: body.sex,
+        age: body.age,
+        height: body.height,
+        weight: body.weight,
+        bodyFat: body.bodyFat,
+        activity: body.activity,
       }
-      this.editing = true
+      const g = getGoals()
+      this.goals = {
+        calorie: g.calorie ? String(g.calorie) : '',
+        water: g.water,
+        protein: g.protein ? String(g.protein) : '',
+        weight: g.weight ? String(g.weight) : '',
+      }
+      const log = getWeightLog()
+      this.weightCount = log.length
+      if (log.length) {
+        this.lastWeight = log[log.length - 1].w
+        this.lastWeightDate = log[log.length - 1].d
+        this.slope = calcWeightSlope(log.slice(-30))
+      } else {
+        this.lastWeight = ''
+        this.lastWeightDate = ''
+        this.slope = 0
+      }
     },
-    save() {
-      const h = Number(this.height)
-      const w = Number(this.weight)
-      const a = Number(this.age)
-      if (!(h >= 50 && h <= 250)) return this.warn('请输入有效身高（50-250cm）')
-      if (!(w >= 30 && w <= 300)) return this.warn('请输入有效体重（30-300kg）')
-      if (!(a >= 1 && a <= 120)) return this.warn('请输入有效年龄（1-120岁）')
-
-      saveHeight(h)
-      saveWeight(w)
-      saveAge(a)
-      this.height = h
-      this.weight = w
-      this.age = a
-      this.editing = false
+    onActivityChange(e) {
+      const opt = ACTIVITY_OPTIONS[Number(e.detail.value)]
+      if (opt) this.form.activity = opt.value
+    },
+    saveBodyInfo() {
+      saveBody({
+        sex: this.form.sex,
+        age: this.form.age,
+        height: this.form.height,
+        weight: this.form.weight,
+        bodyFat: this.form.bodyFat,
+        activity: this.form.activity,
+      })
+      this.reload()
       uni.showToast({ title: '已保存', icon: 'success' })
     },
-    warn(msg) {
-      uni.showToast({ title: msg, icon: 'none' })
+    saveGoalInfo() {
+      saveGoals({
+        calorie: this.goals.calorie,
+        water: this.goals.water,
+        protein: this.goals.protein,
+        weight: this.goals.weight,
+      })
+      this.reload()
+      uni.showToast({ title: '已保存', icon: 'success' })
+    },
+    applyRecommend() {
+      const r = recommendGoals({
+        tdee: this.tdee,
+        bmr: this.bmr,
+        weightKg: this.form.weight,
+        targetWeight: this.goals.weight,
+      })
+      if (!r.calorie) {
+        uni.showToast({ title: '先填身体信息', icon: 'none' })
+        return
+      }
+      this.goals.calorie = String(r.calorie)
+      this.goals.water = r.water
+      this.goals.protein = String(r.protein)
+      this.saveGoalInfo()
+    },
+    saveTodayWeight() {
+      const w = Number(this.weightInput)
+      if (!(w > 0)) {
+        uni.showToast({ title: '填一下体重', icon: 'none' })
+        return
+      }
+      upsertWeight(this.todayDate, w)
+      // 同时更新身体信息里的当前体重，保证各处口径一致
+      saveBody({ weight: w })
+      this.weightInput = ''
+      this.reload()
+      uni.showToast({ title: '已记录', icon: 'success' })
+    },
+    exportData() {
+      const payload = {
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        body: getBody(),
+        goals: getGoals(),
+        weightLog: getWeightLog(),
+        records: getRecords(),
+        // 直接读原始键，保证导出是全量而不是只导出今天
+        dietDays: uni.getStorageSync('fh_diet_days') || {},
+        waterDays: uni.getStorageSync('fh_water_days') || {},
+        activityDays: uni.getStorageSync('fh_activity_days') || {},
+      }
+      uni.setClipboardData({
+        data: JSON.stringify(payload),
+        success: () => uni.showToast({ title: '已复制到剪贴板', icon: 'success' }),
+        fail: () => uni.showToast({ title: '复制失败', icon: 'none' }),
+      })
+    },
+    importData() {
+      uni.getClipboardData({
+        success: (res) => {
+          let data
+          try {
+            data = JSON.parse(res.data)
+          } catch (e) {
+            uni.showToast({ title: '剪贴板不是有效的备份', icon: 'none' })
+            return
+          }
+          if (!data || !data.version) {
+            uni.showToast({ title: '备份格式不对', icon: 'none' })
+            return
+          }
+          uni.showModal({
+            title: '导入会覆盖当前数据',
+            content: '确定用剪贴板里的备份覆盖这台设备上的记录吗？',
+            success: (m) => {
+              if (!m.confirm) return
+              if (data.body) saveBody(data.body)
+              if (data.goals) saveGoals(data.goals)
+              if (data.weightLog) uni.setStorageSync('fh_weight_log', data.weightLog)
+              if (data.records) uni.setStorageSync('fh_records', data.records)
+              if (data.dietDays) uni.setStorageSync('fh_diet_days', data.dietDays)
+              if (data.waterDays) uni.setStorageSync('fh_water_days', data.waterDays)
+              if (data.activityDays) uni.setStorageSync('fh_activity_days', data.activityDays)
+              this.reload()
+              uni.showToast({ title: '已导入', icon: 'success' })
+            },
+          })
+        },
+        fail: () => uni.showToast({ title: '读不到剪贴板', icon: 'none' }),
+      })
     },
   },
 }
@@ -137,158 +357,155 @@ export default {
 <style lang="scss" scoped>
 .page {
   min-height: 100vh;
-  padding: 24rpx 32rpx 48rpx;
-  background-color: $bg-page;
+  padding-bottom: 160rpx; // 让出底部 tabBar 的高度，避免最后一张卡被压住
+  background: $bg-page;
 }
-
-/* 顶栏 */
-.topbar {
+.card {
+  margin: 20rpx 24rpx 0;
+  padding: 24rpx;
+  border-radius: 24rpx;
+  background: $bg-card;
+  border: 1rpx solid $border-subtle;
+}
+.card-head {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  padding: 24rpx 0 32rpx;
+  align-items: baseline;
 }
-.topbar-title {
-  display: flex;
-  flex-direction: column;
-}
-.topbar-name {
-  font-size: 40rpx;
+.card-title {
+  font-size: 30rpx;
   font-weight: 700;
   color: $text-main;
 }
-.topbar-sub {
-  margin-top: 8rpx;
-  font-size: 24rpx;
+.card-extra {
+  font-size: 22rpx;
   color: $text-secondary;
-}
-
-/* 图标按钮（编辑/保存） */
-.icon-btn {
-  width: 84rpx;
-  height: 84rpx;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.2s;
-}
-.icon-btn-edit {
-  background: rgba(43, 212, 92, 0.14);
-}
-.icon-btn-save {
-  background: linear-gradient(135deg, #2bd45c, #17a348);
-  box-shadow: 0 8rpx 24rpx rgba(43, 212, 92, 0.28);
-}
-.icon-edit {
-  font-size: 40rpx;
-  color: $brand-primary;
-  font-weight: 600;
-}
-.icon-save {
-  font-size: 44rpx;
-  color: #06180d;
-  font-weight: 700;
-}
-
-/* 档案卡片 */
-.profile-card {
-  background: $bg-card;
-  border-radius: 32rpx;
-  padding: 8rpx 32rpx;
 }
 .field {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 36rpx 0;
-}
-.field + .field {
-  border-top: 1rpx solid $border-subtle;
+  gap: 16rpx;
+  padding: 18rpx 0;
+  border-bottom: 1rpx solid $border-subtle;
 }
 .field-label {
-  display: flex;
-  align-items: center;
+  width: 150rpx;
+  font-size: 26rpx;
+  color: $text-secondary;
 }
-.field-ico {
-  width: 64rpx;
-  height: 64rpx;
-  border-radius: 16rpx;
-  margin-right: 20rpx;
-}
-.ico-height {
-  background: rgba(43, 212, 92, 0.12);
-}
-.ico-weight {
-  background: rgba(87, 166, 255, 0.14);
-}
-.ico-age {
-  background: rgba(255, 170, 64, 0.14);
-}
-/* 用迷你图形做图标（非文字按钮） */
-.ico-height::after {
-  content: '';
-  display: block;
-  width: 24rpx;
-  height: 36rpx;
-  margin: 14rpx auto;
-  border-bottom: 2rpx solid $brand-primary;
-  border-left: 2rpx solid $brand-primary;
-}
-.ico-weight::after {
-  content: '';
-  display: block;
-  width: 22rpx;
-  height: 22rpx;
-  margin: 21rpx auto;
-  border-radius: 50%;
-  border: 3rpx solid rgba(87, 166, 255, 0.9);
-}
-.ico-age::after {
-  content: '';
-  display: block;
-  width: 22rpx;
-  height: 30rpx;
-  margin: 15rpx auto;
-  border: 3rpx solid rgba(255, 170, 64, 0.9);
-  border-radius: 8rpx;
-}
-.field-name {
-  font-size: 30rpx;
-  color: $text-main;
-  font-weight: 600;
-}
-.field-input-wrap {
-  display: flex;
-  align-items: baseline;
-}
-.field-input {
-  width: 220rpx;
-  height: 72rpx;
-  background: $bg-card-light;
-  border-radius: 16rpx;
-  padding: 0 24rpx;
-  font-size: 30rpx;
+.field-inp {
+  flex: 1;
+  height: 60rpx;
+  font-size: 28rpx;
   color: $text-main;
   text-align: right;
 }
-.field-value {
-  font-size: 32rpx;
-  color: $text-main;
-  font-weight: 700;
+.ph {
+  color: $text-muted;
 }
 .field-unit {
-  margin-left: 12rpx;
-  font-size: 26rpx;
-  color: $text-muted;
-}
-
-.tip {
-  display: block;
-  margin-top: 24rpx;
-  padding: 0 8rpx;
   font-size: 24rpx;
   color: $text-muted;
-  line-height: 1.6;
+  min-width: 60rpx;
+  text-align: right;
+}
+.seg {
+  display: flex;
+  gap: 12rpx;
+}
+.seg-item {
+  padding: 10rpx 28rpx;
+  border-radius: 999rpx;
+  background: $bg-card-light;
+  color: $text-secondary;
+  font-size: 26rpx;
+  border: 1rpx solid $border-subtle;
+}
+.seg-item.on {
+  color: #06180d;
+  background: $brand-primary;
+  font-weight: 700;
+  border-color: transparent;
+}
+.picker-value {
+  font-size: 28rpx;
+  color: $text-main;
+  text-align: right;
+}
+.hint {
+  display: block;
+  margin-top: 14rpx;
+  font-size: 22rpx;
+  color: $text-muted;
+  line-height: 1.5;
+}
+.btn {
+  margin-top: 22rpx;
+  text-align: center;
+  padding: 22rpx 0;
+  border-radius: 16rpx;
+  background: linear-gradient(135deg, #2bd45c, #17a348);
+  color: #06180d;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+.btn.ghost {
+  background: $bg-card-light;
+  color: $text-main;
+  border: 1rpx solid $border-subtle;
+}
+.btn-row {
+  display: flex;
+  gap: 16rpx;
+}
+.btn-row .btn {
+  flex: 1;
+}
+.big-num-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12rpx;
+  margin-top: 12rpx;
+}
+.big-num {
+  font-size: 64rpx;
+  font-weight: 800;
+  color: #f2f3f5;
+  line-height: 1;
+}
+.big-unit {
+  font-size: 22rpx;
+  color: $text-secondary;
+}
+.kv {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 16rpx;
+}
+.kv-k {
+  font-size: 26rpx;
+  color: $text-secondary;
+}
+.kv-v {
+  font-size: 26rpx;
+  color: $text-main;
+}
+.kv-v.strong {
+  color: #ffb347;
+  font-weight: 700;
+}
+.rec-btn {
+  font-size: 24rpx;
+  color: $brand-primary;
+  border: 1rpx solid rgba(43, 212, 92, 0.5);
+  padding: 8rpx 20rpx;
+  border-radius: 999rpx;
+}
+.save-mini {
+  font-size: 24rpx;
+  color: #06180d;
+  background: $brand-primary;
+  padding: 10rpx 22rpx;
+  border-radius: 999rpx;
 }
 </style>

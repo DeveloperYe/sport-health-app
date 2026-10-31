@@ -1,82 +1,158 @@
 <template>
   <view class="page">
-    <!-- 模式切换 -->
-    <view class="mode-switch">
-      <view
-        v-for="(m, key) in MODES"
-        :key="key"
-        class="mode-item"
-        :class="{ active: mode === key }"
-        @click="switchMode(key)"
-      >
-        {{ m.label }}
+    <!-- 顶层切换：有轨迹的运动 / 其他运动（按 MET × 时长算消耗） -->
+    <view class="page-tab">
+      <view class="page-tab-item" :class="{ active: pageTab === 'track' }" @click="switchTab('track')">
+        跑步 / 走路
+      </view>
+      <view class="page-tab-item" :class="{ active: pageTab === 'other' }" @click="switchTab('other')">
+        其他运动
       </view>
     </view>
 
-    <!-- 轨迹图：优先青岛离线底图 + 轨迹叠加；底图起不来或轨迹越出离线包
-         范围时，整体切回 track-map 自绘层（二选一，绝不同时显示两套）。 -->
-    <view class="map-wrap">
-      <map-view
-        v-if="mapMode === 'basemap'"
-        :points="trackPoints"
-        :hint-text="mapHintText"
-        @fail="onMapFail"
-        @outofbounds="onMapOutOfBounds"
-      />
-      <track-map v-else :points="trackPoints" :empty-text="mapEmptyText" />
-      <text class="map-fallback" v-if="mapMode === 'fallback' && mapFallbackText">
-        已回退自绘轨迹图：{{ mapFallbackText }}
-      </text>
-      <text class="gps-err" v-if="gpsError">{{ gpsError }}</text>
-    </view>
-
-    <!-- 计时器 -->
-    <view class="timer-card">
-      <text class="timer-time">{{ timeText }}</text>
-      <view class="timer-sub">
-        <view class="timer-sub-item">
-          <text class="timer-sub-num">{{ distanceText }}</text>
-          <text class="timer-sub-label">距离</text>
-        </view>
-        <view class="timer-sub-item">
-          <text class="timer-sub-num">{{ paceText }}</text>
-          <text class="timer-sub-label">配速</text>
-        </view>
-        <view class="timer-sub-item">
-          <text class="timer-sub-num">{{ stepPreview }}</text>
-          <text class="timer-sub-label">步数</text>
-        </view>
-        <view class="timer-sub-item">
-          <text class="timer-sub-num">{{ caloriePreview }}</text>
-          <text class="timer-sub-label">千卡</text>
+    <!-- ===== A. 跑步 / 走路：离线底图 + 实时轨迹 ===== -->
+    <template v-if="pageTab === 'track'">
+      <!-- 模式切换 -->
+      <view class="mode-switch">
+        <view
+          v-for="(m, key) in MODES"
+          :key="key"
+          class="mode-item"
+          :class="{ active: mode === key }"
+          @click="switchMode(key)"
+        >
+          {{ m.label }}
         </view>
       </view>
-      <text class="timer-hint" v-if="state === 'idle'">准备好后，点击开始</text>
-      <text class="timer-hint" v-else-if="state === 'running'">运动进行中…</text>
-      <text class="timer-hint" v-else>已暂停</text>
-      <!-- 临时诊断（定位后移除） -->
-      <!-- #ifdef APP-PLUS -->
-      <text v-if="diag" class="timer-diag">{{ diag }}</text>
-      <!-- #endif -->
-    </view>
 
-    <!-- 操作按钮 -->
-    <view class="actions">
-      <!-- 未开始 -->
-      <view v-if="state === 'idle'" class="btn btn-primary" @click="start">开始运动</view>
+      <!-- 轨迹图：优先青岛离线底图 + 轨迹叠加；底图起不来或轨迹越出离线包
+           范围时，整体切回 track-map 自绘层（二选一，绝不同时显示两套）。 -->
+      <view class="map-wrap">
+        <map-view
+          v-if="mapMode === 'basemap'"
+          :points="trackPoints"
+          :hint-text="mapHintText"
+          @fail="onMapFail"
+          @outofbounds="onMapOutOfBounds"
+        />
+        <track-map v-else :points="trackPoints" :empty-text="mapEmptyText" />
+        <text class="map-fallback" v-if="mapMode === 'fallback' && mapFallbackText">
+          已回退自绘轨迹图：{{ mapFallbackText }}
+        </text>
+        <text class="gps-err" v-if="gpsError">{{ gpsError }}</text>
+      </view>
 
-      <!-- 进行中 -->
-      <template v-else-if="state === 'running'">
-        <view class="btn btn-ghost" @click="pause">暂停</view>
-        <view class="btn btn-primary" @click="finish">结束</view>
-      </template>
+      <!-- 计时器 -->
+      <view class="timer-card">
+        <text class="timer-time">{{ timeText }}</text>
+        <view class="timer-sub">
+          <view class="timer-sub-item">
+            <text class="timer-sub-num">{{ distanceText }}</text>
+            <text class="timer-sub-label">距离</text>
+          </view>
+          <view class="timer-sub-item">
+            <text class="timer-sub-num">{{ paceText }}</text>
+            <text class="timer-sub-label">配速</text>
+          </view>
+          <view class="timer-sub-item">
+            <text class="timer-sub-num">{{ stepPreview }}</text>
+            <text class="timer-sub-label">步数</text>
+          </view>
+          <view class="timer-sub-item">
+            <text class="timer-sub-num">{{ caloriePreview }}</text>
+            <text class="timer-sub-label">千卡</text>
+          </view>
+        </view>
+        <text class="timer-hint" v-if="state === 'idle'">准备好后，点击开始</text>
+        <text class="timer-hint" v-else-if="state === 'running'">运动进行中…</text>
+        <text class="timer-hint" v-else>已暂停</text>
+        <!-- 临时诊断（定位后移除） -->
+        <!-- #ifdef APP-PLUS -->
+        <text v-if="diag" class="timer-diag">{{ diag }}</text>
+        <!-- #endif -->
+      </view>
 
-      <!-- 已暂停 -->
-      <template v-else>
-        <view class="btn btn-ghost" @click="finish">结束</view>
-        <view class="btn btn-primary" @click="resume">继续</view>
-      </template>
-    </view>
+      <!-- 操作按钮 -->
+      <view class="actions">
+        <!-- 未开始 -->
+        <view v-if="state === 'idle'" class="btn btn-primary" @click="start">开始运动</view>
+
+        <!-- 进行中 -->
+        <template v-else-if="state === 'running'">
+          <view class="btn btn-ghost" @click="pause">暂停</view>
+          <view class="btn btn-primary" @click="finish">结束</view>
+        </template>
+
+        <!-- 已暂停 -->
+        <template v-else>
+          <view class="btn btn-ghost" @click="finish">结束</view>
+          <view class="btn btn-primary" @click="resume">继续</view>
+        </template>
+      </view>
+    </template>
+
+    <!-- ===== B. 其他运动：选动作 + 填时长 → 按体重算消耗 ===== -->
+    <template v-else>
+      <view class="ot-card">
+        <text class="ot-title">选一个动作</text>
+        <input
+          class="ot-input"
+          v-model="otherQuery"
+          placeholder="搜动作，如 游泳 / 深蹲 / 篮球"
+          placeholder-class="ot-ph"
+          @input="searchOther"
+        />
+        <view class="ot-chips">
+          <view class="ot-chip" v-for="q in quick" :key="q.name" @click="pickOther(q)">
+            + {{ q.name }}
+          </view>
+        </view>
+        <view class="ot-results" v-if="otherResults.length">
+          <view class="ot-result" v-for="r in otherResults" :key="r.name + r.met" @click="pickOther(r)">
+            <text class="ot-result-name">{{ r.name }}</text>
+            <text class="ot-result-met">MET {{ r.met }}</text>
+          </view>
+        </view>
+      </view>
+
+      <view class="ot-card" v-if="other.met > 0">
+        <view class="ot-picked">
+          <text class="ot-picked-name">{{ other.name }}</text>
+          <text class="ot-picked-met">MET {{ other.met }}</text>
+        </view>
+        <view class="ot-row">
+          <text class="ot-label">时长</text>
+          <input class="ot-input ot-input-min" type="number" v-model="other.minutes" placeholder="分钟" />
+          <text class="ot-unit">分钟</text>
+        </view>
+        <view class="ot-row ot-row-calc">
+          <text class="ot-label">预计消耗</text>
+          <text class="ot-cal">{{ otherCalorie }} kcal</text>
+        </view>
+        <text class="ot-hint">按 MET × 体重 {{ weight }} kg × 时长 估算</text>
+        <view class="btn btn-primary ot-btn" @click="addOther">记下来</view>
+      </view>
+
+      <view class="ot-card">
+        <view class="ot-list-head">
+          <text class="ot-title">今日其他运动</text>
+          <text class="ot-sum" v-if="otherSummary.count">
+            {{ otherSummary.count }} 项 · {{ otherSummary.minutes }} 分钟 · {{ otherSummary.calorie }} kcal
+          </text>
+        </view>
+        <view v-if="!todayOther.length" class="ot-empty">
+          今天还没有记录：上面选一个动作、填时长，点「记下来」
+        </view>
+        <view class="ot-item" v-for="it in todayOther" :key="it.id">
+          <view class="ot-item-main">
+            <text class="ot-item-name">{{ it.name }}</text>
+            <text class="ot-item-sub">MET {{ it.met }} · {{ it.minutes }} 分钟</text>
+          </view>
+          <text class="ot-item-cal">{{ it.calorie }} kcal</text>
+          <text class="ot-item-del" @click="removeOther(it.id)">删除</text>
+        </view>
+      </view>
+    </template>
   </view>
 </template>
 
@@ -88,6 +164,16 @@ import { getStepDiag } from '@/utils/health.js'
 // #endif
 import { getTodayData, saveTodayData, addRecord, getWeight } from '@/utils/storage.js'
 import { syncDaily } from '@/utils/cloud.js'
+// 其他运动：MET 库检索 + 按 MET×体重×时长 算消耗 + 当日记录存储
+import { QUICK_EXERCISES, searchExercises } from '@/utils/nutrition.js'
+import { calcExerciseCalorie } from '@/utils/body-calc.js'
+import {
+  getDayActivities,
+  addActivity,
+  removeActivity,
+  summarizeActivities,
+} from '@/utils/activity-store.js'
+import { today as todayStr } from '@/utils/body-store.js'
 // GPS 轨迹：采集/滤波/距离在 track.js，格式化在 geo.js
 import { startTrack, stopTrack, pauseTrack, resumeTrack, onTrackUpdate, getTrack } from '@/utils/track.js'
 import { formatDistance, formatPace } from '@/utils/geo.js'
@@ -124,6 +210,14 @@ export default {
       mapMode: 'basemap',
       mapBroken: false, // 底图彻底不可用（整轮会话都不再试）
       mapFallbackText: '',
+      // ===== 顶层页签：跑步/走路（有轨迹） vs 其他运动（按 MET 时长） =====
+      pageTab: 'track',
+      quick: QUICK_EXERCISES,
+      otherQuery: '',
+      otherResults: [],
+      other: { name: '', met: 0, minutes: '' },
+      todayOther: [], // 今天已记录的其他运动
+      otherSummary: { calorie: 0, minutes: 0, count: 0 },
     }
   },
   computed: {
@@ -156,9 +250,14 @@ export default {
       if (this.state === 'idle') return '青岛离线底图已就绪，开始运动后叠加轨迹'
       return '等待 GPS 定位…（室外更快）'
     },
+    // 其他运动：MET × 体重 × 时长（与跑步页同一口径，保证热量缺口能对上）
+    otherCalorie() {
+      return calcExerciseCalorie(this.other.met, this.weight, this.other.minutes)
+    },
   },
   onShow() {
     this.weight = getWeight()
+    this.loadTodayOther()
   },
   onUnload() {
     this.clearTimer()
@@ -171,6 +270,58 @@ export default {
     stopTrack()
   },
   methods: {
+    // ===== 顶层页签 =====
+    switchTab(tab) {
+      // 运动进行中不允许切走，避免地图与计时状态错乱
+      if (this.state !== 'idle') {
+        uni.showToast({ title: '先结束当前运动', icon: 'none' })
+        return
+      }
+      this.pageTab = tab
+      if (tab === 'other') this.loadTodayOther()
+    },
+
+    // ===== 其他运动 =====
+    searchOther() {
+      this.otherResults = searchExercises(this.otherQuery, 12)
+    },
+    pickOther(item) {
+      this.other.name = item.name
+      this.other.met = Number(item.met) || 0
+      this.otherResults = []
+      this.otherQuery = ''
+    },
+    addOther() {
+      const minutes = Number(this.other.minutes)
+      if (!this.other.met) {
+        uni.showToast({ title: '先选一个动作', icon: 'none' })
+        return
+      }
+      if (!(minutes > 0)) {
+        uni.showToast({ title: '填一下时长', icon: 'none' })
+        return
+      }
+      addActivity(todayStr(), {
+        name: this.other.name,
+        met: this.other.met,
+        minutes,
+        calorie: calcExerciseCalorie(this.other.met, this.weight, minutes),
+        weightUsed: this.weight,
+      })
+      this.other = { name: '', met: 0, minutes: '' }
+      this.loadTodayOther()
+      uni.showToast({ title: '已记录', icon: 'success' })
+    },
+    removeOther(id) {
+      removeActivity(todayStr(), id)
+      this.loadTodayOther()
+    },
+    loadTodayOther() {
+      const list = getDayActivities(todayStr())
+      this.todayOther = list
+      this.otherSummary = summarizeActivities(list)
+    },
+
     switchMode(key) {
       if (this.state !== 'idle') return
       this.mode = key
@@ -350,7 +501,8 @@ export default {
 <style lang="scss" scoped>
 .page {
   min-height: 100vh;
-  padding: 32rpx 32rpx 48rpx;
+  /* 底部多留一些，避免最后一张卡被固定 tabBar 压住 */
+  padding: 32rpx 32rpx 160rpx;
   background-color: $bg-page;
   display: flex;
   flex-direction: column;
@@ -478,5 +630,187 @@ export default {
   background: $bg-card-light;
   color: $text-main;
   border: 1rpx solid $border-subtle;
+}
+
+/* ===== 顶层页签：跑步/走路 · 其他运动 ===== */
+.page-tab {
+  display: flex;
+  gap: 12rpx;
+  padding: 16rpx 24rpx 0;
+}
+.page-tab-item {
+  flex: 1;
+  text-align: center;
+  padding: 18rpx 0;
+  border-radius: 16rpx;
+  background: $bg-card;
+  color: $text-secondary;
+  font-size: 28rpx;
+  border: 1rpx solid $border-subtle;
+}
+.page-tab-item.active {
+  color: #06180d;
+  font-weight: 700;
+  background: linear-gradient(135deg, #2bd45c, #17a348);
+  border-color: transparent;
+}
+
+/* ===== 其他运动面板 ===== */
+.ot-card {
+  margin: 20rpx 24rpx 0;
+  padding: 26rpx;
+  border-radius: 24rpx;
+  background: $bg-card;
+  border: 1rpx solid $border-subtle;
+}
+.ot-title {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: $text-main;
+}
+.ot-input {
+  margin-top: 18rpx;
+  height: 76rpx;
+  padding: 0 20rpx;
+  border-radius: 16rpx;
+  background: $bg-card-light;
+  color: $text-main;
+  font-size: 28rpx;
+  border: 1rpx solid $border-subtle;
+}
+.ot-ph {
+  color: $text-muted;
+}
+.ot-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14rpx;
+  margin-top: 18rpx;
+}
+.ot-chip {
+  padding: 12rpx 22rpx;
+  border-radius: 999rpx;
+  background: $bg-card-light;
+  color: $text-main;
+  font-size: 26rpx;
+  border: 1rpx solid $border-subtle;
+}
+.ot-results {
+  margin-top: 16rpx;
+  border-top: 1rpx solid $border-subtle;
+}
+.ot-result {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20rpx 4rpx;
+  border-bottom: 1rpx solid $border-subtle;
+}
+.ot-result-name {
+  font-size: 28rpx;
+  color: $text-main;
+  flex: 1;
+}
+.ot-result-met {
+  font-size: 24rpx;
+  color: $text-secondary;
+}
+.ot-picked {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.ot-picked-name {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: $brand-primary;
+}
+.ot-picked-met {
+  font-size: 24rpx;
+  color: $text-secondary;
+}
+.ot-row {
+  display: flex;
+  align-items: center;
+  margin-top: 20rpx;
+  gap: 16rpx;
+}
+.ot-label {
+  width: 120rpx;
+  font-size: 28rpx;
+  color: $text-secondary;
+}
+.ot-input-min {
+  flex: 1;
+  margin-top: 0;
+  text-align: center;
+}
+.ot-unit {
+  font-size: 26rpx;
+  color: $text-muted;
+}
+.ot-row-calc {
+  padding-top: 16rpx;
+  border-top: 1rpx solid $border-subtle;
+}
+.ot-cal {
+  font-size: 40rpx;
+  font-weight: 700;
+  color: #ffb347;
+}
+.ot-hint {
+  display: block;
+  margin-top: 10rpx;
+  font-size: 22rpx;
+  color: $text-muted;
+}
+.ot-btn {
+  margin-top: 22rpx;
+}
+.ot-list-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.ot-sum {
+  font-size: 22rpx;
+  color: $text-secondary;
+}
+.ot-empty {
+  margin-top: 18rpx;
+  font-size: 24rpx;
+  color: $text-muted;
+  line-height: 1.6;
+}
+.ot-item {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 22rpx 0;
+  border-bottom: 1rpx solid $border-subtle;
+}
+.ot-item-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.ot-item-name {
+  font-size: 28rpx;
+  color: $text-main;
+}
+.ot-item-sub {
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  color: $text-secondary;
+}
+.ot-item-cal {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: #ffb347;
+}
+.ot-item-del {
+  font-size: 24rpx;
+  color: $text-muted;
+  padding-left: 8rpx;
 }
 </style>
