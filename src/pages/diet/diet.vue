@@ -13,6 +13,12 @@
       </view>
     </view>
 
+    <!-- 快捷操作：把昨天的记录整套复制到今天（大多数人吃得差不多） -->
+    <view class="quick-row">
+      <text class="quick-btn" @click="copyYesterday">复制昨天的记录</text>
+      <text class="quick-info" v-if="summary.count">{{ summary.count }} 条 · 碳水 {{ summary.carb }}g · 蛋白 {{ summary.protein }}g</text>
+    </view>
+
     <!-- 热量总览：缺口是这一页最想让你看见的数字 -->
     <view class="hero">
       <text class="hero-label">{{ gapLabel }}</text>
@@ -83,7 +89,7 @@
         </view>
       </view>
       <view v-if="!byMeal[m.key] || !byMeal[m.key].length" class="empty">还没有记录</view>
-      <view class="entry" v-for="e in byMeal[m.key]" :key="e.id">
+      <view class="entry" v-for="e in byMeal[m.key]" :key="e.id" @click="entryAction(e)">
         <view class="entry-main">
           <text class="entry-name">{{ e.name }}</text>
           <text class="entry-sub">
@@ -91,7 +97,7 @@
           </text>
         </view>
         <text class="entry-cal">{{ e.calorie }}</text>
-        <text class="entry-del" @click="remove(e)">删</text>
+        <text class="entry-del" @click.stop="remove(e)">删</text>
       </view>
     </view>
 
@@ -174,7 +180,7 @@
 </template>
 
 <script>
-import { MEALS, MEAL_MAP, getDayEntries, addEntry, removeEntry, summarizeByMeal, setWater as saveWater } from '@/utils/diet-store.js'
+import { MEALS, MEAL_MAP, getDayEntries, addEntry, updateEntry, removeEntry, summarizeByMeal, copyDay, setWater as saveWater } from '@/utils/diet-store.js'
 import { searchFoods, estimateDish, COMMON_FOODS } from '@/utils/nutrition.js'
 import { macroToCalorie } from '@/utils/body-calc.js'
 import { dayCalories } from '@/utils/day-summary.js'
@@ -252,6 +258,67 @@ export default {
     switchDate(d) {
       this.date = d
       this.reload()
+    },
+    // 把昨天的整份记录复制到今天（吃得差不多时省一大截操作）
+    copyYesterday() {
+      const n = copyDay(dateOffset(-1), this.date)
+      if (!n) {
+        uni.showToast({ title: '昨天没有记录可复制', icon: 'none' })
+        return
+      }
+      this.reload()
+      uni.showToast({ title: `已复制 ${n} 条`, icon: 'success' })
+    },
+    // 点条目：改份量 / 换餐次 / 删除
+    entryAction(e) {
+      uni.showActionSheet({
+        itemList: ['改份量', '换个餐次', '删除'],
+        success: (res) => {
+          if (res.tapIndex === 0) this.editAmount(e)
+          else if (res.tapIndex === 1) this.moveMeal(e)
+          else this.remove(e)
+        },
+      })
+    },
+    // 改份量：按新旧克数等比例缩放热量与三大营养素（记录里存的是"这份的总值"）
+    editAmount(e) {
+      const old = Number(e.amount) || 0
+      uni.showModal({
+        title: `改份量（当前 ${old}g）`,
+        editable: true,
+        placeholderText: '输入新的克数',
+        content: String(old),
+        success: (m) => {
+          if (!m.confirm) return
+          const grams = Number(m.content)
+          if (!(grams > 0)) {
+            uni.showToast({ title: '克数不对', icon: 'none' })
+            return
+          }
+          const k = old > 0 ? grams / old : 0
+          const r1 = (v) => Math.round((Number(v) || 0) * k * 10) / 10
+          updateEntry(this.date, e.id, {
+            amount: Math.round(grams),
+            calorie: Math.round((Number(e.calorie) || 0) * k),
+            carb: r1(e.carb),
+            protein: r1(e.protein),
+            fat: r1(e.fat),
+          })
+          this.reload()
+        },
+      })
+    },
+    // 换餐次：记错了餐次时不用删了重加
+    moveMeal(e) {
+      uni.showActionSheet({
+        itemList: MEALS.map((m) => m.label),
+        success: (res) => {
+          const target = MEALS[res.tapIndex]
+          if (!target || target.key === e.meal) return
+          updateEntry(this.date, e.id, { meal: target.key })
+          this.reload()
+        },
+      })
     },
     mealCalorie(key) {
       return (this.byMeal[key] || []).reduce((a, e) => a + (Number(e.calorie) || 0), 0)
@@ -392,6 +459,25 @@ export default {
   font-weight: 700;
   background: linear-gradient(135deg, #2bd45c, #17a348);
   border-color: transparent;
+}
+
+/* 快捷操作行 */
+.quick-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16rpx 28rpx 0;
+}
+.quick-btn {
+  font-size: 24rpx;
+  color: $brand-primary;
+  border: 1rpx solid rgba(43, 212, 92, 0.45);
+  padding: 8rpx 20rpx;
+  border-radius: 999rpx;
+}
+.quick-info {
+  font-size: 20rpx;
+  color: $text-muted;
 }
 
 /* 热量总览 */

@@ -89,6 +89,23 @@
           <view class="btn btn-primary" @click="resume">继续</view>
         </template>
       </view>
+
+      <!-- 今日跑步 / 走路记录 -->
+      <view class="ot-card">
+        <view class="ot-list-head">
+          <text class="ot-title">今日记录</text>
+          <text class="ot-sum" v-if="todayRuns.length">{{ todayRuns.length }} 次</text>
+        </view>
+        <view v-if="!todayRuns.length" class="ot-empty">今天还没有跑步 / 走路记录</view>
+        <view class="ot-item" v-for="r in todayRuns" :key="r.id">
+          <view class="ot-item-main">
+            <text class="ot-item-name">{{ r.type === 'walk' ? '走路' : '跑步' }} · {{ r.duration || 0 }} 分钟</text>
+            <text class="ot-item-sub">{{ r.steps || 0 }} 步 · {{ distanceBrief(r.distance) }}</text>
+          </view>
+          <text class="ot-item-cal">{{ r.calories || 0 }} kcal</text>
+          <text class="ot-item-del" @click="delRun(r)">删除</text>
+        </view>
+      </view>
     </template>
 
     <!-- ===== B. 其他运动：选动作 + 填时长 → 按体重算消耗 ===== -->
@@ -112,6 +129,16 @@
             <text class="ot-result-name">{{ r.name }}</text>
             <text class="ot-result-met">MET {{ r.met }}</text>
           </view>
+        </view>
+
+        <!-- 库里没有的动作：自己填名称 + MET -->
+        <view class="ot-toggle" @click="showCustom = !showCustom">
+          {{ showCustom ? '收起自定义动作' : '+ 自定义动作（自己填名称和 MET）' }}
+        </view>
+        <view class="ot-custom" v-if="showCustom">
+          <input class="ot-input" v-model="custom.name" placeholder="动作名称，如 波比跳" placeholder-class="ot-ph" />
+          <input class="ot-input" type="digit" v-model="custom.met" placeholder="MET 值，如 8" placeholder-class="ot-ph" />
+          <view class="ot-mini-btn" @click="useCustom">用这个动作</view>
         </view>
       </view>
 
@@ -162,7 +189,7 @@ import { sessionSteps, branchDelta, baseUsable } from '@/utils/steps-math.js'
 // #ifdef APP-PLUS
 import { getStepDiag } from '@/utils/health.js'
 // #endif
-import { getTodayData, saveTodayData, addRecord, getWeight } from '@/utils/storage.js'
+import { getTodayData, saveTodayData, addRecord, getWeight, removeRecord } from '@/utils/storage.js'
 import { syncDaily } from '@/utils/cloud.js'
 // 其他运动：MET 库检索 + 按 MET×体重×时长 算消耗 + 当日记录存储
 import { QUICK_EXERCISES, searchExercises } from '@/utils/nutrition.js'
@@ -174,6 +201,7 @@ import {
   summarizeActivities,
 } from '@/utils/activity-store.js'
 import { today as todayStr } from '@/utils/body-store.js'
+import { allWorkoutRecords } from '@/utils/day-summary.js'
 // GPS 轨迹：采集/滤波/距离在 track.js，格式化在 geo.js
 import { startTrack, stopTrack, pauseTrack, resumeTrack, onTrackUpdate, getTrack } from '@/utils/track.js'
 import { formatDistance, formatPace } from '@/utils/geo.js'
@@ -218,6 +246,10 @@ export default {
       other: { name: '', met: 0, minutes: '' },
       todayOther: [], // 今天已记录的其他运动
       otherSummary: { calorie: 0, minutes: 0, count: 0 },
+      // 自定义动作（MET 库里没有的）
+      showCustom: false,
+      custom: { name: '', met: '' },
+      todayRuns: [], // 今天的跑步/走路记录
     }
   },
   computed: {
@@ -258,6 +290,7 @@ export default {
   onShow() {
     this.weight = getWeight()
     this.loadTodayOther()
+    this.loadTodayRuns()
   },
   onUnload() {
     this.clearTimer()
@@ -320,6 +353,44 @@ export default {
       const list = getDayActivities(todayStr())
       this.todayOther = list
       this.otherSummary = summarizeActivities(list)
+    },
+    // 自定义动作：名称 + MET 都自己填，然后走同一条 MET 计算链
+    useCustom() {
+      const name = String(this.custom.name || '').trim()
+      const met = Number(this.custom.met)
+      if (!name) {
+        uni.showToast({ title: '填一下动作名称', icon: 'none' })
+        return
+      }
+      if (!(met > 0) || met > 25) {
+        uni.showToast({ title: 'MET 填 1–25 之间的数', icon: 'none' })
+        return
+      }
+      this.other.name = name
+      this.other.met = Math.round(met * 10) / 10
+      this.showCustom = false
+      this.custom = { name: '', met: '' }
+    },
+
+    // ===== 今日跑步 / 走路记录 =====
+    loadTodayRuns() {
+      const d = todayStr()
+      this.todayRuns = allWorkoutRecords().filter((r) => r.date === d)
+    },
+    delRun(r) {
+      uni.showModal({
+        title: '删除这次记录',
+        content: '删除后今日的运动消耗会同步减少，确定吗？',
+        success: (m) => {
+          if (!m.confirm) return
+          removeRecord(r.id)
+          this.loadTodayRuns()
+          uni.showToast({ title: '已删除', icon: 'success' })
+        },
+      })
+    },
+    distanceBrief(meters) {
+      return formatDistance(meters)
     },
 
     switchMode(key) {
@@ -484,6 +555,8 @@ export default {
 
       this.resetSession()
       uni.showToast({ title: '运动已保存', icon: 'success' })
+      // 保存后刷新今日记录列表，否则要切页回来才看到
+      this.loadTodayRuns()
     },
     resetSession() {
       this.state = 'idle'
@@ -714,6 +787,29 @@ export default {
 .ot-result-met {
   font-size: 24rpx;
   color: $text-secondary;
+}
+/* 自定义动作 */
+.ot-toggle {
+  margin-top: 20rpx;
+  padding: 16rpx 0;
+  text-align: center;
+  font-size: 24rpx;
+  color: $brand-primary;
+  border: 1rpx dashed rgba(43, 212, 92, 0.45);
+  border-radius: 14rpx;
+}
+.ot-custom {
+  margin-top: 12rpx;
+}
+.ot-mini-btn {
+  margin-top: 16rpx;
+  padding: 18rpx 0;
+  text-align: center;
+  border-radius: 14rpx;
+  background: linear-gradient(135deg, #2bd45c, #17a348);
+  color: #06180d;
+  font-size: 26rpx;
+  font-weight: 700;
 }
 .ot-picked {
   display: flex;

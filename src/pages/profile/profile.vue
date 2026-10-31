@@ -128,6 +128,62 @@
       <text class="hint" v-if="!weightCount">还没有体重记录；建议每周固定时间称一次，趋势才准。</text>
     </view>
 
+    <!-- 近 7 天统计 -->
+    <view class="card">
+      <view class="card-head">
+        <text class="card-title">近 7 天</text>
+        <text class="card-extra">有记录 {{ week.activeCount }} 天</text>
+      </view>
+      <view class="stat-row">
+        <view class="stat-cell">
+          <text class="stat-num">{{ week.avgIntake }}</text>
+          <text class="stat-label">平均摄入</text>
+        </view>
+        <view class="stat-cell">
+          <text class="stat-num">{{ week.avgTdee }}</text>
+          <text class="stat-label">平均消耗</text>
+        </view>
+        <view class="stat-cell">
+          <text class="stat-num" :class="{ warn: weekAvgGap > 0 }">{{ weekAvgGap }}</text>
+          <text class="stat-label">日均缺口</text>
+        </view>
+      </view>
+      <!-- 简易双柱：绿=摄入 橙=消耗，按 7 天最大值归一；没记录的日子整体淡化 -->
+      <view class="bars">
+        <view class="bar-col" :class="{ dim: !d.hasRecord }" v-for="d in week.days" :key="d.date">
+          <view class="bar-pair">
+            <view class="bar intake" :style="{ height: barHeight(d.intake) }"></view>
+            <view class="bar tdee" :style="{ height: barHeight(d.tdee) }"></view>
+          </view>
+          <text class="bar-day">{{ d.date.slice(8) }}</text>
+        </view>
+      </view>
+      <view class="legend">
+        <text class="legend-item">摄入</text>
+        <text class="legend-item tdee">消耗</text>
+      </view>
+      <text class="hint">平均值只按"有记录的天"算，没记的日子不参与。</text>
+    </view>
+
+    <!-- 运动历史 -->
+    <view class="card">
+      <view class="card-head">
+        <text class="card-title">运动历史</text>
+        <text class="card-extra" v-if="history.length">共 {{ history.length }} 条</text>
+      </view>
+      <text class="hint" v-if="!history.length">
+        还没有跑步 / 走路记录。到「运动」页开始一次运动，结束后自动存到这里。
+      </text>
+      <view class="hist-item" v-for="r in history" :key="r.id">
+        <view class="hist-main">
+          <text class="hist-title">{{ r.type === 'walk' ? '走路' : '跑步' }} · {{ r.date }}</text>
+          <text class="hist-sub">{{ r.duration || 0 }} 分钟 · {{ distanceText(r.distance) }} · {{ r.steps || 0 }} 步</text>
+        </view>
+        <text class="hist-cal">{{ r.calories || 0 }}</text>
+        <text class="hist-del" @click="delRecord(r)">删</text>
+      </view>
+    </view>
+
     <!-- 数据备份 -->
     <view class="card">
       <text class="card-title">数据备份</text>
@@ -149,7 +205,9 @@ import {
   ACTIVITY_OPTIONS, calcBMR, calcBMI, calcLeanMass, calcTDEE, recommendGoals,
   calcWeightSlope, forecastDaysToGoal, bmiLabel as bmiTagOf,
 } from '@/utils/body-calc.js'
-import { getRecords } from '@/utils/storage.js'
+import { getRecords, removeRecord } from '@/utils/storage.js'
+import { recentAverages, allWorkoutRecords } from '@/utils/day-summary.js'
+import { formatDistance } from '@/utils/geo.js'
 
 export default {
   data() {
@@ -163,6 +221,8 @@ export default {
       lastWeightDate: '',
       slope: 0,
       activityLabels: ACTIVITY_OPTIONS.map((o) => o.label),
+      week: { days: [], activeCount: 0, avgIntake: 0, avgTdee: 0, avgExercise: 0 },
+      history: [],
     }
   },
   computed: {
@@ -208,6 +268,18 @@ export default {
       if (days < 0) return '按当前趋势还到不了目标，先稳定记录'
       return `约 ${days} 天到 ${goal} kg`
     },
+    // 日均缺口 = 平均摄入 − 平均消耗（正数说明在盈余）
+    weekAvgGap() {
+      return Math.round((this.week.avgIntake || 0) - (this.week.avgTdee || 0))
+    },
+    // 柱状图归一化基准：7 天里最大的那个数（至少 1，避免除零）
+    weekMax() {
+      let max = 1
+      for (const d of this.week.days || []) {
+        max = Math.max(max, Number(d.intake) || 0, Number(d.tdee) || 0)
+      }
+      return max
+    },
   },
   onShow() {
     this.reload()
@@ -241,6 +313,36 @@ export default {
         this.lastWeightDate = ''
         this.slope = 0
       }
+      // 近 7 天账 + 运动历史
+      const week = recentAverages(7)
+      this.week = {
+        days: week.days,
+        activeCount: week.activeCount,
+        avgIntake: week.avgIntake,
+        avgTdee: week.avgTdee,
+        avgExercise: week.avgExercise,
+      }
+      this.history = allWorkoutRecords().slice(0, 12)
+    },
+    // 柱高：按 7 天最大值归一到 120rpx
+    barHeight(v) {
+      const h = Math.round(((Number(v) || 0) / this.weekMax) * 120)
+      return (h < 2 ? 2 : h) + 'rpx'
+    },
+    distanceText(meters) {
+      return formatDistance(meters)
+    },
+    delRecord(r) {
+      uni.showModal({
+        title: '删除这条记录',
+        content: `确定删除 ${r.date} 的这次运动吗？删除后热量统计会同步减少。`,
+        success: (m) => {
+          if (!m.confirm) return
+          removeRecord(r.id)
+          this.reload()
+          uni.showToast({ title: '已删除', icon: 'success' })
+        },
+      })
     },
     onActivityChange(e) {
       const opt = ACTIVITY_OPTIONS[Number(e.detail.value)]
@@ -507,5 +609,117 @@ export default {
   background: $brand-primary;
   padding: 10rpx 22rpx;
   border-radius: 999rpx;
+}
+
+/* ===== 近 7 天统计 ===== */
+.stat-row {
+  display: flex;
+  margin-top: 16rpx;
+}
+.stat-cell {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.stat-num {
+  font-size: 34rpx;
+  font-weight: 700;
+  color: $text-main;
+}
+.stat-num.warn {
+  color: #ffb347;
+}
+.stat-label {
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  color: $text-secondary;
+}
+.bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 10rpx;
+  height: 150rpx;
+  margin-top: 20rpx;
+  padding-top: 10rpx;
+  border-top: 1rpx solid $border-subtle;
+}
+.bar-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+}
+/* 那天没有任何记录：整列淡化，避免把"基础消耗"误读成"有记录" */
+.bar-col.dim {
+  opacity: 0.3;
+}
+.bar-pair {
+  display: flex;
+  align-items: flex-end;
+  gap: 4rpx;
+  height: 120rpx;
+}
+.bar {
+  width: 14rpx;
+  border-radius: 4rpx 4rpx 0 0;
+}
+.bar.intake {
+  background: #2bd45c;
+}
+.bar.tdee {
+  background: #ffb347;
+  opacity: 0.75;
+}
+.bar-day {
+  margin-top: 8rpx;
+  font-size: 18rpx;
+  color: $text-muted;
+}
+.legend {
+  display: flex;
+  gap: 24rpx;
+  margin-top: 8rpx;
+}
+.legend-item {
+  font-size: 20rpx;
+  color: #2bd45c;
+}
+.legend-item.tdee {
+  color: #ffb347;
+}
+
+/* ===== 运动历史 ===== */
+.hist-item {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  padding: 20rpx 0;
+  border-bottom: 1rpx solid $border-subtle;
+}
+.hist-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.hist-title {
+  font-size: 28rpx;
+  color: $text-main;
+}
+.hist-sub {
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  color: $text-secondary;
+}
+.hist-cal {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: #ffb347;
+}
+.hist-del {
+  font-size: 24rpx;
+  color: $text-muted;
 }
 </style>

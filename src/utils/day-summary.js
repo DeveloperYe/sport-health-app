@@ -12,7 +12,7 @@
 import { getRecords } from './storage.js'
 import { getDayActivities, summarizeActivities } from './activity-store.js'
 import { getDayEntries, getWater, summarize } from './diet-store.js'
-import { getBody, getGoals } from './body-store.js'
+import { getBody, getGoals, dateOffset } from './body-store.js'
 import { calcBMR, calcTDEE, calcGap } from './body-calc.js'
 
 /** 把 'YYYY-MM-DD' 缓存在记录里便于按天过滤（兼容老记录只有 createdAt） */
@@ -83,4 +83,59 @@ export function dayCalories(date) {
 /** 某天是否有任何记录（统计页判断"有记录天数"用） */
 export function hasAnyRecord(date) {
   return getDayEntries(date).length > 0 || getWater(date) > 0 || dayExercise(date).total > 0
+}
+
+/** 最近 n 天的日期串（含今天，按时间升序） */
+export function lastNDates(n) {
+  const out = []
+  for (let i = n - 1; i >= 0; i--) out.push(dateOffset(-i))
+  return out
+}
+
+/** 最近 n 天的每日账（统计用）：{ date, intake, tdee, gap, exercise, hasRecord } */
+export function recentDays(n) {
+  return lastNDates(n || 7).map((d) => {
+    const s = dayCalories(d)
+    return {
+      date: d,
+      intake: s.intake,
+      tdee: s.tdee,
+      gap: s.gap,
+      exercise: s.exercise.total,
+      hasRecord: hasAnyRecord(d),
+    }
+  })
+}
+
+/**
+ * 近 n 天汇总。
+ * 平均值只按"有记录的天"算——没记的日子按 0 计算会把均值拉得很低，误导人。
+ */
+export function recentAverages(n) {
+  const days = recentDays(n)
+  const active = days.filter((d) => d.hasRecord)
+  const sum = active.reduce(
+    (a, d) => {
+      a.intake += d.intake
+      a.tdee += d.tdee
+      a.exercise += d.exercise
+      return a
+    },
+    { intake: 0, tdee: 0, exercise: 0 }
+  )
+  const cnt = active.length || 1
+  return {
+    days,
+    activeCount: active.length,
+    avgIntake: Math.round(sum.intake / cnt),
+    avgTdee: Math.round(sum.tdee / cnt),
+    avgExercise: Math.round(sum.exercise / cnt),
+  }
+}
+
+/** 全部跑步/走路记录（按时间倒序，带日期串），运动历史页用 */
+export function allWorkoutRecords() {
+  return getRecords()
+    .map((r) => Object.assign({}, r, { date: dateOfRecord(r) }))
+    .sort((a, b) => (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0))
 }
