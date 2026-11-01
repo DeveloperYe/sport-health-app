@@ -11,11 +11,12 @@
 //    而 gcj02 需要三方定位 SDK + key，打包后会定位不准/失败。
 //
 // 已知限制（v1 明确不做，留待后续）：
-// - 只在前台采集（uni.startLocationUpdateBackground 不支持 App）；
-//   锁屏继续记录需要前台服务。运动中一般亮屏看配速，暂可接受。
-// - 进程被杀会丢当前轨迹（未做增量落盘）。
+// - 锁屏继续记录依赖前台服务（见 utils/keepalive.js + 原生 MotionKeepAliveService），
+//   服务已接上，但各厂商 ROM 的省电策略仍需真机验证；进程被系统强杀仍会丢当前段轨迹
+//   （未做增量落盘）。
 
 import { haversine, simplify } from './geo.js'
+import { startKeepAlive, stopKeepAlive } from './keepalive.js'
 
 // 采样过滤阈值（GPS 原始点噪声很大，必须过滤，否则距离会虚高几十个百分点）
 const MAX_ACCURACY = 50 // 精度（米）差于此的点直接丢弃：飘移主要来源
@@ -222,6 +223,8 @@ export async function startTrack() {
   const granted = await requestPermission()
   track = newTrack()
   if (!granted) track.error = '定位权限被拒绝，请在系统设置里为「运动健康」开启定位'
+  // 挂前台服务：锁屏/切后台时系统才肯继续给定位回调（Android 8+ 硬性要求）
+  startKeepAlive()
   startWatch()
   emit()
   return getTrack()
@@ -245,6 +248,8 @@ export function resumeTrack() {
 export function stopTrack() {
   if (!track) return null
   stopWatch()
+  // 撤掉前台服务（否则"正在记录运动"的通知会一直留在通知栏）
+  stopKeepAlive()
   if (!track.paused) track.accumMs += now() - track.segStart
   const t = track
   track = null

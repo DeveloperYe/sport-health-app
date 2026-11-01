@@ -64,8 +64,10 @@
           </view>
         </view>
         <text class="timer-hint" v-if="state === 'idle'">准备好后，点击开始</text>
-        <text class="timer-hint" v-else-if="state === 'running'">运动进行中…</text>
-        <text class="timer-hint" v-else>已暂停</text>
+        <text class="timer-hint" v-else-if="state === 'running'">
+          运动进行中…{{ bgGained >= 0 ? `　后台期间新增 ${bgGained} 个点` : '' }}
+        </text>
+        <text class="timer-hint" v-else>已暂停{{ bgGained >= 0 ? `　后台期间新增 ${bgGained} 个点` : '' }}</text>
         <!-- 临时诊断（定位后移除） -->
         <!-- #ifdef APP-PLUS -->
         <text v-if="diag" class="timer-diag">{{ diag }}</text>
@@ -258,6 +260,9 @@ export default {
       stepTimer: null,
       weight: 60,
       diag: '',
+      // 后台保活诊断：切后台时的点数，回前台后算"后台期间新增了几点"
+      pointsAtHide: -1,
+      bgGained: -1,
       // ===== GPS 轨迹 =====
       trackPoints: [], // 与 UI 绑定的已过滤轨迹点（每来一个点换一次引用，触发子组件重绘）
       gpsDistance: 0, // 米
@@ -359,6 +364,15 @@ export default {
     this.loadTodayRuns()
     // 从后台回来时立刻按真实时间刷新一次，不用等下一个 tick
     if (this.otState === 'running') this.startOtTimer()
+    // 后台保活是否真的在工作：对比切后台前后的轨迹点数，直接显示出来
+    if (this.pointsAtHide >= 0) {
+      this.bgGained = this.trackPoints.length - this.pointsAtHide
+      this.pointsAtHide = -1
+    }
+  },
+  onHide() {
+    // 只要在采集中就记下当前点数，回前台时算增量
+    if (this.state !== 'idle') this.pointsAtHide = this.trackPoints.length
   },
   onUnload() {
     this.clearTimer()

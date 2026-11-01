@@ -31,6 +31,11 @@
     <!-- 后台定位：锁屏或切到别的 App 时继续记录轨迹。
          注意 Android 11+ 要求它与前台定位【分开】申请，运行时流程见 src/utils/permissions.js -->
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
+    <!-- 前台服务：Android 8+ 只有"前台服务"才能稳定持续定位（见 MotionKeepAliveService） -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
+    <!-- 常驻通知（Android 13+ 是运行时权限），前台服务靠它显示"正在记录运动" -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
     <!-- ===== 相机（manifest.json 声明过） ===== -->
     <uses-feature android:name="android.hardware.camera"/>
@@ -80,6 +85,14 @@
         <meta-data
             android:name="dcloud_appkey"
             android:value="b27abb308db96491506c7461103650fb" />
+
+        <!-- 运动保活服务：把进程提到前台优先级，锁屏也能继续采点。
+             foregroundServiceType="location" 是 Android 10+ 声明定位型前台服务所必需 -->
+        <service
+            android:name="com.developerye.sporthealth.MotionKeepAliveService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="location" />
     </application>
 
 </manifest>

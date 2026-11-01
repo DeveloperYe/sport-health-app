@@ -44,6 +44,13 @@ export const PERMISSION_ITEMS = [
     desc: '读取系统计步传感器，统计步数与步数消耗。',
     required: true,
   },
+  {
+    key: 'notification',
+    icon: '🔔',
+    title: '通知',
+    desc: '运动时在通知栏显示「正在记录运动」，这是安卓保持后台定位的必要条件。',
+    required: false,
+  },
 ]
 
 /** 读缓存：{ askedAt, supported, location, background, activity } */
@@ -117,6 +124,7 @@ export async function requestAllPermissions() {
     location: 'unsupported',
     background: 'na',
     activity: 'unsupported',
+    notification: 'na',
   }
 
   // #ifdef APP-PLUS
@@ -142,6 +150,14 @@ export async function requestAllPermissions() {
   if (state.location === 'granted' && sdk >= 29) {
     const second = await request(['android.permission.ACCESS_BACKGROUND_LOCATION'])
     state.background = hasGranted(second.granted, 'ACCESS_BACKGROUND_LOCATION') ? 'granted' : 'denied'
+  }
+
+  // 第三轮：通知（Android 13 / API 33 起才是运行时权限）。前台服务的常驻通知靠它显示
+  if (sdk >= 33) {
+    const third = await request(['android.permission.POST_NOTIFICATIONS'])
+    state.notification = hasGranted(third.granted, 'POST_NOTIFICATIONS') ? 'granted' : 'denied'
+  } else {
+    state.notification = 'na'
   }
   // #endif
 
