@@ -467,8 +467,8 @@ export default {
 }
 .card {
   margin: 20rpx 24rpx 0;
-  padding: 24rpx;
-  border-radius: 24rpx;
+  padding: $card-pad;
+  border-radius: $card-radius;
   background: $bg-card;
   border: 1rpx solid $border-subtle;
 }
@@ -478,7 +478,7 @@ export default {
   align-items: baseline;
 }
 .card-title {
-  font-size: 30rpx;
+  font-size: $card-title-font;
   font-weight: 700;
   color: $text-main;
 }
@@ -548,10 +548,10 @@ export default {
   margin-top: 22rpx;
   text-align: center;
   padding: 22rpx 0;
-  border-radius: 16rpx;
+  border-radius: $btn-radius;
   background: linear-gradient(135deg, #2bd45c, #17a348);
   color: #06180d;
-  font-size: 28rpx;
+  font-size: $btn-font-lg;
   font-weight: 700;
 }
 .btn.ghost {

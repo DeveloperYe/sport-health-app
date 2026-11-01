@@ -804,7 +804,7 @@ export default {
 .timer-card {
   margin-top: 32rpx;
   background: $bg-card;
-  border-radius: 32rpx;
+  border-radius: $btn-radius;
   padding: 56rpx 0 48rpx;
   display: flex;
   flex-direction: column;
@@ -864,11 +864,11 @@ export default {
 .btn {
   flex: 1;
   height: 104rpx;
-  border-radius: 32rpx;
+  border-radius: $btn-radius;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 34rpx;
+  font-size: $btn-font-lg;
   font-weight: 700;
 }
 .btn-primary {
@@ -907,13 +907,13 @@ export default {
 /* ===== 其他运动面板 ===== */
 .ot-card {
   margin: 20rpx 24rpx 0;
-  padding: 26rpx;
-  border-radius: 24rpx;
+  padding: $card-pad;
+  border-radius: $card-radius;
   background: $bg-card;
   border: 1rpx solid $border-subtle;
 }
 .ot-title {
-  font-size: 30rpx;
+  font-size: $card-title-font;
   font-weight: 700;
   color: $text-main;
 }
@@ -981,7 +981,7 @@ export default {
   margin-top: 16rpx;
   padding: 18rpx 0;
   text-align: center;
-  border-radius: 14rpx;
+  border-radius: $btn-radius;
   background: linear-gradient(135deg, #2bd45c, #17a348);
   color: #06180d;
   font-size: 26rpx;

@@ -538,7 +538,7 @@ export default {
 
 /* ===== 圆环 ===== */
 .ring-card {
-  padding: 28rpx 24rpx 24rpx;
+  padding: $card-pad;
   border-radius: 28rpx;
   background: $bg-card;
   border: 1rpx solid $border-subtle;
@@ -757,7 +757,7 @@ export default {
 .wi-btn {
   padding: 0 30rpx;
   line-height: 72rpx;
-  border-radius: 14rpx;
+  border-radius: $btn-radius;
   background: $brand-primary;
   color: #06180d;
   font-size: 26rpx;

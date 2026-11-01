@@ -86,3 +86,15 @@ $border-subtle: #26262c; // 细分隔线
 $text-main: #f2f3f5; // 主文字
 $text-secondary: #8b8d94; // 次级文字
 $text-muted: #5c5e66; // 弱化文字
+
+// ===== 统一设计常量（2026-11-01 UI 统一）=====
+// 卡片：圆角 / 内边距 / 标题字号
+$card-radius: 28rpx;
+$card-pad: 26rpx 24rpx;
+$card-title-font: 32rpx;
+$sub-title-font: 26rpx;
+// 按钮：方块按钮与胶囊按钮
+$btn-radius: 16rpx;
+$btn-font: 26rpx;
+$btn-font-lg: 30rpx; // 页面主操作按钮（开始运动 / 保存）
+$pill-radius: 999rpx;

@@ -483,10 +483,10 @@ export default {
 /* 热量总览 */
 .hero {
   margin: 20rpx 24rpx 0;
-  padding: 30rpx 26rpx 24rpx;
-  border-radius: 24rpx;
-  background: linear-gradient(160deg, rgba(43, 212, 92, 0.16), rgba(26, 26, 31, 1) 62%);
-  border: 1rpx solid rgba(43, 212, 92, 0.28);
+  padding: $card-pad;
+  border-radius: $card-radius;
+  background: $bg-card;
+  border: 1rpx solid $border-subtle;
 }
 .hero-label {
   font-size: 24rpx;
@@ -534,8 +534,8 @@ export default {
 /* 卡片 */
 .card {
   margin: 20rpx 24rpx 0;
-  padding: 24rpx;
-  border-radius: 24rpx;
+  padding: $card-pad;
+  border-radius: $card-radius;
   background: $bg-card;
   border: 1rpx solid $border-subtle;
 }
@@ -550,7 +550,7 @@ export default {
   gap: 16rpx;
 }
 .card-title {
-  font-size: 30rpx;
+  font-size: $card-title-font;
   font-weight: 700;
   color: $text-main;
 }
@@ -593,19 +593,19 @@ export default {
   margin-top: 18rpx;
 }
 .cup {
-  width: 56rpx;
-  height: 56rpx;
+  flex: 1;
+  height: 64rpx;
   border-radius: 12rpx;
   background: $bg-card-light;
   text-align: center;
-  line-height: 56rpx;
-  font-size: 26rpx;
-  opacity: 0.45;
+  line-height: 64rpx;
+  font-size: 28rpx;
+  opacity: 0.4;
   border: 1rpx solid $border-subtle;
 }
 .cup.on {
   opacity: 1;
-  border-color: rgba(43, 212, 92, 0.5);
+  border-color: rgba(74, 163, 255, 0.55);
 }
 
 /* 条目 */
