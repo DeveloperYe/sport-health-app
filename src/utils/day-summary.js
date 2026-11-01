@@ -10,7 +10,7 @@
  * 两者是不同的记录表，但必须加在一起，否则缺口会偏小。
  */
 import { getRecords } from './storage.js'
-import { getDayActivities, summarizeActivities } from './activity-store.js'
+import { getDayActivities, summarizeActivities, getAllActivities } from './activity-store.js'
 import { getDayEntries, getWater, summarize } from './diet-store.js'
 import { getBody, getGoals, dateOffset } from './body-store.js'
 import { calcBMR, calcTDEE, calcGap } from './body-calc.js'
@@ -138,4 +138,33 @@ export function allWorkoutRecords() {
   return getRecords()
     .map((r) => Object.assign({}, r, { date: dateOfRecord(r) }))
     .sort((a, b) => (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0))
+}
+
+/**
+ * 运动历史：跑步/走路 + 其他运动混排（按时间倒序）
+ * 两类记录存在不同表里、字段也不同，这里统一成同一种形状给界面用：
+ *   { kind: 'run'|'activity', id, date, title, duration(秒), calorie, sub, at }
+ */
+export function allExerciseHistory() {
+  const runs = allWorkoutRecords().map((r) => ({
+    kind: 'run',
+    id: r.id,
+    date: r.date,
+    title: `${r.type === 'walk' ? '走路' : '跑步'} · ${r.date}`,
+    duration: Math.round((Number(r.duration) || 0) * 60),
+    calorie: Number(r.calories) || 0,
+    sub: `${r.steps || 0} 步 · ${Math.round(Number(r.distance) || 0)} 米`,
+    at: Number(r.createdAt) || 0,
+  }))
+  const acts = getAllActivities().map((a) => ({
+    kind: 'activity',
+    id: a.id,
+    date: a.date,
+    title: `${a.name} · ${a.date}`,
+    duration: Number(a.seconds) || Math.round((Number(a.minutes) || 0) * 60),
+    calorie: Number(a.calorie) || 0,
+    sub: `MET ${a.met}`,
+    at: Number(a.at) || 0,
+  }))
+  return runs.concat(acts).sort((x, y) => y.at - x.at)
 }

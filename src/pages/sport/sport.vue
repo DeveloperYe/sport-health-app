@@ -147,33 +147,61 @@
           <text class="ot-picked-name">{{ other.name }}</text>
           <text class="ot-picked-met">MET {{ other.met }}</text>
         </view>
-        <view class="ot-row">
-          <text class="ot-label">时长</text>
-          <input class="ot-input ot-input-min" type="number" v-model="other.minutes" placeholder="分钟" />
-          <text class="ot-unit">分钟</text>
+
+        <!-- 计时区：跑着的时候实时跳时间和消耗 -->
+        <view class="ot-timer">
+          <text class="ot-timer-time">{{ otTimeText }}</text>
+          <view class="ot-timer-right">
+            <text class="ot-timer-cal">{{ otCalorieLive }}</text>
+            <text class="ot-timer-cal-unit">kcal</text>
+          </view>
         </view>
-        <view class="ot-row ot-row-calc">
-          <text class="ot-label">预计消耗</text>
-          <text class="ot-cal">{{ otherCalorie }} kcal</text>
+        <text class="ot-timer-hint">{{ otHint }}</text>
+
+        <view class="ot-actions">
+          <view v-if="otState === 'idle'" class="ot-mini-btn wide" @click="otStart">开始计时</view>
+          <template v-else-if="otState === 'running'">
+            <view class="ot-mini-btn ghost" @click="otPause">暂停</view>
+            <view class="ot-mini-btn" @click="otFinish">结束并记录</view>
+          </template>
+          <template v-else>
+            <view class="ot-mini-btn ghost" @click="otResume">继续</view>
+            <view class="ot-mini-btn" @click="otFinish">结束并记录</view>
+          </template>
         </view>
-        <text class="ot-hint">按 MET × 体重 {{ weight }} kg × 时长 估算</text>
-        <view class="btn btn-primary ot-btn" @click="addOther">记下来</view>
+
+        <!-- 忘了开计时器时的补录通道 -->
+        <view class="ot-toggle" @click="showManual = !showManual">
+          {{ showManual ? '收起手动补录' : '忘了计时？手动补录时长' }}
+        </view>
+        <view class="ot-custom" v-if="showManual">
+          <view class="ot-row">
+            <text class="ot-label">时长</text>
+            <input class="ot-input ot-input-min" type="digit" v-model="other.minutes" placeholder="分钟" placeholder-class="ot-ph" />
+            <text class="ot-unit">分钟</text>
+          </view>
+          <view class="ot-row ot-row-calc">
+            <text class="ot-label">预计消耗</text>
+            <text class="ot-cal">{{ otherCalorie }} kcal</text>
+          </view>
+          <view class="ot-mini-btn" @click="addOther">记下来</view>
+        </view>
       </view>
 
       <view class="ot-card">
         <view class="ot-list-head">
           <text class="ot-title">今日其他运动</text>
           <text class="ot-sum" v-if="otherSummary.count">
-            {{ otherSummary.count }} 项 · {{ otherSummary.minutes }} 分钟 · {{ otherSummary.calorie }} kcal
+            {{ otherSummary.count }} 项 · {{ sumDuration(otherSummary) }} · {{ otherSummary.calorie }} kcal
           </text>
         </view>
         <view v-if="!todayOther.length" class="ot-empty">
-          今天还没有记录：上面选一个动作、填时长，点「记下来」
+          今天还没有记录：上面选一个动作，点「开始计时」，结束后自动记账
         </view>
         <view class="ot-item" v-for="it in todayOther" :key="it.id">
           <view class="ot-item-main">
             <text class="ot-item-name">{{ it.name }}</text>
-            <text class="ot-item-sub">MET {{ it.met }} · {{ it.minutes }} 分钟</text>
+            <text class="ot-item-sub">MET {{ it.met }} · {{ durText(it) }}</text>
           </view>
           <text class="ot-item-cal">{{ it.calorie }} kcal</text>
           <text class="ot-item-del" @click="removeOther(it.id)">删除</text>
@@ -199,6 +227,7 @@ import {
   addActivity,
   removeActivity,
   summarizeActivities,
+  formatActivityDuration,
 } from '@/utils/activity-store.js'
 import { today as todayStr } from '@/utils/body-store.js'
 import { allWorkoutRecords } from '@/utils/day-summary.js'
@@ -249,6 +278,15 @@ export default {
       // 自定义动作（MET 库里没有的）
       showCustom: false,
       custom: { name: '', met: '' },
+      // ===== 其他运动的计时会话 =====
+      // 用「时间戳 + 已累计毫秒」而不是自增计数：App 切后台时定时器会被节流，
+      // 但回到前台按 Date.now() 重算就不会丢时间（与跑步页同一思路）。
+      otState: 'idle', // idle / running / paused
+      otStartedAt: 0, // 本段开始的时间戳
+      otAccumMs: 0, // 之前各段累计
+      otNow: 0, // 刷新用（定时器每 250ms 更新）
+      otTimer: null,
+      showManual: false, // 手动补录面板
       todayRuns: [], // 今天的跑步/走路记录
     }
   },
@@ -286,15 +324,46 @@ export default {
     otherCalorie() {
       return calcExerciseCalorie(this.other.met, this.weight, this.other.minutes)
     },
+    // ===== 其他运动的计时 =====
+    otElapsedMs() {
+      if (this.otState === 'running' && this.otStartedAt) {
+        return this.otAccumMs + Math.max(0, this.otNow - this.otStartedAt)
+      }
+      return this.otAccumMs
+    },
+    otTimeText() {
+      const total = Math.floor(this.otElapsedMs / 1000)
+      const h = Math.floor(total / 3600)
+      const m = Math.floor((total % 3600) / 60)
+      const s = total % 60
+      const mm = String(m).padStart(2, '0')
+      const ss = String(s).padStart(2, '0')
+      return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`
+    },
+    // 实时消耗：用毫秒精算，别等整分钟才动
+    otCalorieLive() {
+      const met = Number(this.other.met) || 0
+      const w = Number(this.weight) || 0
+      if (!(met > 0) || !(w > 0)) return 0
+      return Math.round(met * w * (this.otElapsedMs / 3600000))
+    },
+    otHint() {
+      if (this.otState === 'idle') return '选好动作后点「开始计时」，边练边看消耗'
+      if (this.otState === 'running') return `计时中 · MET ${this.other.met} × 体重 ${this.weight}kg`
+      return '已暂停，可继续或结束'
+    },
   },
   onShow() {
     this.weight = getWeight()
     this.loadTodayOther()
     this.loadTodayRuns()
+    // 从后台回来时立刻按真实时间刷新一次，不用等下一个 tick
+    if (this.otState === 'running') this.startOtTimer()
   },
   onUnload() {
     this.clearTimer()
     this.clearStepTimer()
+    this.stopOtTimer()
     // 页面销毁时绝不能留下运行中的 GPS 监听
     if (this.offTrack) {
       this.offTrack()
@@ -305,8 +374,8 @@ export default {
   methods: {
     // ===== 顶层页签 =====
     switchTab(tab) {
-      // 运动进行中不允许切走，避免地图与计时状态错乱
-      if (this.state !== 'idle') {
+      // 任一运动进行中都不允许切走，避免地图/计时状态错乱
+      if (this.state !== 'idle' || this.otState !== 'idle') {
         uni.showToast({ title: '先结束当前运动', icon: 'none' })
         return
       }
@@ -314,15 +383,92 @@ export default {
       if (tab === 'other') this.loadTodayOther()
     },
 
+    // ===== 其他运动的计时会话 =====
+    otStart() {
+      if (!(Number(this.other.met) > 0)) {
+        uni.showToast({ title: '先选一个动作', icon: 'none' })
+        return
+      }
+      this.otAccumMs = 0
+      this.otStartedAt = Date.now()
+      this.otState = 'running'
+      this.startOtTimer()
+    },
+    otPause() {
+      if (this.otState !== 'running') return
+      this.otAccumMs = this.otElapsedMs
+      this.otStartedAt = 0
+      this.otState = 'paused'
+      this.stopOtTimer()
+    },
+    otResume() {
+      if (this.otState !== 'paused') return
+      this.otStartedAt = Date.now()
+      this.otState = 'running'
+      this.startOtTimer()
+    },
+    // 结束：按实际计时落库（不足 5 秒视为误触，不记账）
+    otFinish() {
+      const ms = this.otElapsedMs
+      if (ms < 5000) {
+        uni.showToast({ title: '不到 5 秒，未记录', icon: 'none' })
+        return
+      }
+      // 秒是唯一真值：分钟是换算出来的，别让 5 秒被四舍五入成 1 分钟
+      const seconds = Math.round(ms / 1000)
+      const calorie = Math.round((Number(this.other.met) || 0) * (Number(this.weight) || 0) * (ms / 3600000))
+      addActivity(todayStr(), {
+        name: this.other.name,
+        met: this.other.met,
+        seconds,
+        calorie,
+        weightUsed: this.weight,
+      })
+      const label = this.other.name
+      this.otReset()
+      this.other = { name: '', met: 0, minutes: '' }
+      this.loadTodayOther()
+      uni.showToast({ title: `${label} ${this.formatDurationText(seconds)}已记录`, icon: 'success' })
+    },
+    otReset() {
+      this.stopOtTimer()
+      this.otState = 'idle'
+      this.otStartedAt = 0
+      this.otAccumMs = 0
+      this.otNow = 0
+      this.showManual = false
+    },
+    startOtTimer() {
+      this.stopOtTimer()
+      this.otNow = Date.now()
+      // 只负责刷新界面，真实时长永远由时间戳算，节流也不影响结果
+      this.otTimer = setInterval(() => {
+        this.otNow = Date.now()
+      }, 250)
+    },
+    stopOtTimer() {
+      if (this.otTimer) {
+        clearInterval(this.otTimer)
+        this.otTimer = null
+      }
+    },
+
     // ===== 其他运动 =====
     searchOther() {
       this.otherResults = searchExercises(this.otherQuery, 12)
     },
     pickOther(item) {
+      // 计时进行中换动作会丢掉已计的时间，先让用户结束
+      if (this.otState !== 'idle') {
+        uni.showToast({ title: '先结束当前计时', icon: 'none' })
+        return
+      }
       this.other.name = item.name
       this.other.met = Number(item.met) || 0
+      this.other.minutes = ''
       this.otherResults = []
       this.otherQuery = ''
+      this.showManual = false
     },
     addOther() {
       const minutes = Number(this.other.minutes)
@@ -349,6 +495,16 @@ export default {
       removeActivity(todayStr(), id)
       this.loadTodayOther()
     },
+    // 时长文案：条目用 formatActivityDuration（秒为真值），汇总用 sumDuration
+    durText(item) {
+      return formatActivityDuration(item)
+    },
+    formatDurationText(seconds) {
+      return formatActivityDuration({ seconds })
+    },
+    sumDuration(sum) {
+      return formatActivityDuration({ seconds: sum.seconds })
+    },
     loadTodayOther() {
       const list = getDayActivities(todayStr())
       this.todayOther = list
@@ -356,6 +512,10 @@ export default {
     },
     // 自定义动作：名称 + MET 都自己填，然后走同一条 MET 计算链
     useCustom() {
+      if (this.otState !== 'idle') {
+        uni.showToast({ title: '先结束当前计时', icon: 'none' })
+        return
+      }
       const name = String(this.custom.name || '').trim()
       const met = Number(this.custom.met)
       if (!name) {
@@ -368,7 +528,9 @@ export default {
       }
       this.other.name = name
       this.other.met = Math.round(met * 10) / 10
+      this.other.minutes = ''
       this.showCustom = false
+      this.showManual = false
       this.custom = { name: '', met: '' }
     },
 
@@ -810,6 +972,60 @@ export default {
   color: #06180d;
   font-size: 26rpx;
   font-weight: 700;
+}
+/* 计时区 */
+.ot-timer {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-top: 20rpx;
+  padding: 22rpx 24rpx;
+  border-radius: 18rpx;
+  background: $bg-card-light;
+  border: 1rpx solid $border-subtle;
+}
+.ot-timer-time {
+  font-size: 72rpx;
+  font-weight: 800;
+  color: $text-main;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.ot-timer-right {
+  display: flex;
+  align-items: baseline;
+  gap: 6rpx;
+}
+.ot-timer-cal {
+  font-size: 40rpx;
+  font-weight: 700;
+  color: #ffb347;
+  font-variant-numeric: tabular-nums;
+}
+.ot-timer-cal-unit {
+  font-size: 20rpx;
+  color: $text-secondary;
+}
+.ot-timer-hint {
+  display: block;
+  margin-top: 12rpx;
+  font-size: 22rpx;
+  color: $text-muted;
+}
+.ot-actions {
+  display: flex;
+  gap: 16rpx;
+}
+.ot-actions .ot-mini-btn {
+  flex: 1;
+}
+.ot-mini-btn.ghost {
+  background: $bg-card-light;
+  color: $text-main;
+  border: 1rpx solid $border-subtle;
+}
+.ot-mini-btn.wide {
+  width: 100%;
 }
 .ot-picked {
   display: flex;

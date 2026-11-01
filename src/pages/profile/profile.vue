@@ -172,14 +172,14 @@
         <text class="card-extra" v-if="history.length">共 {{ history.length }} 条</text>
       </view>
       <text class="hint" v-if="!history.length">
-        还没有跑步 / 走路记录。到「运动」页开始一次运动，结束后自动存到这里。
+        还没有运动记录。到「运动」页跑一次、或记一次其他运动，结束后自动存到这里。
       </text>
-      <view class="hist-item" v-for="r in history" :key="r.id">
+      <view class="hist-item" v-for="r in history" :key="r.kind + r.id">
         <view class="hist-main">
-          <text class="hist-title">{{ r.type === 'walk' ? '走路' : '跑步' }} · {{ r.date }}</text>
-          <text class="hist-sub">{{ r.duration || 0 }} 分钟 · {{ distanceText(r.distance) }} · {{ r.steps || 0 }} 步</text>
+          <text class="hist-title">{{ r.title }}</text>
+          <text class="hist-sub">{{ durText(r.duration) }} · {{ r.sub }}</text>
         </view>
-        <text class="hist-cal">{{ r.calories || 0 }}</text>
+        <text class="hist-cal">{{ r.calorie }}</text>
         <text class="hist-del" @click="delRecord(r)">删</text>
       </view>
     </view>
@@ -206,8 +206,8 @@ import {
   calcWeightSlope, forecastDaysToGoal, bmiLabel as bmiTagOf,
 } from '@/utils/body-calc.js'
 import { getRecords, removeRecord } from '@/utils/storage.js'
-import { recentAverages, allWorkoutRecords } from '@/utils/day-summary.js'
-import { formatDistance } from '@/utils/geo.js'
+import { recentAverages, allExerciseHistory } from '@/utils/day-summary.js'
+import { removeActivity, formatActivityDuration } from '@/utils/activity-store.js'
 
 export default {
   data() {
@@ -322,23 +322,26 @@ export default {
         avgTdee: week.avgTdee,
         avgExercise: week.avgExercise,
       }
-      this.history = allWorkoutRecords().slice(0, 12)
+      this.history = allExerciseHistory().slice(0, 12)
     },
     // 柱高：按 7 天最大值归一到 120rpx
     barHeight(v) {
       const h = Math.round(((Number(v) || 0) / this.weekMax) * 120)
       return (h < 2 ? 2 : h) + 'rpx'
     },
-    distanceText(meters) {
-      return formatDistance(meters)
+    // 时长文案（秒为真值，秒位以下显示"X 秒"）
+    durText(seconds) {
+      return formatActivityDuration({ seconds })
     },
+    // 删除：跑步/走路走 removeRecord，其他运动走 removeActivity
     delRecord(r) {
       uni.showModal({
         title: '删除这条记录',
         content: `确定删除 ${r.date} 的这次运动吗？删除后热量统计会同步减少。`,
         success: (m) => {
           if (!m.confirm) return
-          removeRecord(r.id)
+          if (r.kind === 'activity') removeActivity(r.date, r.id)
+          else removeRecord(r.id)
           this.reload()
           uni.showToast({ title: '已删除', icon: 'success' })
         },

@@ -38,11 +38,17 @@ export function getDayActivities(date) {
 export function addActivity(date, item) {
   const all = readAll()
   const list = Array.isArray(all[date]) ? all[date].slice() : []
+  // 秒是"真值"，分钟只是给界面看的换算值。
+  // 计时会话存 seconds（可能只有几秒）；手动补录只给 minutes，则反推 seconds。
+  const minutesRaw = Number(item.minutes) || 0
+  const seconds =
+    Number(item.seconds) > 0 ? Math.round(Number(item.seconds)) : Math.round(minutesRaw * 60)
   const entry = {
     id: uid(),
     name: String(item.name || '').trim() || '运动',
     met: Math.round((Number(item.met) || 0) * 10) / 10,
-    minutes: Math.max(1, Math.round(Number(item.minutes) || 0)),
+    seconds,
+    minutes: Math.round((seconds / 60) * 10) / 10,
     calorie: Math.round(Number(item.calorie) || 0),
     weightUsed: Number(item.weightUsed) || 0,
     at: Date.now(),
@@ -73,13 +79,24 @@ export function removeActivity(date, id) {
 }
 
 export function summarizeActivities(list) {
-  const sum = { calorie: 0, minutes: 0, count: 0 }
+  const sum = { calorie: 0, minutes: 0, seconds: 0, count: 0 }
   for (const e of list || []) {
     sum.calorie += Number(e.calorie) || 0
-    sum.minutes += Number(e.minutes) || 0
+    sum.seconds += Number(e.seconds) || Math.round((Number(e.minutes) || 0) * 60)
     sum.count += 1
   }
+  sum.minutes = Math.round((sum.seconds / 60) * 10) / 10
   return sum
+}
+
+/** 时长展示：不足 1 分钟显示秒，否则显示分钟（1 位小数，整数不带 .0） */
+export function formatActivityDuration(entry) {
+  const e = entry || {}
+  const sec = Number(e.seconds) || Math.round((Number(e.minutes) || 0) * 60)
+  if (sec < 60) return `${sec} 秒`
+  const min = sec / 60
+  const text = Number.isInteger(min) ? String(min) : min.toFixed(1)
+  return `${text} 分钟`
 }
 
 /** 近 n 天每天的运动消耗（统计/趋势用） */
@@ -88,4 +105,19 @@ export function recentActivityTotals(dates) {
     const list = getDayActivities(d)
     return Object.assign({ date: d }, summarizeActivities(list))
   })
+}
+
+/**
+ * 全部「其他运动」记录（扁平成一条条，带日期），按时间倒序。
+ * 运动历史页要把跑步/走路和这些混在一起看，所以需要一个跨天的视图。
+ */
+export function getAllActivities() {
+  const all = readAll()
+  const out = []
+  for (const date of Object.keys(all)) {
+    const list = all[date]
+    if (!Array.isArray(list)) continue
+    for (const e of list) out.push(Object.assign({}, e, { date, kind: 'activity' }))
+  }
+  return out.sort((a, b) => (Number(b.at) || 0) - (Number(a.at) || 0))
 }
