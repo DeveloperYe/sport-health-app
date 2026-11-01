@@ -79,9 +79,70 @@
         <text class="gap-k">今日热量缺口</text>
         <text class="gap-v" :class="{ over: todayGap > 0 }">{{ todayGapText }}</text>
       </view>
-      <text class="card-hint">
-        缺口 = 摄入 −（基础消耗 + 运动消耗）。体重曲线、周报等功能后续补上。
-      </text>
+
+      <!-- 卡片内直接记体重，不用跳页 -->
+      <view class="weigh-row">
+        <input
+          class="wi-input"
+          type="digit"
+          v-model="weightInput"
+          placeholder="今天的体重（kg）"
+          placeholder-class="wi-ph"
+        />
+        <view class="wi-btn" @click="saveWeight">记下</view>
+      </view>
+
+      <!-- 体重趋势（近 30 天）：纯 CSS 折线，避免 canvas 在 WebView 上的坑 -->
+      <view class="trend">
+        <view class="trend-head">
+          <text class="trend-title">体重趋势</text>
+          <text class="trend-tag" v-if="weightLog.length > 1">{{ minWeight }} – {{ maxWeight }} kg</text>
+        </view>
+        <view class="trend-box">
+          <template v-if="chart.ok">
+            <view
+              class="trend-seg"
+              v-for="(s, i) in chart.segments"
+              :key="'s' + i"
+              :style="{ left: s.x + 'px', top: s.y + 'px', width: s.len + 'px', transform: 'rotate(' + s.angle + 'deg)' }"
+            ></view>
+            <view
+              class="trend-dot"
+              v-for="(p, i) in chart.points"
+              :key="'d' + i"
+              :style="{ left: p.x + 'px', top: p.y + 'px' }"
+            ></view>
+          </template>
+          <text class="trend-empty" v-else>{{ trendEmptyText }}</text>
+        </view>
+      </view>
+
+      <!-- 目标进度 -->
+      <view class="goal-bar" v-if="goalProgress !== null">
+        <view class="goal-bar-head">
+          <text class="goal-bar-k">{{ goalDeltaText }}</text>
+          <text class="goal-bar-v">{{ goalProgress }}%</text>
+        </view>
+        <view class="goal-track">
+          <view class="goal-fill" :style="{ width: goalProgress + '%' }"></view>
+        </view>
+      </view>
+
+      <!-- 近 7 天缺口：向下为缺口（绿），向上为盈余（橙） -->
+      <view class="weekg" v-if="weekBars.length">
+        <view class="weekg-head">
+          <text class="weekg-title">近 7 天缺口</text>
+          <text class="weekg-tag">{{ weekCutDays }} 天有缺口</text>
+        </view>
+        <view class="weekg-bars">
+          <view class="weekg-col" v-for="b in weekBars" :key="b.date">
+            <view class="weekg-bar" :class="b.neg ? 'neg' : 'pos'" :style="{ height: b.h + 'rpx' }"></view>
+            <text class="weekg-day">{{ b.label }}</text>
+          </view>
+        </view>
+      </view>
+
+      <text class="card-hint">缺口 = 摄入 −（基础消耗 + 运动消耗）。</text>
 
       <view class="card-actions">
         <view class="mini-btn primary" @click="goDiet">记录饮食</view>
@@ -123,7 +184,7 @@ import PermissionsGate from '@/components/permissions-gate.vue'
 import { getTodayData, getTargets } from '@/utils/storage.js'
 import { getTodaySteps } from '@/utils/health.js'
 import { getWater, setWater } from '@/utils/diet-store.js'
-import { getBody, getGoals, today } from '@/utils/body-store.js'
+import { getBody, getGoals, today, getWeightLog, upsertWeight, saveBody } from '@/utils/body-store.js'
 import { dayCalories, recentAverages } from '@/utils/day-summary.js'
 import { calcBMI, bmiLabel } from '@/utils/body-calc.js'
 
@@ -152,6 +213,13 @@ export default {
       todayGap: 0,
       hasIntake: false,
       gap7: null,
+      // 减脂板块：体重趋势 / 目标进度 / 近 7 天缺口
+      weightLog: [],
+      goalsWeight: 0,
+      weightInput: '',
+      weekDays: [],
+      chartW: 0,
+      chartH: 0,
       timer: null,
     }
   },
@@ -206,6 +274,93 @@ export default {
         }
       })
     },
+    minWeight() {
+      const ws = this.weightLog.map((p) => Number(p.w) || 0).filter((w) => w > 0)
+      return ws.length ? Math.min.apply(null, ws) : 0
+    },
+    maxWeight() {
+      const ws = this.weightLog.map((p) => Number(p.w) || 0).filter((w) => w > 0)
+      return ws.length ? Math.max.apply(null, ws) : 0
+    },
+    trendEmptyText() {
+      if (this.weightLog.length === 1) return '再记一次就能连成趋势线'
+      return '还没有体重记录：在上面填一个，或用「我的」页记录'
+    },
+    /**
+     * 体重折线：把记录点映射到容器像素坐标，再用旋转的细条画线段。
+     * 不用 canvas（uni.createCanvasContext 在 H5 上静默失败，前面吃过这个亏），
+     * 也不用 SVG（uni-app 模板里不是一等公民），纯 view + transform 最稳。
+     */
+    chart() {
+      const log = this.weightLog
+      const w = this.chartW
+      const h = this.chartH
+      if (!w || !h || log.length < 2) return { ok: false, points: [], segments: [] }
+
+      const ws = log.map((p) => Number(p.w) || 0)
+      const min = Math.min.apply(null, ws)
+      const max = Math.max.apply(null, ws)
+      const span = max - min || 1
+      const padX = 10
+      const padY = 12
+      const innerW = Math.max(1, w - padX * 2)
+      const innerH = Math.max(1, h - padY * 2)
+
+      const points = log.map((p, i) => ({
+        x: padX + (i / (log.length - 1)) * innerW,
+        y: padY + (1 - ((Number(p.w) || 0) - min) / span) * innerH,
+      }))
+
+      const segments = []
+      for (let i = 1; i < points.length; i++) {
+        const a = points[i - 1]
+        const b = points[i]
+        const dx = b.x - a.x
+        const dy = b.y - a.y
+        const len = Math.sqrt(dx * dx + dy * dy)
+        const angle = (Math.atan2(dy, dx) * 180) / Math.PI
+        segments.push({ x: a.x, y: a.y, len: len, angle: angle })
+      }
+      return { ok: true, points: points, segments: segments }
+    },
+    // 目标进度：起点取 30 天内最早一条，当前取最新一条
+    goalProgress() {
+      const goal = Number(this.goalsWeight) || 0
+      if (!goal || this.weightLog.length < 2) return null
+      const start = Number(this.weightLog[0].w) || 0
+      const cur = Number(this.weightLog[this.weightLog.length - 1].w) || 0
+      if (!start || !cur) return null
+      if (Math.abs(start - goal) < 0.05) return Math.abs(cur - goal) < 0.05 ? 100 : 0
+      const p = ((start - cur) / (start - goal)) * 100
+      return Math.max(0, Math.min(100, Math.round(p)))
+    },
+    goalDeltaText() {
+      const goal = Number(this.goalsWeight) || 0
+      const cur = Number(this.weight) || 0
+      if (!goal || !cur) return '还没设目标体重'
+      const d = Math.round((cur - goal) * 10) / 10
+      if (Math.abs(d) < 0.05) return '已达成目标体重'
+      return d > 0 ? `还需减 ${d} kg` : `还可增 ${Math.abs(d)} kg`
+    },
+    // 近 7 天缺口柱：高度按本周最大绝对值归一
+    weekBars() {
+      const days = this.weekDays || []
+      if (!days.length) return []
+      const absList = days.filter((d) => d.hasRecord).map((d) => Math.abs(d.gap))
+      const absMax = Math.max.apply(null, absList.concat([1]))
+      return days.map((d) => {
+        const has = !!d.hasRecord
+        return {
+          date: d.date,
+          label: String(d.date).slice(8),
+          neg: has && d.gap < 0,
+          h: has ? Math.max(6, Math.round((Math.abs(d.gap) / absMax) * 96)) : 4,
+        }
+      })
+    },
+    weekCutDays() {
+      return (this.weekDays || []).filter((d) => d.hasRecord && d.gap < 0).length
+    },
   },
   onShow() {
     this.refresh()
@@ -244,6 +399,37 @@ export default {
           }
         })
         .exec()
+      this.measureChart()
+    },
+    // 折线画布尺寸（要 px，才能算旋转角度）
+    measureChart() {
+      uni
+        .createSelectorQuery()
+        .in(this)
+        .select('.trend-box')
+        .boundingClientRect((r) => {
+          if (r && r.width && r.height) {
+            this.chartW = Math.round(r.width)
+            this.chartH = Math.round(r.height)
+          } else if (this.chartRetry === undefined || this.chartRetry < 10) {
+            this.chartRetry = (this.chartRetry || 0) + 1
+            setTimeout(() => this.measureChart(), 120)
+          }
+        })
+        .exec()
+    },
+    // 首页直接记体重：同时更新身体信息里的当前体重，保证各处口径一致
+    saveWeight() {
+      const w = Number(this.weightInput)
+      if (!(w > 0)) {
+        uni.showToast({ title: '填一下体重', icon: 'none' })
+        return
+      }
+      upsertWeight(today(), w)
+      saveBody({ weight: w })
+      this.weightInput = ''
+      this.refresh()
+      uni.showToast({ title: '已记录', icon: 'success' })
     },
     /** 一次性刷新全部指标 */
     async refresh() {
@@ -281,6 +467,13 @@ export default {
       this.bmiTag = bmiLabel(this.bmi) ? `（${bmiLabel(this.bmi)}）` : ''
       const week = recentAverages(7)
       this.gap7 = week.activeCount ? Math.round(week.avgIntake - week.avgTdee) : null
+      this.weekDays = week.days || []
+      // 体重趋势用最近 30 天（按日期升序）
+      const log = getWeightLog()
+      this.weightLog = log.slice(-30)
+      this.goalsWeight = Number(goals.weight) || 0
+      // 数据到位后容器高度/宽度可能变了，重新量一次折线画布
+      this.$nextTick(() => this.measureChart())
     },
     startTimer() {
       this.stopTimer()
@@ -540,6 +733,168 @@ export default {
 }
 .gap-v.over {
   color: #ffb347;
+}
+
+/* 记体重 */
+.weigh-row {
+  display: flex;
+  gap: 14rpx;
+  margin-top: 18rpx;
+}
+.wi-input {
+  flex: 1;
+  height: 72rpx;
+  padding: 0 20rpx;
+  border-radius: 14rpx;
+  background: $bg-card-light;
+  color: $text-main;
+  font-size: 26rpx;
+  border: 1rpx solid $border-subtle;
+}
+.wi-ph {
+  color: $text-muted;
+}
+.wi-btn {
+  padding: 0 30rpx;
+  line-height: 72rpx;
+  border-radius: 14rpx;
+  background: $brand-primary;
+  color: #06180d;
+  font-size: 26rpx;
+  font-weight: 700;
+}
+
+/* 体重趋势折线 */
+.trend {
+  margin-top: 22rpx;
+}
+.trend-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.trend-title {
+  font-size: 26rpx;
+  color: $text-secondary;
+}
+.trend-tag {
+  font-size: 22rpx;
+  color: $text-muted;
+}
+.trend-box {
+  position: relative;
+  height: 180rpx;
+  margin-top: 10rpx;
+  border-radius: 14rpx;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1rpx solid $border-subtle;
+  overflow: hidden;
+}
+.trend-seg {
+  position: absolute;
+  height: 3rpx;
+  background: #2bd45c;
+  opacity: 0.85;
+  transform-origin: 0 50%;
+  border-radius: 3rpx;
+}
+.trend-dot {
+  position: absolute;
+  width: 12rpx;
+  height: 12rpx;
+  margin-left: -6rpx;
+  margin-top: -6rpx;
+  border-radius: 50%;
+  background: #2bd45c;
+  box-shadow: 0 0 0 3rpx rgba(43, 212, 92, 0.22);
+}
+.trend-empty {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  text-align: center;
+  font-size: 22rpx;
+  color: $text-muted;
+}
+
+/* 目标进度 */
+.goal-bar {
+  margin-top: 20rpx;
+}
+.goal-bar-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.goal-bar-k {
+  font-size: 24rpx;
+  color: $text-secondary;
+}
+.goal-bar-v {
+  font-size: 26rpx;
+  font-weight: 700;
+  color: $brand-primary;
+}
+.goal-track {
+  height: 14rpx;
+  margin-top: 10rpx;
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+}
+.goal-fill {
+  height: 100%;
+  border-radius: 999rpx;
+  background: linear-gradient(90deg, #17a348, #2bd45c);
+}
+
+/* 近 7 天缺口 */
+.weekg {
+  margin-top: 22rpx;
+}
+.weekg-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.weekg-title {
+  font-size: 26rpx;
+  color: $text-secondary;
+}
+.weekg-tag {
+  font-size: 22rpx;
+  color: $text-muted;
+}
+.weekg-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 10rpx;
+  height: 120rpx;
+  margin-top: 12rpx;
+}
+.weekg-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+}
+.weekg-bar {
+  width: 26rpx;
+  border-radius: 6rpx 6rpx 0 0;
+}
+.weekg-bar.neg {
+  background: #2bd45c;
+}
+.weekg-bar.pos {
+  background: #ffb347;
+}
+.weekg-day {
+  margin-top: 8rpx;
+  font-size: 18rpx;
+  color: $text-muted;
 }
 
 /* 饮水 */
