@@ -39,6 +39,7 @@
         </view>
 
         <view class="pg-btn primary" @click="close">继续使用</view>
+        <view class="pg-btn ghost" v-if="batteryDenied" @click="askBattery">去关闭电池优化</view>
         <view class="pg-btn ghost" @click="allowAll">再申请一次</view>
       </template>
     </view>
@@ -52,6 +53,8 @@ import {
   requestAllPermissions,
   savePermState,
   getPermState,
+  refreshBatteryState,
+  askBatteryAgain,
 } from '@/utils/permissions.js'
 
 export default {
@@ -73,10 +76,31 @@ export default {
       if (!missing.length) return '都拿到了 👍'
       return `有 ${missing.length} 项没允许，相关功能会受限；可以再申请一次，或到系统设置里开。`
     },
+    batteryDenied() {
+      const s = this.state || {}
+      return s.battery === 'denied'
+    },
   },
   mounted() {
     // 只在"从来没走过"时出现；走过一次就不再打扰
     if (!hasAskedPermissions()) this.show = true
+    // #ifdef APP-PLUS
+    // 电池优化对话框没有回调：用户点完「允许」回到 App 时重查一次状态
+    this.onResumeHandler = () => {
+      const s = refreshBatteryState()
+      if (this.state) this.state = Object.assign({}, this.state, { battery: s.battery })
+    }
+    try {
+      plus.globalEvent.addEventListener('resume', this.onResumeHandler)
+    } catch (e) {}
+    // #endif
+  },
+  beforeUnmount() {
+    // #ifdef APP-PLUS
+    try {
+      if (this.onResumeHandler) plus.globalEvent.removeEventListener('resume', this.onResumeHandler)
+    } catch (e) {}
+    // #endif
   },
   methods: {
     statusOf(key) {
@@ -118,6 +142,11 @@ export default {
     skip() {
       savePermState({ supported: true, location: 'skipped', background: 'na', activity: 'skipped' })
       this.show = false
+    },
+    // 结果视图里手动再弹一次电池优化对话框
+    askBattery() {
+      askBatteryAgain()
+      uni.showToast({ title: '请在弹出的系统窗口选「允许」', icon: 'none' })
     },
     close() {
       this.show = false

@@ -36,6 +36,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
     <!-- 常驻通知（Android 13+ 是运行时权限），前台服务靠它显示"正在记录运动" -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- 电池优化白名单：国产 ROM 的省电策略比原生 Doze 更激进，
+         声明后可用 ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS 弹系统对话框申请 -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
 
     <!-- ===== 相机（manifest.json 声明过） ===== -->
     <uses-feature android:name="android.hardware.camera"/>

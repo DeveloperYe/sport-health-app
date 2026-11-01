@@ -53,7 +53,12 @@
                     /* 后台定位：锁屏/切后台仍继续记录轨迹。
                        Android 11+ 必须单独申请（不能和前台定位同一次请求），
                        运行时流程见 utils/permissions.js */
-                    "<uses-permission android:name=\"android.permission.ACCESS_BACKGROUND_LOCATION\"/>"
+                    "<uses-permission android:name=\"android.permission.ACCESS_BACKGROUND_LOCATION\"/>",
+                    /* 前台服务 + 常驻通知 + 电池优化白名单（锁屏继续记录三件套） */
+                    "<uses-permission android:name=\"android.permission.FOREGROUND_SERVICE\"/>",
+                    "<uses-permission android:name=\"android.permission.FOREGROUND_SERVICE_LOCATION\"/>",
+                    "<uses-permission android:name=\"android.permission.POST_NOTIFICATIONS\"/>",
+                    "<uses-permission android:name=\"android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS\"/>"
                 ]
             },
             /* ios打包配置 */

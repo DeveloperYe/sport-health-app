@@ -19,6 +19,8 @@
  * 让页面照常进入（H5 由浏览器自己弹，小程序由平台弹）。
  */
 
+import { isIgnoringBatteryOptimizations, requestIgnoreBatteryOptimizations } from './battery.js'
+
 const KEY = 'fh_perms_v1'
 
 /** 界面要展示的清单（顺序即展示顺序） */
@@ -49,6 +51,13 @@ export const PERMISSION_ITEMS = [
     icon: '🔔',
     title: '通知',
     desc: '运动时在通知栏显示「正在记录运动」，这是安卓保持后台定位的必要条件。',
+    required: false,
+  },
+  {
+    key: 'battery',
+    icon: '🔋',
+    title: '忽略电池优化',
+    desc: '不让系统为了省电清掉运动进程；国产 ROM 这一步比权限本身更关键。',
     required: false,
   },
 ]
@@ -125,6 +134,7 @@ export async function requestAllPermissions() {
     background: 'na',
     activity: 'unsupported',
     notification: 'na',
+    battery: 'na',
   }
 
   // #ifdef APP-PLUS
@@ -159,6 +169,14 @@ export async function requestAllPermissions() {
   } else {
     state.notification = 'na'
   }
+
+  // 第四轮：电池优化白名单。
+  // 它不是运行时权限，弹的是系统对话框，且用户点完没有回调 —— 所以这里只负责
+  // "查状态 + 拉起对话框"，真实结果由 gate 组件在 App 恢复前台时再查一次。
+  state.battery = isIgnoringBatteryOptimizations() ? 'granted' : 'denied'
+  if (state.battery === 'denied') {
+    requestIgnoreBatteryOptimizations()
+  }
   // #endif
 
   savePermState(state)
@@ -173,4 +191,26 @@ export function permSummary(state) {
   const bad = PERMISSION_ITEMS.filter((it) => s[it.key] === 'denied')
   if (!bad.length) return ''
   return `${bad.map((b) => b.title).join('、')}未授权，相关功能会受限（可在系统设置里开启）`
+}
+
+/**
+ * 重新查一次电池优化状态并写回。
+ * 电池优化对话框没有回调，用户点"允许"回到 App 后只能靠这里重查；
+ * gate 组件在 App 恢复前台（resume）时调用它。
+ */
+export function refreshBatteryState() {
+  const s = getPermState() || {}
+  if (!s.supported) return s
+  // #ifdef APP-PLUS
+  s.battery = isIgnoringBatteryOptimizations() ? 'granted' : 'denied'
+  uni.setStorageSync(KEY, Object.assign({}, s, { askedAt: s.askedAt || Date.now() }))
+  // #endif
+  return s
+}
+
+/** 手动再弹一次电池优化对话框（结果视图里的按钮用） */
+export function askBatteryAgain() {
+  // #ifdef APP-PLUS
+  requestIgnoreBatteryOptimizations()
+  // #endif
 }
