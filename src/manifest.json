@@ -49,12 +49,22 @@
                     "<uses-permission android:name=\"android.permission.WRITE_SETTINGS\"/>",
                     "<uses-permission android:name=\"android.permission.ACTIVITY_RECOGNITION\"/>",
                     "<uses-permission android:name=\"android.permission.ACCESS_FINE_LOCATION\"/>",
-                    "<uses-permission android:name=\"android.permission.ACCESS_COARSE_LOCATION\"/>"
+                    "<uses-permission android:name=\"android.permission.ACCESS_COARSE_LOCATION\"/>",
+                    /* 后台定位：锁屏/切后台仍继续记录轨迹。
+                       Android 11+ 必须单独申请（不能和前台定位同一次请求），
+                       运行时流程见 utils/permissions.js */
+                    "<uses-permission android:name=\"android.permission.ACCESS_BACKGROUND_LOCATION\"/>"
                 ]
             },
             /* ios打包配置 */
             "ios" : {
-                "dSYMs" : false
+                "dSYMs" : false,
+                /* 权限弹窗里给用户的说明文案（上架 iOS 时必需） */
+                "privacyDescription" : {
+                    "NSLocationWhenInUseUsageDescription" : "用于记录跑步/走路的轨迹与距离，轨迹只保存在本机",
+                    "NSLocationAlwaysAndWhenInUseUsageDescription" : "锁屏或切到其他应用时继续记录运动轨迹",
+                    "NSMotionUsageDescription" : "用于读取系统计步数据，统计步数与消耗"
+                }
             },
             /* SDK配置 */
             "sdkConfigs" : {}
