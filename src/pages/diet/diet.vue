@@ -1,8 +1,5 @@
 <template>
   <view class="page">
-    <!-- 首次进入：一次性把定位/后台定位/计步权限要齐，之后不再打断 -->
-    <permissions-gate />
-
     <!-- 日期条 -->
     <view class="date-bar">
       <view
@@ -188,7 +185,6 @@ import { searchFoods, estimateDish, COMMON_FOODS } from '@/utils/nutrition.js'
 import { macroToCalorie } from '@/utils/body-calc.js'
 import { dayCalories } from '@/utils/day-summary.js'
 import { today, dateOffset } from '@/utils/body-store.js'
-import PermissionsGate from '@/components/permissions-gate.vue'
 
 const EMPTY_SUMMARY = {
   intake: 0, carb: 0, protein: 0, fat: 0, count: 0, water: 0,
@@ -198,7 +194,6 @@ const EMPTY_SUMMARY = {
 }
 
 export default {
-  components: { PermissionsGate },
   data() {
     return {
       MEALS,
@@ -439,7 +434,7 @@ export default {
 <style lang="scss" scoped>
 .page {
   min-height: 100vh;
-  padding-bottom: 160rpx; // 让出底部 tabBar 的高度，避免最后一张卡被压住
+  padding-bottom: 60rpx; // 非 tab 页，只需常规留白
   background: $bg-page;
 }
 
