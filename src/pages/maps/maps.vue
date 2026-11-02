@@ -87,8 +87,9 @@
 
     <!-- 真机排障用：把环境与测速细节摊开，出问题截图即可定位 -->
     <view class="card">
-      <view class="list-head">
+      <view class="list-head diag-head">
         <text class="card-title">诊断</text>
+        <view class="mini-btn small ghost" @click="runStorageTest">存储自检</view>
         <view class="mini-btn small ghost" @click="copyDiag">复制</view>
       </view>
       <text class="diag-line">运行时：{{ diagInfo.runtime }}</text>
@@ -97,6 +98,7 @@
       <text class="diag-line">测速通道：{{ transport || '…' }}</text>
       <text class="diag-line" v-for="(l, i) in diagInfo.lines" :key="'dl' + i">{{ l }}</text>
       <text class="diag-line" v-if="!diagInfo.lines.length">还没测过速</text>
+      <text class="diag-line" v-for="(l, i) in storageLines" :key="'st' + i">{{ l }}</text>
       <text class="diag-line" v-if="manualPrefix">已手动指定：{{ manualLabel }}（下载时跳过测速）</text>
       <view class="manual-row">
         <view
@@ -130,7 +132,7 @@ import {
   mirrorLabel,
   probeTransportName,
 } from '@/utils/city-maps.js'
-import { downloadCity, deleteCity } from '@/utils/city-map-download.js'
+import { downloadCity, deleteCity, storageSelfTest } from '@/utils/city-map-download.js'
 
 export default {
   data() {
@@ -142,6 +144,7 @@ export default {
       speedLine: '',
       transport: '',
       diagInfo: { runtime: '', xhr: '', pxhr: '', downloader: '', lines: [] },
+      storageLines: [],
       manualPrefix: '',
       tickTimer: null,
       limit: 30,
@@ -371,12 +374,21 @@ export default {
       this.manualPrefix = ''
       uni.showToast({ title: '已恢复自动测速', icon: 'none' })
     },
+    async runStorageTest() {
+      this.storageLines = ['检测中…']
+      try {
+        const r = await storageSelfTest()
+        this.storageLines = r.lines || []
+      } catch (e) {
+        this.storageLines = ['自检异常: ' + ((e && e.message) || e)]
+      }
+    },
     copyDiag() {
       const d = this.diagInfo
       const txt =
         '运行时 ' + d.runtime + ' | XHR ' + d.xhr + ' | plus.net.XHR ' + d.pxhr +
         ' | 下载器 ' + d.downloader + ' | 通道 ' + this.transport +
-        '\n' + (d.lines || []).join('\n')
+        '\n' + (d.lines || []).join('\n') + '\n--- 存储自检 ---\n' + (this.storageLines || []).join('\n')
       uni.setClipboardData({
         data: txt,
         success: () => uni.showToast({ title: '已复制', icon: 'none' }),
@@ -618,6 +630,10 @@ export default {
   font-size: 22rpx;
   line-height: 1.6;
   color: $text-muted;
+}
+.diag-head {
+  gap: 12rpx;
+  flex-wrap: wrap;
 }
 .manual-row {
   display: flex;

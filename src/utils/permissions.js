@@ -54,6 +54,13 @@ export const PERMISSION_ITEMS = [
     required: false,
   },
   {
+    key: 'storage',
+    icon: '💾',
+    title: '存储',
+    desc: '把下载的离线地图包写到手机存储里。Android 10 及以上写到应用私有目录，本来就不需要这个权限；只有更早的系统才需要。',
+    required: false,
+  },
+  {
     key: 'battery',
     icon: '🔋',
     title: '忽略电池优化',
@@ -133,6 +140,7 @@ export async function requestAllPermissions() {
     location: 'unsupported',
     background: 'na',
     activity: 'unsupported',
+    storage: 'na',
     notification: 'na',
     battery: 'na',
   }
@@ -148,8 +156,13 @@ export async function requestAllPermissions() {
     'android.permission.ACCESS_COARSE_LOCATION',
   ]
   if (needActivity) firstList.push('android.permission.ACTIVITY_RECOGNITION')
+  // 存储：只有 Android 9(API 28) 及以下写外部存储才需要运行时授权。
+  // 我们主路径写 _doc（应用私有目录，任何版本都不需要权限），
+  // 这里一并申请是为了退路 _downloads/ 也能用，顺便让用户一次配齐。
+  if (sdk <= 28) firstList.push('android.permission.WRITE_EXTERNAL_STORAGE')
   const first = await request(firstList)
   state.location = hasGranted(first.granted, 'ACCESS_FINE_LOCATION') ? 'granted' : 'denied'
+  state.storage = sdk <= 28 ? (hasGranted(first.granted, 'WRITE_EXTERNAL_STORAGE') ? 'granted' : 'denied') : 'na'
   state.activity = needActivity
     ? hasGranted(first.granted, 'ACTIVITY_RECOGNITION')
       ? 'granted'

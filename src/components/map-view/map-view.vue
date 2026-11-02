@@ -49,7 +49,7 @@
 // App：这里不建图，只负责「用 plus.io 把瓦片读出来、分块过桥」以及显示诊断行。
 //      注意 App 逻辑层绝不能引 map-core.js（会把 maplibre 拖进没有 window 的 v8 层）。
 import { readTilesViaPlusIo, TILE_FILES, tileUserPath } from './tiles.js'
-import { getCurrent, isInstalled, getCity } from '@/utils/city-maps.js'
+import { getCurrent, isInstalled, getCity, getInstalledPath } from '@/utils/city-maps.js'
 import { makeMapStatus, formatMapStatus } from './map-status.js'
 // #ifdef H5
 import { createTrackMap, probeWebgl, waitForSize } from './map-core.js'
@@ -355,7 +355,7 @@ export default {
       this.tileB64 = ''
       this.tileChunkCount = 0
       // 用户下载包在 _doc/maps/，包内自带的在 _www/static/tiles/
-      const absPath = a && a.where === 'user' ? tileUserPath(file) : ''
+      const absPath = a && a.where === 'user' ? getInstalledPath(a.adcode) || tileUserPath(file) : ''
       const started = readTilesViaPlusIo(
         file,
         (b64) => {

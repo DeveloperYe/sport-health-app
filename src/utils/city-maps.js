@@ -161,7 +161,7 @@ export function setCurrent(adcode) {
   return true
 }
 
-export function markInstalled(city) {
+export function markInstalled(city, extra) {
   const all = getInstalled()
   all[city.adcode] = {
     adcode: city.adcode,
@@ -170,8 +170,16 @@ export function markInstalled(city) {
     bytes: city.bytes,
     sha256: city.sha256,
     at: Date.now(),
+    // 实际落盘路径：_doc 写失败时会退到 _downloads，读的时候必须按记录走
+    path: (extra && extra.path) || appMapPath(city.adcode),
   }
   writeJson(K_INSTALLED, all)
+}
+
+/** 已装包的实际路径（没有记录时退回默认 _doc/maps/） */
+export function getInstalledPath(adcode) {
+  const rec = getInstalled()[String(adcode)]
+  return (rec && rec.path) || appMapPath(adcode)
 }
 
 /** 记录校验档位：'pending' | 'SHA-256' | '字节数+结构' | 'mismatch' */

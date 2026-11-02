@@ -23,7 +23,7 @@ import {
   setInstalledVerify,
 } from './city-maps.js'
 import { Sha256 } from './sha256.js'
-import { idbPut, idbGet, idbDelete } from './idb-tiles.js'
+import { idbPut, idbGet, idbDelete, idbKeys } from './idb-tiles.js'
 import { shouldSwitchMirror, SLOW_WINDOW_MS } from './mirror-pick.js'
 import { checkPmtilesStructure } from './pmtiles-check.js'
 
@@ -85,6 +85,80 @@ function plusDir(path, create) {
       reject(e)
     }
   })
+}
+
+/** 确保 <base>/maps 目录存在 */
+function ensureMapsDir(base) {
+  return new Promise((resolve, reject) => {
+    try {
+      plus.io.resolveLocalFileSystemURL(
+        base,
+        (root) => {
+          root.getDirectory(
+            'maps',
+            { create: true },
+            (d) => resolve(d),
+            (e) => reject(new Error('getDirectory: ' + ((e && e.message) || '失败')))
+          )
+        },
+        (e) => reject(new Error('resolve(' + base + '): ' + ((e && e.message) || '失败')))
+      )
+    } catch (e) {
+      reject(e)
+    }
+  })
+}
+
+function moveIntoDir(srcEntry, dirEntry, name) {
+  return new Promise((resolve, reject) => {
+    const doMove = () => {
+      srcEntry.moveTo(
+        dirEntry,
+        name,
+        (e) => resolve((e && e.fullPath) || ''),
+        (err) => reject(new Error('moveTo: ' + ((err && err.message) || '失败')))
+      )
+    }
+    try {
+      // 同名旧文件先删掉，否则 moveTo 可能因已存在而失败
+      dirEntry.getFile(
+        name,
+        { create: false },
+        (old) => old.remove(doMove, doMove),
+        doMove
+      )
+    } catch (e) {
+      doMove()
+    }
+  })
+}
+
+/**
+ * 保存下载好的包。
+ * 主路径 _doc/maps/（应用私有目录，任何 Android 版本都不需要存储权限）；
+ * 万一写不进去（个别 ROM 会限制），退到 _downloads/maps/；
+ * 再不行就把临时文件本身当包（记录路径，地图照样能加载），并如实回报尝试过程。
+ * @returns {Promise<{ok:boolean, path:string, full?:string, fallbackTemp?:boolean, tried:string[]}>}
+ */
+export async function saveAppPack(tempPath, adcode) {
+  const tried = []
+  let srcEntry = null
+  try {
+    srcEntry = await plusResolve(tempPath)
+  } catch (e) {
+    tried.push('打不开临时文件: ' + ((e && e.message) || e))
+    return { ok: false, path: '', tried }
+  }
+  for (const base of ['_doc/', '_downloads/']) {
+    try {
+      const dir = await ensureMapsDir(base)
+      const full = await moveIntoDir(srcEntry, dir, adcode + '.pmtiles')
+      return { ok: true, path: base + 'maps/' + adcode + '.pmtiles', full: full, tried: tried }
+    } catch (e) {
+      tried.push(base + ' → ' + ((e && e.message) || e))
+    }
+  }
+  return { ok: true, path: tempPath, fallbackTemp: true, tried: tried }
 }
 
 /** 临时文件 → _doc/maps/<adcode>.pmtiles */
@@ -617,21 +691,29 @@ export async function downloadCity(adcode, opts) {
 
     // 4) 落地
     onProgress({ phase: 'save', note: '保存中…' })
+    let savedPath = ''
     if (isAppRuntime()) {
+      let sv = null
       try {
-        // moveTo 也可能不回调，20 秒拿不到结果就当失败，免得永远停在「保存中」
-        await Promise.race([
-          moveToMapsDir(res.tempFilePath, city.adcode),
+        // 移动可能不回调，20 秒拿不到结果就当失败，免得永远停在「保存中」
+        sv = await Promise.race([
+          saveAppPack(res.tempFilePath, city.adcode),
           new Promise((_, rej) => setTimeout(() => rej(new Error('移动超时（20s）')), 20000)),
         ])
       } catch (e) {
         return { ok: false, err: '保存失败: ' + ((e && e.message) || e) }
       }
+      if (!sv || !sv.ok) {
+        return { ok: false, err: '保存失败: ' + ((sv && sv.tried && sv.tried.join(' | ')) || '未知原因') }
+      }
+      savedPath = sv.path || ''
+      if (sv.tried && sv.tried.length) onLog('保存目录有退路：' + sv.tried.join(' | '))
+      if (sv.fallbackTemp) onLog('提示：未能移动到正式目录，暂用临时文件（重启后可能失效）')
     } else {
       await idbPut(city.adcode, res.bytes)
     }
 
-    markInstalled(city)
+    markInstalled(city, { path: savedPath || undefined })
     if (hashLater) {
       // 摘要后台跑：先让用户能立刻切城市，算完再把状态写进已装记录
       setInstalledVerify(city.adcode, 'pending', '')
@@ -730,21 +812,103 @@ async function verifyOneCity(adcode, opts) {
   if (opts.onDone) opts.onDone('SHA-256')
 }
 
+/** 存储自检：把「能不能写／读／删」和真实路径摊开，交给诊断卡一键运行 */
+export async function storageSelfTest() {
+  const lines = []
+  if (!isAppRuntime()) {
+    const keys = await idbKeys()
+    lines.push('运行时 H5，用 IndexedDB 存包')
+    lines.push('已存 ' + keys.length + ' 个包' + (keys.length ? '：' + keys.join(', ') : ''))
+    return { lines }
+  }
+  lines.push('运行时 App')
+  lines.push('_doc 路径: ' + (absPathOf('_doc/') || '(取不到)'))
+  lines.push('_downloads 路径: ' + (absPathOf('_downloads/') || '(取不到)'))
+  const rel = '_doc/maps/__selftest__.txt'
+  // 1) 建目录 + 写文件
+  const dir = await ensureMapsDir('_doc/').catch((e) => null)
+  if (!dir) {
+    lines.push('❌ 无法创建 _doc/maps 目录')
+    return { lines }
+  }
+  lines.push('✅ _doc/maps 目录可创建')
+  const body = 'ok-' + Date.now()
+  const w = await new Promise((resolve) => {
+    dir.getFile(
+      '__selftest__.txt',
+      { create: true },
+      (fe) => {
+        fe.createWriter(
+          (writer) => {
+            writer.onwrite = () => resolve(true)
+            writer.onerror = (e) => resolve('写失败: ' + ((e && e.message) || ''))
+            try {
+              writer.write(body)
+            } catch (e) {
+              resolve('写异常: ' + ((e && e.message) || e))
+            }
+          },
+          (e) => resolve('createWriter 失败: ' + ((e && e.message) || ''))
+        )
+      },
+      (e) => resolve('getFile 失败: ' + ((e && e.message) || ''))
+    )
+  })
+  lines.push((w === true ? '✅' : '❌') + ' 写测试文件: ' + (w === true ? rel : w))
+  // 2) 读回来
+  const f2 = await openAppFile(rel, 5000)
+  if (!f2) {
+    lines.push('❌ 读不回测试文件（写入或路径映射有问题）')
+  } else {
+    const u8 = await readBlobPart(f2, 0, body.length, 5000)
+    const got = u8 ? String.fromCharCode.apply(null, Array.from(u8)) : ''
+    lines.push((got === body ? '✅' : '❌') + ' 读回内容: ' + JSON.stringify(got))
+  }
+  // 3) 删掉
+  const del = await new Promise((resolve) => {
+    plus.io.resolveLocalFileSystemURL(
+      rel,
+      (e) => e.remove(() => resolve(true), () => resolve(false)),
+      () => resolve(false)
+    )
+  })
+  lines.push((del ? '✅' : '❌') + ' 删除测试文件')
+  // 4) 列出已装包
+  const rec = getInstalled()
+  const names = Object.keys(rec)
+  if (!names.length) lines.push('还没有下载过城市包')
+  else {
+    names.forEach((k) => {
+      lines.push('已装 ' + k + ' → ' + (rec[k].path || '(未记录路径)') + '，校验 ' + (rec[k].verify || '未校验'))
+    })
+  }
+  return { lines }
+}
+
 /** 删除已下载的城市包 */
 export async function deleteCity(adcode) {
   const a = String(adcode)
   if (isAppRuntime()) {
-    await new Promise((resolve) => {
-      try {
-        plus.io.resolveLocalFileSystemURL(
-          APP_MAP_DIR + a + '.pmtiles',
-          (entry) => entry.remove(() => resolve(true), () => resolve(false)),
-          () => resolve(false)
-        )
-      } catch (e) {
-        resolve(false)
-      }
-    })
+    // 路径可能被保存退路改过（_doc / _downloads / 临时文件），逐个按记录删
+    const rec = getInstalled()[a] || {}
+    const candidates = [rec.path, APP_MAP_DIR + a + '.pmtiles', '_downloads/maps/' + a + '.pmtiles']
+    const seen = {}
+    for (let i = 0; i < candidates.length; i++) {
+      const p = candidates[i]
+      if (!p || seen[p]) continue
+      seen[p] = 1
+      await new Promise((resolve) => {
+        try {
+          plus.io.resolveLocalFileSystemURL(
+            p,
+            (entry) => entry.remove(() => resolve(true), () => resolve(false)),
+            () => resolve(false)
+          )
+        } catch (e) {
+          resolve(false)
+        }
+      })
+    }
   } else {
     try {
       await idbDelete(a)
