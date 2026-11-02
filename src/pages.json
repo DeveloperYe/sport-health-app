@@ -23,6 +23,12 @@
 			"style": {
 				"navigationBarTitleText": "饮食记录"
 			}
+		},
+		{
+			"path": "pages/maps/maps",
+			"style": {
+				"navigationBarTitleText": "离线底图"
+			}
 		}
 	],
 	"globalStyle": {

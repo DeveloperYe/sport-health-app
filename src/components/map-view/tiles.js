@@ -34,6 +34,12 @@ export function tileWww(file) {
   return '_www/static/tiles/' + file
 }
 
+/** App：用户下载的城市包目录（运行时落盘，不进 APK） */
+export const USER_MAP_DIR = '_doc/maps/'
+export function tileUserPath(file) {
+  return USER_MAP_DIR + file
+}
+
 /** 传进诊断行前把 URL 缩短，别把整条 file:// 路径塞满屏幕 */
 export function shortUrl(u) {
   const s = String(u || '')
@@ -208,8 +214,9 @@ export async function loadTilesFromUrls(urls) {
  * 逻辑层与视图层共用：视图层拿到 base64 自己 atob，逻辑层切成块过桥。
  * @returns {boolean} 是否成功发起
  */
-export function readTilesViaPlusIo(file, onBase64, onError) {
-  const www = tileWww(file)
+export function readTilesViaPlusIo(file, onBase64, onError, absPath) {
+  // absPath 给「已下载到 _doc/maps/ 的城市包」用；不传则读包内 _www/static/tiles/
+  const www = absPath || tileWww(file)
   const fail = (m) => {
     try {
       onError && onError(m)

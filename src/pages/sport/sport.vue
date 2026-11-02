@@ -25,13 +25,14 @@
         </view>
       </view>
 
-      <!-- 轨迹图：优先青岛离线底图 + 轨迹叠加；底图起不来或轨迹越出离线包
-           范围时，整体切回 track-map 自绘层（二选一，绝不同时显示两套）。 -->
+      <!-- 轨迹图：优先离线底图（内置青岛包或已下载的城市包）+ 轨迹叠加；底图起不来或
+           轨迹越出离线包范围时，整体切回 track-map 自绘层（二选一，绝不同时显示两套）。 -->
       <view class="map-wrap">
         <map-view
           v-if="mapMode === 'basemap'"
           :points="trackPoints"
           :hint-text="mapHintText"
+          :city-key="mapCityKey"
           @fail="onMapFail"
           @outofbounds="onMapOutOfBounds"
         />
@@ -40,6 +41,11 @@
           已回退自绘轨迹图：{{ mapFallbackText }}
         </text>
         <text class="gps-err" v-if="gpsError">{{ gpsError }}</text>
+        <!-- 底图切换入口：显示当前用的是哪个城市的包 -->
+        <view class="map-city-btn" @click="goMaps">
+          <text class="map-city-txt">{{ mapCityName }}</text>
+          <text class="map-city-arrow">切换</text>
+        </view>
       </view>
 
       <!-- 计时器 -->
@@ -236,6 +242,7 @@ import { allWorkoutRecords } from '@/utils/day-summary.js'
 // GPS 轨迹：采集/滤波/距离在 track.js，格式化在 geo.js
 import { startTrack, stopTrack, pauseTrack, resumeTrack, onTrackUpdate, getTrack } from '@/utils/track.js'
 import { formatDistance, formatPace } from '@/utils/geo.js'
+import { getCurrent, getCity } from '@/utils/city-maps.js'
 
 export default {
   data() {
@@ -270,6 +277,8 @@ export default {
       offTrack: null, // track.js 的退订函数
       // ===== 轨迹图模式：离线底图 或 自绘兜底（二选一）=====
       mapMode: 'basemap',
+      mapCityKey: '',
+      mapCityName: '青岛（内置）',
       mapBroken: false, // 底图彻底不可用（整轮会话都不再试）
       mapFallbackText: '',
       // ===== 顶层页签：跑步/走路（有轨迹） vs 其他运动（按 MET 时长） =====
@@ -362,6 +371,8 @@ export default {
     this.weight = getWeight()
     this.loadTodayOther()
     this.loadTodayRuns()
+    // 底图城市可能刚在地图页换掉：刷新一下，city-key 一变 map-view 就重建
+    this.refreshMapCity()
     // 从后台回来时立刻按真实时间刷新一次，不用等下一个 tick
     if (this.otState === 'running') this.startOtTimer()
     // 后台保活是否真的在工作：对比切后台前后的轨迹点数，直接显示出来
@@ -386,6 +397,25 @@ export default {
     stopTrack()
   },
   methods: {
+    // ===== 底图城市 =====
+    // 当前用的是哪个城市的离线包：装了就用下载的，没装就用包内自带的青岛包
+    refreshMapCity() {
+      const cur = getCurrent()
+      const c = cur ? getCity(cur) : null
+      const key = c ? c.adcode : 'bundled-qingdao'
+      this.mapCityName = c ? c.name : '青岛（内置）'
+      // 只有真的变了才改，避免每次 onShow 都触发地图重建
+      if (this.mapCityKey !== key) this.mapCityKey = key
+    },
+    goMaps() {
+      // 运动进行中切地图会让视图层重建，禁止，先结束运动
+      if (this.state !== 'idle' || this.otState !== 'idle') {
+        uni.showToast({ title: '先结束当前运动再切地图', icon: 'none' })
+        return
+      }
+      uni.navigateTo({ url: '/pages/maps/maps' })
+    },
+
     // ===== 顶层页签 =====
     switchTab(tab) {
       // 任一运动进行中都不允许切走，避免地图/计时状态错乱
@@ -784,6 +814,27 @@ export default {
 .map-wrap {
   margin-top: 32rpx;
   position: relative;
+}
+/* 底图切换入口：浮在地图右下角 */
+.map-city-btn {
+  position: absolute;
+  right: 16rpx;
+  bottom: 16rpx;
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  padding: 10rpx 20rpx;
+  border-radius: 999rpx;
+  background: rgba(16, 16, 20, 0.82);
+  border: 1rpx solid $border-subtle;
+}
+.map-city-txt {
+  font-size: 22rpx;
+  color: $text-main;
+}
+.map-city-arrow {
+  font-size: 20rpx;
+  color: $brand-primary;
 }
 .gps-err {
   display: block;

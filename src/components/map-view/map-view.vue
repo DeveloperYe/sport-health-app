@@ -19,6 +19,8 @@
       :change:mvvisible="mapView.onVisible"
       :mvsize="hostSize"
       :change:mvsize="mapView.onSize"
+      :mvarchives="archivesPayload"
+      :change:mvarchives="mapView.onArchives"
     ></view>
     <!-- #endif -->
     <!-- #ifdef H5 -->
@@ -46,7 +48,8 @@
 // H5：在这里直接建图（H5 有 DOM，不需要 renderjs）。
 // App：这里不建图，只负责「用 plus.io 把瓦片读出来、分块过桥」以及显示诊断行。
 //      注意 App 逻辑层绝不能引 map-core.js（会把 maplibre 拖进没有 window 的 v8 层）。
-import { readTilesViaPlusIo, TILE_FILES } from './tiles.js'
+import { readTilesViaPlusIo, TILE_FILES, tileUserPath } from './tiles.js'
+import { getCurrent, isInstalled, getCity } from '@/utils/city-maps.js'
 import { makeMapStatus, formatMapStatus } from './map-status.js'
 // #ifdef H5
 import { createTrackMap, probeWebgl, waitForSize } from './map-core.js'
@@ -65,6 +68,8 @@ export default {
     points: { type: Array, default: () => [] },
     visible: { type: Boolean, default: true },
     hintText: { type: String, default: '底图已就绪，开始运动后叠加轨迹' },
+    // 当前底图城市的 adcode；变化时重建地图（切换城市后回到运动页生效）
+    cityKey: { type: String, default: '' },
   },
   data() {
     return {
@@ -74,6 +79,7 @@ export default {
       booted: false, // 本平台是否真的走了建图分支（H5 / App），其它平台直接回退
       tick: 0, // 每次轨迹更新自增，保证过桥的值一定「变了」
       chunk: null, // App：跨层搬运的 base64 分块 { i, n, b64 }
+      archives: [], // 当前要加载的档案 [{file, where:'bundled'|'user', adcode}]
       diagText: '',
       diagShow: false, // 诊断行是否可见：正常时隐藏，出错才露出
       ready: false,
@@ -97,8 +103,16 @@ export default {
     pointsPayload() {
       return { n: this.tick, list: this.points }
     },
+    // App：把档案清单推给视图层（视图层与逻辑层是两个 JS 上下文，不能共享模块状态）
+    archivesPayload() {
+      return JSON.stringify(this.archives || [])
+    },
   },
   watch: {
+    // 城市变了就整图重建：档案换了、中心点和 bbox 都要重新从包头发起
+    cityKey() {
+      if (this.booted || this.appMode) this.reloadForCity()
+    },
     points() {
       this.tick++
       // #ifdef H5
@@ -183,6 +197,36 @@ export default {
         .exec()
     },
 
+    // 决定这次要加载哪些档案：装了城市包就用它，否则用包内自带的青岛包
+    resolveArchives() {
+      const cur = getCurrent()
+      if (cur && isInstalled(cur)) {
+        const c = getCity(cur)
+        if (c) {
+          this.archives = [{ file: c.adcode + '.pmtiles', where: 'user', adcode: c.adcode, name: c.name }]
+          return this.archives
+        }
+      }
+      this.archives = (TILE_FILES || []).map((f) => ({ file: f, where: 'bundled' }))
+      return this.archives
+    },
+    // 切换城市后重建地图（档案换了，中心点/bbox 也要重新从包头发起）
+    reloadForCity() {
+      this.teardownH5()
+      this.ready = false
+      this.failed = false
+      this.core = null
+      // #ifdef APP-PLUS
+      this.appMode = false
+      this.$nextTick(() => {
+        this.appMode = true
+      })
+      // #endif
+      // #ifdef H5
+      this.$nextTick(() => this.bootH5())
+      // #endif
+    },
+
     // ===== H5 =====
     async bootH5() {
       // #ifdef H5
@@ -190,21 +234,37 @@ export default {
       if (!el) return this.failH5('找不到地图容器 DOM')
       const size = await waitForSize(el, 6000)
       if (!size.w || !size.h) return this.failH5('地图容器尺寸为 0（布局未就绪）')
-      // 逐个档案加载，取到几个用几个（缺文件不致命，以后加城市只需往 TILE_FILES 里加）
+      this.resolveArchives()
+      // 逐个档案加载，取到几个用几个（缺文件不致命）
       const archives = []
       const notes = []
-      for (let i = 0; i < TILE_FILES.length; i++) {
-        let r = null
-        try {
-          r = await loadTilesFromUrls(tileUrlCandidates(TILE_FILES[i]))
-        } catch (e) {
-          r = { bytes: null, err: (e && e.message) || String(e) }
-        }
-        if (r && r.bytes) {
-          archives.push({ key: TILE_FILES[i], bytes: r.bytes })
-          notes.push(TILE_FILES[i] + '←' + r.src.replace(/^[a-z]+@/, ''))
+      for (let i = 0; i < this.archives.length; i++) {
+        const a = this.archives[i]
+        let bytes = null
+        let srcText = ''
+        if (a.where === 'user') {
+          // H5 端下载的包存在 IndexedDB 里
+          const mod = await import('@/utils/city-map-download.js')
+          bytes = await mod.readPackedBytes(a.adcode)
+          srcText = 'idb'
+          if (!bytes) notes.push(a.file + '✗(未下载)')
         } else {
-          notes.push(TILE_FILES[i] + '✗')
+          let r = null
+          try {
+            r = await loadTilesFromUrls(tileUrlCandidates(a.file))
+          } catch (e) {
+            r = { bytes: null, err: (e && e.message) || String(e) }
+          }
+          if (r && r.bytes) {
+            bytes = r.bytes
+            srcText = String(r.src || '').replace(/^[a-z]+@/, '')
+          } else {
+            notes.push(a.file + '✗')
+          }
+        }
+        if (bytes) {
+          archives.push({ key: a.file, bytes: bytes })
+          notes.push(a.file + '←' + srcText)
         }
       }
       if (!archives.length) return this.failH5('读取底图数据失败: 一个档案都没读到')
@@ -285,7 +345,8 @@ export default {
       // #ifdef APP-PLUS
       const p = payload && typeof payload === 'object' ? payload : {}
       const f = typeof p.f === 'number' ? p.f : 0
-      const file = TILE_FILES[f]
+      const a = (this.archives && this.archives[f]) || null
+      const file = a ? a.file : TILE_FILES[f]
       if (!file) {
         this.chunk = { f: f, i: 0, n: 0, b64: '', err: '档案下标越界: ' + f }
         return
@@ -293,6 +354,8 @@ export default {
       this.currentFile = f
       this.tileB64 = ''
       this.tileChunkCount = 0
+      // 用户下载包在 _doc/maps/，包内自带的在 _www/static/tiles/
+      const absPath = a && a.where === 'user' ? tileUserPath(file) : ''
       const started = readTilesViaPlusIo(
         file,
         (b64) => {
@@ -304,7 +367,8 @@ export default {
         // 这一份读失败不该拖垮整个底图：用 n=0 的错误块告诉视图层「跳过这份，继续下一份」
         (err) => {
           this.chunk = { f: f, i: 0, n: 0, b64: '', err: String(err) }
-        }
+        },
+        absPath
       )
       if (!started) {
         this.chunk = { f: f, i: 0, n: 0, b64: '', err: '逻辑层 plus.io 不可用' }
@@ -377,6 +441,7 @@ export default {
       el: null,
       hostSize: null, // 逻辑层推下来的容器像素尺寸（首选，视图层自己量不到）
       tileAbs: '', // 成功读通瓦片的绝对 URL（用于推导同源 worker 地址）
+      archiveList: [], // 逻辑层推下来的档案清单 [{file, where, adcode}]
       collected: null, // 已拿到的档案 [{ key, bytes }]
       pending: null, // 还没拿到、排队走 plus.io 过桥的档案下标
       curFile: 0, // 当前正在过桥的档案下标
@@ -419,6 +484,11 @@ export default {
       this.lastPoints = list
       if (this.core && this.core.setPoints) this.core.setPoints(list)
     },
+    // 逻辑层推下来的档案清单（视图层与逻辑层是两个上下文，不能共享模块状态）
+    onArchives(v) {
+      const list = asObj(v)
+      if (Array.isArray(list)) this.archiveList = list
+    },
     onVisible(v) {
       if (this.core && this.core.setVisible) this.core.setVisible(!!v)
     },
@@ -427,7 +497,7 @@ export default {
       if (!c || typeof c.i !== 'number') return
       // n === 0 是「这一份读失败」的控制块：跳过它，接着要下一份，不拖垮整张底图
       if (!c.n) {
-        if (c.err) this.setSrc('skip:' + (TILE_FILES[c.f] || c.f) + '(' + c.err + ')')
+        if (c.err) this.setSrc('skip:' + ((this.archiveList[c.f] || {}).file || c.f) + '(' + c.err + ')')
         return this.askNextFile()
       }
       if (typeof c.b64 !== 'string') return
@@ -465,7 +535,7 @@ export default {
           this.chunkBytes = 0
           this.setSrc('plusio@logic', total)
           if (!this.collected) this.collected = []
-          this.collected.push({ key: TILE_FILES[c.f] || 'file' + c.f, bytes: all })
+          this.collected.push({ key: (this.archiveList[c.f] || {}).file || 'file' + c.f, bytes: all })
           this.askNextFile()
         } catch (e) {
           this.fail('分块拼装失败: ' + ((e && e.message) || e))
@@ -593,13 +663,31 @@ export default {
         /* 写不进去不致命，MapLibre 会退回父级尺寸 */
       }
 
-      // 逐个档案加载：先让视图层自己 fetch / XHR（相对路径、_www、plus 绝对路径都试），
-      // 拿不到的排队，最后逐个走 plus.io 过桥。缺文件不致命。
+      // 档案清单由逻辑层推过来（可能是包内自带的，也可能是用户下载的城市包）。
+      // 消息可能比 appMode 晚到，等一会儿；实在拿不到就退回包内自带清单。
+      if (!this.archiveList || !this.archiveList.length) {
+        const deadline = Date.now() + 1500
+        while (Date.now() < deadline && (!this.archiveList || !this.archiveList.length)) {
+          await new Promise((r) => setTimeout(r, 60))
+        }
+      }
+      const list =
+        this.archiveList && this.archiveList.length
+          ? this.archiveList
+          : TILE_FILES.map((f) => ({ file: f, where: 'bundled' }))
+      // 逐个档案加载：包内档案先让视图层自己 fetch / XHR（相对路径、_www、plus 绝对路径都试），
+      // 拿不到的排队，最后逐个走 plus.io 过桥。用户下载的城市包没有 URL，直接排队过桥。
       const collected = []
       const pending = []
       const notes = []
-      for (let i = 0; i < TILE_FILES.length; i++) {
-        const file = TILE_FILES[i]
+      for (let i = 0; i < list.length; i++) {
+        const item = list[i]
+        const file = item.file
+        if (item.where === 'user') {
+          pending.push(i)
+          notes.push(file + '?')
+          continue
+        }
         let r = null
         try {
           r = await loadTilesFromUrls(tileUrlCandidates(file))
@@ -627,7 +715,7 @@ export default {
     askNextFile() {
       if (!this.pending || !this.pending.length) return this.finishBuild()
       this.curFile = this.pending.shift()
-      this.setSrc('bridge:' + TILE_FILES[this.curFile])
+      this.setSrc('bridge:' + (((this.archiveList || [])[this.curFile] || {}).file || this.curFile))
       try {
         this.$ownerInstance.callMethod('mwNeedTiles', { f: this.curFile })
       } catch (e) {
