@@ -315,21 +315,41 @@ function uniDownload(url, opts) {
     let windowStart = 0
     let windowBytes = 0
     let lastBps = 0
+    let stallTimer = null
+    // App 端必须自己兜超时：uni.downloadFile 不设超时会一直挂着，
+    // 那"掉速换线"就永远等不到——手机上一卡住表现为永远下载中。
+    const touchStall = () => {
+      if (stallTimer) clearTimeout(stallTimer)
+      stallTimer = setTimeout(() => {
+        try {
+          if (task && task.abort) task.abort()
+        } catch (e) {
+          /* ignore */
+        }
+        resolve({ ok: false, err: '长时间无进度（20s）' })
+      }, 20000)
+    }
     try {
       task = uni.downloadFile({
         url: url,
         success: (res) => {
+          if (stallTimer) clearTimeout(stallTimer)
           if (res.statusCode && res.statusCode >= 200 && res.statusCode < 400 && res.tempFilePath) {
             resolve({ ok: true, tempFilePath: res.tempFilePath })
           } else {
             resolve({ ok: false, err: 'HTTP ' + res.statusCode })
           }
         },
-        fail: (err) => resolve({ ok: false, err: (err && err.errMsg) || '下载失败' }),
+        fail: (err) => {
+          if (stallTimer) clearTimeout(stallTimer)
+          resolve({ ok: false, err: (err && err.errMsg) || '下载失败' })
+        },
       })
+      touchStall()
       if (task && task.onProgressUpdate) {
         let prev = 0
         task.onProgressUpdate((p) => {
+          touchStall()
           const written = p.totalBytesWritten || 0
           const now = Date.now()
           if (!t0) {
@@ -348,6 +368,7 @@ function uniDownload(url, opts) {
         })
       }
     } catch (e) {
+      if (stallTimer) clearTimeout(stallTimer)
       resolve({ ok: false, err: (e && e.message) || String(e) })
     }
   })
@@ -368,9 +389,16 @@ export async function downloadCity(adcode, opts) {
   const onProgress = (opts && opts.onProgress) || function () {}
   const onLog = (opts && opts.onLog) || function () {}
 
-  // 1) 选线路
-  onProgress({ phase: 'probe', note: '测速中…' })
-  const r = await resolveMirrors(city.url, (msg) => onProgress({ phase: 'probe', note: msg }))
+  // 1) 选线路（用户手动指定过就先用它，绕过测速）
+  let r = null
+  const prefer = (opts && opts.preferPrefix) || ''
+  if (prefer !== '') {
+    onLog('手动指定线路：' + mirrorLabel(prefer))
+    r = { order: [prefer], best: null, fromCache: false, failed: [] }
+  } else {
+    onProgress({ phase: 'probe', note: '测速中…' })
+    r = await resolveMirrors(city.url, (msg) => onProgress({ phase: 'probe', note: msg }))
+  }
   if (r.best) onLog('最快线路 ' + mirrorLabel(r.best.prefix) + ' ' + formatSpeed(r.best.bps))
   else onLog('测速全部失败，按兜底顺序尝试')
 

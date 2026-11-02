@@ -18,6 +18,7 @@
       </view>
       <text class="hero-speed" v-if="speedLine">{{ speedLine }}</text>
       <text class="hero-speed" v-else>下载时会自动测速，选最快的加速线路</text>
+      <text class="hero-speed">测速通道：{{ transport || '…' }}</text>
     </view>
 
     <!-- 城市列表 -->
@@ -83,12 +84,40 @@
       <text class="note">· 包存在应用私有目录，卸载 App 会一起清掉。</text>
       <text class="note">· 切换城市后回到运动页生效，地图中心和缩放会跟着新城市走。</text>
     </view>
+
+    <!-- 真机排障用：把环境与测速细节摊开，出问题截图即可定位 -->
+    <view class="card">
+      <view class="list-head">
+        <text class="card-title">诊断</text>
+        <view class="mini-btn small ghost" @click="copyDiag">复制</view>
+      </view>
+      <text class="diag-line">运行时：{{ diagInfo.runtime }}</text>
+      <text class="diag-line">XHR {{ diagInfo.xhr }}　plus.net.XHR {{ diagInfo.pxhr }}</text>
+      <text class="diag-line">下载器：{{ diagInfo.downloader }}</text>
+      <text class="diag-line">测速通道：{{ transport || '…' }}</text>
+      <text class="diag-line" v-for="(l, i) in diagInfo.lines" :key="'dl' + i">{{ l }}</text>
+      <text class="diag-line" v-if="!diagInfo.lines.length">还没测过速</text>
+      <text class="diag-line" v-if="manualPrefix">已手动指定：{{ manualLabel }}（下载时跳过测速）</text>
+      <view class="manual-row">
+        <view
+          class="mini-btn small"
+          :class="{ ghost: manualPrefix !== m.prefix }"
+          v-for="m in manuals"
+          :key="'mm' + m.id"
+          @click="pickManual(m)"
+        >
+          {{ m.label }}
+        </view>
+        <view class="mini-btn small ghost" v-if="manualPrefix" @click="clearManual">自动</view>
+      </view>
+    </view>
   </view>
 </template>
 
 <script>
 import {
   CITIES,
+  MIRRORS,
   getCity,
   getCurrent,
   setCurrent,
@@ -99,6 +128,7 @@ import {
   measureMirrors,
   cachedMirrors,
   mirrorLabel,
+  probeTransportName,
 } from '@/utils/city-maps.js'
 import { downloadCity, deleteCity } from '@/utils/city-map-download.js'
 
@@ -110,10 +140,27 @@ export default {
       current: '',
       dl: {}, // adcode -> { running, loaded, total, bps, mirror, note, err }
       speedLine: '',
+      transport: '',
+      diagInfo: { runtime: '', xhr: '', pxhr: '', downloader: '', lines: [] },
+      manualPrefix: '',
       limit: 30,
     }
   },
   computed: {
+    manuals() {
+      // App 端才给"直连"这一项（浏览器里必被 CORS 拦）
+      let app = false
+      try {
+        app = typeof plus !== 'undefined' && !!plus.io
+      } catch (e) {
+        app = false
+      }
+      return MIRRORS.filter((m) => !m.appOnly || app)
+    },
+    manualLabel() {
+      const m = MIRRORS.filter((x) => x.prefix === this.manualPrefix)[0]
+      return m ? m.label : '直连'
+    },
     totalCount() {
       return CITIES.length
     },
@@ -149,6 +196,8 @@ export default {
   onShow() {
     this.reloadState()
     this.showCachedSpeed()
+    this.transport = probeTransportName()
+    this.fillEnv()
   },
   methods: {
     fmtSize(n) {
@@ -192,6 +241,7 @@ export default {
       if (this.dl[a] && this.dl[a].running) return
       this.dl = { ...this.dl, [a]: { running: true, phase: 'probe', loaded: 0, total: city.bytes, bps: 0, mirror: '', note: '测速中…', err: '' } }
       const r = await downloadCity(a, {
+        preferPrefix: this.manualPrefix || '',
         onProgress: (p) => {
           const cur = this.dl[a] || {}
           this.dl = {
@@ -249,12 +299,64 @@ export default {
       this.reloadState()
       uni.showToast({ title: '已删除', icon: 'none' })
     },
+    // 把运行环境摊平显示：出问题时用户截图就能定位
+    fillEnv() {
+      let runtime = 'H5'
+      let xhr = '无'
+      let pxhr = '无'
+      let downloader = 'uni.downloadFile'
+      try {
+        if (typeof plus !== 'undefined' && plus.io) runtime = 'App（5+）'
+      } catch (e) {
+        /* ignore */
+      }
+      try {
+        if (typeof XMLHttpRequest !== 'undefined') xhr = '有'
+      } catch (e) {
+        /* ignore */
+      }
+      try {
+        if (typeof plus !== 'undefined' && plus.net && plus.net.XMLHttpRequest) pxhr = '有'
+      } catch (e) {
+        /* ignore */
+      }
+      try {
+        if (typeof uni === 'undefined' || !uni.downloadFile) downloader = '不可用'
+      } catch (e) {
+        downloader = '不可用'
+      }
+      this.diagInfo = { ...this.diagInfo, runtime, xhr, pxhr, downloader }
+    },
+    pickManual(m) {
+      this.manualPrefix = m.prefix
+      uni.showToast({ title: '已指定 ' + m.label, icon: 'none' })
+    },
+    clearManual() {
+      this.manualPrefix = ''
+      uni.showToast({ title: '已恢复自动测速', icon: 'none' })
+    },
+    copyDiag() {
+      const d = this.diagInfo
+      const txt =
+        '运行时 ' + d.runtime + ' | XHR ' + d.xhr + ' | plus.net.XHR ' + d.pxhr +
+        ' | 下载器 ' + d.downloader + ' | 通道 ' + this.transport +
+        '\n' + (d.lines || []).join('\n')
+      uni.setClipboardData({
+        data: txt,
+        success: () => uni.showToast({ title: '已复制', icon: 'none' }),
+        fail: () => uni.showToast({ title: '复制失败', icon: 'none' }),
+      })
+    },
     async retest() {
       uni.showToast({ title: '测速中…', icon: 'none' })
       const city = getCity('370200') || CITIES[0]
       const r = await measureMirrors(city.url)
+      const okLines = r.list.map((x) => '✅ ' + mirrorLabel(x.prefix) + ' ' + formatSpeed(x.bps))
+      const badLines = (r.failed || []).map((f) => '❌ ' + f.id + '：' + (f.err || '失败'))
+      this.diagInfo = { ...this.diagInfo, lines: okLines.concat(badLines) }
       if (!r.list.length) {
-        this.speedLine = '所有线路都没测通（' + (r.failed || []).map((f) => f.id).join('/') + '）'
+        const why = (r.failed || []).map((f) => f.id + '(' + (f.err || '失败') + ')').join(' ')
+        this.speedLine = '测速全失败：' + (why || '未知原因') + '　—— 下载时仍会逐条线路重试'
         return
       }
       const lines = r.list.slice(0, 3).map((x) => mirrorLabel(x.prefix) + ' ' + formatSpeed(x.bps))
@@ -480,5 +582,19 @@ export default {
   font-size: 22rpx;
   line-height: 1.6;
   color: $text-muted;
+}
+.manual-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-top: 16rpx;
+}
+.diag-line {
+  display: block;
+  margin-top: 10rpx;
+  font-size: 21rpx;
+  line-height: 1.5;
+  color: $text-secondary;
+  word-break: break-all;
 }
 </style>

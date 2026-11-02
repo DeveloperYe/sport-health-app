@@ -198,9 +198,24 @@ function isApp() {
 }
 
 // ===== 测速 =====
-function probeOne(mirror, url, opts) {
+//
+// 同一个探测逻辑要跑在三种环境里，能力完全不同：
+//  - H5：浏览器，有 window.XMLHttpRequest，可设 Range、可 onprogress、可 abort；
+//  - App 逻辑层（v8）：**没有 XMLHttpRequest / fetch**（那都是 DOM/浏览器 API，
+//    页面脚本在 v8 里跑，拿不到 —— 这就是当初地图必须走 renderjs 的原因）。
+//    但有 plus.net.XMLHttpRequest（5+ 原生 XHR，绕过 WebView 的 CORS），
+//    拿不到时退化到 uni.downloadFile + Range 把头一段字节拉下来再 abort。
+//
+// 之前只写了 `new XMLHttpRequest()`，App 里直接 ReferenceError，被 catch 成
+// 「网络错误」→ 页面一直显示"所有线路未测通"。
+const PROBE_TIMEOUT_MS = 8000
+/** App 端探测字节数小一点：手机流量 + 原生下载器启动开销 */
+const PROBE_BYTES_APP = 256 * 1024
+
+/** 用某个 XHR 实现探测（window.XMLHttpRequest 或 plus.net.XMLHttpRequest 通用） */
+function probeViaXhr(Ctor, mirror, url, opts) {
   const bytes = (opts && opts.bytes) || PROBE_BYTES
-  const timeoutMs = (opts && opts.timeoutMs) || 6000
+  const timeoutMs = (opts && opts.timeoutMs) || PROBE_TIMEOUT_MS
   const full = mirror.prefix + url
   return new Promise((resolve) => {
     let settled = false
@@ -219,7 +234,7 @@ function probeOne(mirror, url, opts) {
     }
     const timer = setTimeout(() => finish({ ok: false, err: '超时', prefix: mirror.prefix, id: mirror.id }), timeoutMs)
     try {
-      xhr = new XMLHttpRequest()
+      xhr = new Ctor()
       xhr.open('GET', full, true)
       xhr.responseType = 'arraybuffer'
       try {
@@ -240,7 +255,7 @@ function probeOne(mirror, url, opts) {
         const sz = xhr.response ? xhr.response.byteLength : 0
         // 206 分片或整包都算成功，用字节数/耗时算速率
         if (sz > 0) {
-          const ms = Math.max(1, Date.now() - t0)
+          const ms = Math.max(1, Date.now() - (t0 || Date.now() - 1))
           clearTimeout(timer)
           finish({ ok: true, bps: (sz * 1000) / ms, prefix: mirror.prefix, id: mirror.id, probeBytes: sz })
         } else {
@@ -258,6 +273,81 @@ function probeOne(mirror, url, opts) {
       finish({ ok: false, err: (e && e.message) || String(e), prefix: mirror.prefix, id: mirror.id })
     }
   })
+}
+
+/** App 兜底探测：原生下载器拉头一段，够了就 abort */
+function probeViaDownload(mirror, url, opts) {
+  const bytes = (opts && opts.bytes) || PROBE_BYTES_APP
+  const timeoutMs = (opts && opts.timeoutMs) || PROBE_TIMEOUT_MS
+  const full = mirror.prefix + url
+  return new Promise((resolve) => {
+    let settled = false
+    let t0 = Date.now()
+    let task = null
+    const finish = (r) => {
+      if (settled) return
+      settled = true
+      try {
+        if (task && task.abort) task.abort()
+      } catch (e) {
+        /* ignore */
+      }
+      resolve(r)
+    }
+    const timer = setTimeout(
+      () => finish({ ok: false, err: '超时', prefix: mirror.prefix, id: mirror.id }),
+      timeoutMs
+    )
+    try {
+      task = uni.downloadFile({
+        url: full,
+        header: { Range: 'bytes=0-' + (bytes - 1) },
+        success: () => {
+          clearTimeout(timer)
+          const ms = Math.max(1, Date.now() - t0)
+          // 走到 success 说明服务器没理会 Range（给了整包），但连通性已证明
+          finish({ ok: true, bps: (bytes * 1000) / ms, prefix: mirror.prefix, id: mirror.id, probeBytes: bytes, note: 'native-full' })
+        },
+        fail: (e) => {
+          clearTimeout(timer)
+          finish({ ok: false, err: (e && e.errMsg) || '下载失败', prefix: mirror.prefix, id: mirror.id })
+        },
+      })
+      if (task && task.onProgressUpdate) {
+        task.onProgressUpdate((p) => {
+          const got = (p && p.totalBytesWritten) || 0
+          if (got >= bytes) {
+            clearTimeout(timer)
+            const ms = Math.max(1, Date.now() - t0)
+            finish({ ok: true, bps: (got * 1000) / ms, prefix: mirror.prefix, id: mirror.id, probeBytes: got, note: 'native-abort' })
+          }
+        })
+      }
+    } catch (e) {
+      clearTimeout(timer)
+      finish({ ok: false, err: (e && e.message) || String(e), prefix: mirror.prefix, id: mirror.id })
+    }
+  })
+}
+
+function probeOne(mirror, url, opts) {
+  if (isApp()) {
+    // 1) 5+ 原生 XHR：不受 WebView CORS 限制，支持 Range/onprogress/abort
+    const PX = (() => {
+      try {
+        return plus.net && plus.net.XMLHttpRequest ? plus.net.XMLHttpRequest : null
+      } catch (e) {
+        return null
+      }
+    })()
+    if (PX) return probeViaXhr(PX, mirror, url, { bytes: PROBE_BYTES_APP, timeoutMs: PROBE_TIMEOUT_MS, ...(opts || {}) })
+    // 2) 兜底：原生下载器 + Range + abort
+    return probeViaDownload(mirror, url, opts)
+  }
+  if (typeof XMLHttpRequest === 'undefined') {
+    return Promise.resolve({ ok: false, err: '环境无 XMLHttpRequest', prefix: mirror.prefix, id: mirror.id })
+  }
+  return probeViaXhr(XMLHttpRequest, mirror, url, opts)
 }
 
 /**
@@ -298,14 +388,30 @@ export async function resolveMirrors(url, onProgress) {
   if (onProgress) onProgress('正在测速选线路…')
   const r = await measureMirrors(url)
   if (!r.list.length) {
-    // 全测不通时退回「直连 + v6」死马当活马
-    return { order: ['', MIRRORS[0].prefix], best: null, fromCache: false, failed: r.failed }
+    // 测速全失败也要能下载：按可用线路顺序逐条试（哪条通就走哪条）。
+    // 早先这里只退 [直连, v6]，手机上直连 GitHub 基本不通，等于只剩一条路。
+    const order = usableMirrors().map((m) => m.prefix)
+    return { order, best: null, fromCache: false, failed: r.failed }
   }
   const order = r.list.map((x) => x.prefix)
   usableMirrors().forEach((m) => {
     if (order.indexOf(m.prefix) < 0) order.push(m.prefix)
   })
   return { order, best: r.list[0], fromCache: false, failed: r.failed }
+}
+
+/** 当前运行环境下探测测速用的通道名（真机排障用，会显示在 UI 上） */
+export function probeTransportName() {
+  if (isApp()) {
+    let hasPx = false
+    try {
+      hasPx = !!(plus.net && plus.net.XMLHttpRequest)
+    } catch (e) {
+      hasPx = false
+    }
+    return hasPx ? 'plus.net.XMLHttpRequest' : 'uni.downloadFile（兜底）'
+  }
+  return typeof XMLHttpRequest !== 'undefined' ? 'window.XMLHttpRequest' : '环境无 XHR'
 }
 
 export function mirrorLabel(prefix) {
