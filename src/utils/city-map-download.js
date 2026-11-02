@@ -19,6 +19,8 @@ import {
   APP_MAP_DIR,
   markInstalled,
   unmarkInstalled,
+  getInstalled,
+  setInstalledVerify,
 } from './city-maps.js'
 import { Sha256 } from './sha256.js'
 import { idbPut, idbGet, idbDelete } from './idb-tiles.js'
@@ -274,6 +276,66 @@ export async function hashAppFile(path, onProgress, budgetMs) {
  * 所以头尾都对 = 文件没被截断、也没拿到错误页。
  * @returns {Promise<{ok:boolean, level:string, hex?:string, size?:number, err?:string}>}
  */
+/**
+ * 原生 SHA-256（Android Native.js → Java MessageDigest）。
+ *
+ * 为什么要它：纯 JS 实现实测约 48 MB/s（bg1 的 V8；手机更慢 3–5 倍），
+ * 而慢的大头其实是"读文件"（FileReader 走 base64，JS 逐字符解码）。
+ * 走 Java 侧 readAllBytes + MessageDigest，两个问题一起绕开，
+ * 36 MB 包理论 0.1–0.3 s。
+ *
+ * 失败一律返回 null，由调用方退回 JS 实现 —— 绝不因为原生不可用而不校验。
+ * 大包（>128 MB）不读进内存，也返回 null。
+ */
+function nativeSha256Hex(absPath, size) {
+  try {
+    if (typeof plus === 'undefined' || !plus.android) return null
+    if (!absPath) return null
+    if (size && size > 128 * 1024 * 1024) return null
+    const Files = plus.android.importClass('java.nio.file.Files')
+    const Paths = plus.android.importClass('java.nio.file.Paths')
+    const MessageDigest = plus.android.importClass('java.security.MessageDigest')
+    const Base64 = plus.android.importClass('android.util.Base64')
+    const bytes = Files.readAllBytes(Paths.get(absPath))
+    const md = MessageDigest.getInstance('SHA-256')
+    const dig = md.digest(bytes)
+    // digest 是 32 字节，转 Base64（NO_WRAP=2）再在 JS 里翻成 hex，最省事且不依赖数组桥接
+    const b64 = Base64.encodeToString(dig, 2)
+    const bin = atob(String(b64))
+    let hex = ''
+    for (let i = 0; i < bin.length; i++) hex += ('0' + bin.charCodeAt(i).toString(16)).slice(-2)
+    return hex.length === 64 ? hex : null
+  } catch (e) {
+    return null
+  }
+}
+
+/** 绝对路径（Native.js 需要真实文件系统路径） */
+function absPathOf(relPath) {
+  try {
+    if (typeof plus !== 'undefined' && plus.io && plus.io.convertLocalFileSystemURL) {
+      return plus.io.convertLocalFileSystemURL(relPath) || ''
+    }
+  } catch (e) {
+    /* ignore */
+  }
+  return ''
+}
+
+/**
+ * 只做第一层校验：字节数 + PMTiles 结构自洽（读 128 字节，毫秒级）。
+ * 下载刚结束用它先给出结论，让用户立刻能用地图。
+ */
+export async function quickCheckAppFile(path, city) {
+  const file = await openAppFile(path, 6000)
+  if (!file) return { ok: false, err: '打不开下载后的文件' }
+  const size = file.size || 0
+  const head = await readBlobPart(file, 0, 128, 6000)
+  const st = checkPmtilesStructure(head, size, city.bytes)
+  if (!st.ok) return { ok: false, err: st.reason, size: size }
+  return { ok: true, size: size }
+}
+
 export async function verifyAppFile(path, city) {
   const file = await openAppFile(path, 6000)
   if (!file) return { ok: false, level: '', err: '打不开下载后的文件' }
@@ -513,18 +575,30 @@ export async function downloadCity(adcode, opts) {
     onProgress({ phase: 'verify', note: '校验中…' })
     let hex = ''
     let mode = ''
+    let hashLater = false
     if (isAppRuntime()) {
-      // App：字节数 → 头尾魔数 → 全量 SHA-256（有时间预算，绝不卡死）
-      onProgress({ phase: 'verify', note: '校验文件完整性…' })
-      const v = await verifyAppFile(res.tempFilePath, city)
-      if (!v.ok) {
-        onLog('校验失败：' + (v.err || v.level) + '，换线重下')
+      // App：先做毫秒级的结构校验（字节数 + 头/索引/长度自洽），
+      // 小包当场算完全量摘要；大包先落地、摘要放后台核对，
+      // 让「下载完成」不被十几秒的哈希拖住。
+      onProgress({ phase: 'verify', note: '校验文件结构…' })
+      const q = await quickCheckAppFile(res.tempFilePath, city)
+      if (!q.ok) {
+        onLog('结构校验失败：' + q.err + '，换线重下')
         continue
       }
-      hex = v.hex || ''
-      mode = v.level
-      if (v.level !== 'SHA-256') {
-        onLog('提示：全量摘要未算出（' + (v.note || '原因未知') + '），已用「' + v.level + '」校验')
+      const small = (city.bytes || 0) <= 8 * 1024 * 1024
+      if (small) {
+        // 小包：全量摘要能在一两秒内算完，直接同步做完，结论最硬
+        const v = await verifyAppFile(res.tempFilePath, city)
+        if (!v.ok) {
+          onLog('校验失败：' + (v.err || v.level) + '，换线重下')
+          continue
+        }
+        hex = v.hex || ''
+        mode = v.level
+      } else {
+        mode = '字节数+结构'
+        hashLater = true
       }
     } else {
       if (!magicOk(res.bytes)) {
@@ -558,12 +632,102 @@ export async function downloadCity(adcode, opts) {
     }
 
     markInstalled(city)
-    onLog('完成：' + label + '，' + formatBytes(city.bytes) + '，' + mode + ' 校验通过')
+    if (hashLater) {
+      // 摘要后台跑：先让用户能立刻切城市，算完再把状态写进已装记录
+      setInstalledVerify(city.adcode, 'pending', '')
+      verifyCityBackground(city.adcode, {
+        onMismatch: (c) => {
+          try {
+            uni.showModal({
+              title: '离线包校验失败',
+              content: '「' + c.name + '」的包内容与官方摘要不一致，已自动删除，请重新下载。',
+              showCancel: false,
+            })
+          } catch (e) {
+            /* ignore */
+          }
+        },
+      })
+      onLog('完成：' + label + '，' + formatBytes(city.bytes) + '，结构校验通过（SHA-256 后台核对中）')
+    } else {
+      setInstalledVerify(city.adcode, mode === 'SHA-256' ? 'SHA-256' : '字节数+结构', hex)
+      onLog('完成：' + label + '，' + formatBytes(city.bytes) + '，' + mode + ' 校验通过')
+    }
     onProgress({ phase: 'done', loaded: city.bytes, total: city.bytes, note: '已完成' })
-    return { ok: true, mirror: label, verified: hex }
+    return { ok: true, mirror: label, verified: hex, verifyPending: hashLater }
   }
 
   return { ok: false, err: '所有线路都失败了（共 ' + r.order.length + ' 条）' }
+}
+
+// ================= 后台校验（不阻塞用户） =================
+// 大包（> 8 MB）下载完成后先把包标记为"可用（结构已校验）"，全量 SHA-256 排队在后台算。
+// 好处：用户不用等十几秒哈希就能切城市；坏包算出来再自动删掉并提示。
+
+const verifyQueue = []
+let verifyRunning = false
+
+/**
+ * 排队给某个已装城市做全量摘要核对。
+ * @param {string} adcode
+ * @param {{onDone?:Function, onMismatch?:Function}} [opts]
+ */
+export function verifyCityBackground(adcode, opts) {
+  verifyQueue.push({ adcode: String(adcode), opts: opts || {} })
+  runVerifyQueue()
+}
+
+async function runVerifyQueue() {
+  if (verifyRunning) return
+  verifyRunning = true
+  try {
+    while (verifyQueue.length) {
+      const job = verifyQueue.shift()
+      try {
+        await verifyOneCity(job.adcode, job.opts)
+      } catch (e) {
+        /* 单个失败不影响队列 */
+      }
+    }
+  } finally {
+    verifyRunning = false
+  }
+}
+
+async function verifyOneCity(adcode, opts) {
+  const city = getCity(adcode)
+  const rec = getInstalled()[adcode]
+  if (!city || !rec) return
+  // 已经做过全量摘要就别重复算
+  if (rec.verify === 'SHA-256') return
+
+  let hex = ''
+  if (isAppRuntime()) {
+    const rel = APP_MAP_DIR + adcode + '.pmtiles'
+    hex = nativeSha256Hex(absPathOf(rel), rec.bytes || 0) || ''
+    if (!hex) {
+      // 原生不可用就退回 JS 分块（后台跑，预算放宽到 60 秒，用户感觉不到）
+      const h = await hashAppFile(rel, null, 60000)
+      if (h.ok) hex = h.hex
+    }
+    if (!hex) {
+      setInstalledVerify(adcode, '字节数+结构', '')
+      if (opts.onDone) opts.onDone('字节数+结构')
+      return
+    }
+  } else {
+    const bytes = await idbGet(adcode)
+    if (!bytes) return
+    hex = new Sha256().update(bytes).digest()
+  }
+
+  if (city.sha256 && String(hex).toLowerCase() !== String(city.sha256).toLowerCase()) {
+    await deleteCity(adcode)
+    if (opts.onMismatch) opts.onMismatch(city)
+    return
+  }
+  setInstalledVerify(adcode, 'SHA-256', hex)
+  if (opts.onDone) opts.onDone('SHA-256')
 }
 
 /** 删除已下载的城市包 */

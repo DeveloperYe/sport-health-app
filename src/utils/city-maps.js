@@ -174,6 +174,23 @@ export function markInstalled(city) {
   writeJson(K_INSTALLED, all)
 }
 
+/** 记录校验档位：'pending' | 'SHA-256' | '字节数+结构' | 'mismatch' */
+export function setInstalledVerify(adcode, level, hex) {
+  const all = getInstalled()
+  const k = String(adcode)
+  if (!all[k]) return
+  all[k].verify = level
+  all[k].verifiedHex = hex || ''
+  all[k].verifiedAt = Date.now()
+  writeJson(K_INSTALLED, all)
+}
+
+export function getInstalledVerify(adcode) {
+  const all = getInstalled()
+  const r = all[String(adcode)]
+  return r ? r.verify || '' : ''
+}
+
 export function unmarkInstalled(adcode) {
   const all = getInstalled()
   delete all[String(adcode)]

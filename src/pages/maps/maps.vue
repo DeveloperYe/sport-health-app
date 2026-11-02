@@ -33,7 +33,7 @@
           <view class="row-line">
             <view class="row-l">
               <text class="row-name">{{ c.name }}</text>
-              <text class="row-sub">{{ c.province }} · {{ fmtSize(c.bytes) }}</text>
+              <text class="row-sub">{{ c.province }} · {{ fmtSize(c.bytes) }}{{ verifyText(c.adcode) }}</text>
             </view>
             <view class="row-r">
               <view v-if="isCur(c.adcode)" class="tag tag-cur">使用中</view>
@@ -79,7 +79,7 @@
       <text class="note">· 底图数据 © OpenStreetMap contributors，ODbL 授权。</text>
       <text class="note">· 一个城市一个包，下载后完全离线，跑步时不再消耗流量。</text>
       <text class="note">· 下载前自动测 5 条加速线路的速度，选最快的下；中途掉速会自动换线重下。</text>
-      <text class="note">· 每个包下载完都会校验：字节数 + PMTiles 结构自洽（头/瓦片索引/文件长度）+ 全量 SHA-256；任何一项不过自动换线重试。</text>
+      <text class="note">· 校验分两级：① 结构校验（字节数 + 头/瓦片索引/文件长度自洽，毫秒级，必须先过）；② 全量 SHA-256。小包（≤8 MB）当场算完，大包结构过了就可用，摘要后台核对——算完城市名后面会显示「SHA-256 已校验」，若不符会自动删包并提示重下。</text>
       <text class="note">· 标「大包」的城市超过 60 MB（如北京 94 MB、重庆 189 MB），低内存机型加载会更慢、更吃内存。</text>
       <text class="note">· 包存在应用私有目录，卸载 App 会一起清掉。</text>
       <text class="note">· 切换城市后回到运动页生效，地图中心和缩放会跟着新城市走。</text>
@@ -143,6 +143,7 @@ export default {
       transport: '',
       diagInfo: { runtime: '', xhr: '', pxhr: '', downloader: '', lines: [] },
       manualPrefix: '',
+      tickTimer: null,
       limit: 30,
     }
   },
@@ -198,6 +199,13 @@ export default {
     this.showCachedSpeed()
     this.transport = probeTransportName()
     this.fillEnv()
+    this.startTick()
+  },
+  onHide() {
+    this.stopTick()
+  },
+  onUnload() {
+    this.stopTick()
   },
   methods: {
     fmtSize(n) {
@@ -209,6 +217,34 @@ export default {
     },
     isOn(adcode) {
       return !!this.installed[String(adcode)]
+    },
+    // 已装包的校验状态文案：后台摘要算完会自动刷新
+    verifyText(adcode) {
+      const r = this.installed[String(adcode)]
+      if (!r) return ''
+      if (r.verify === 'pending') return ' · 校验中…'
+      if (r.verify === 'SHA-256') return ' · SHA-256 已校验'
+      if (r.verify === '字节数+结构') return ' · 结构校验'
+      if (r.verify === 'mismatch') return ' · 校验失败'
+      return ''
+    },
+    startTick() {
+      this.stopTick()
+      this.tickTimer = setInterval(() => {
+        const all = this.installed || {}
+        const pending = Object.keys(all).some((k) => all[k] && all[k].verify === 'pending')
+        if (pending) this.reloadState()
+        else if (this.tickTimer) {
+          clearInterval(this.tickTimer)
+          this.tickTimer = null
+        }
+      }, 2500)
+    },
+    stopTick() {
+      if (this.tickTimer) {
+        clearInterval(this.tickTimer)
+        this.tickTimer = null
+      }
     },
     isCur(adcode) {
       return String(this.current) === String(adcode)
