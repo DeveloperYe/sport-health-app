@@ -79,7 +79,7 @@
       <text class="note">· 底图数据 © OpenStreetMap contributors，ODbL 授权。</text>
       <text class="note">· 一个城市一个包，下载后完全离线，跑步时不再消耗流量。</text>
       <text class="note">· 下载前自动测 5 条加速线路的速度，选最快的下；中途掉速会自动换线重下。</text>
-      <text class="note">· 每个包下载完都会校验字节数与 SHA-256，校验不过自动换线重试。</text>
+      <text class="note">· 每个包下载完都会校验：字节数 + PMTiles 结构自洽（头/瓦片索引/文件长度）+ 全量 SHA-256；任何一项不过自动换线重试。</text>
       <text class="note">· 标「大包」的城市超过 60 MB（如北京 94 MB、重庆 189 MB），低内存机型加载会更慢、更吃内存。</text>
       <text class="note">· 包存在应用私有目录，卸载 App 会一起清掉。</text>
       <text class="note">· 切换城市后回到运动页生效，地图中心和缩放会跟着新城市走。</text>
@@ -232,7 +232,7 @@ export default {
       const loaded = d.loaded ? formatBytes(d.loaded) : ''
       const total = d.total ? formatBytes(d.total) : ''
       if (d.phase === 'probe') return d.note || '测速中…'
-      if (d.phase === 'verify') return '校验 SHA-256… ' + p + '%'
+      if (d.phase === 'verify') return (d.note || '校验文件完整性…') + ' ' + p + '%'
       if (d.phase === 'save') return '保存中…'
       return p + '% ' + loaded + (total ? ' / ' + total : '') + (speed ? ' · ' + speed : '')
     },

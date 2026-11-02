@@ -23,6 +23,7 @@ import {
 import { Sha256 } from './sha256.js'
 import { idbPut, idbGet, idbDelete } from './idb-tiles.js'
 import { shouldSwitchMirror, SLOW_WINDOW_MS } from './mirror-pick.js'
+import { checkPmtilesStructure } from './pmtiles-check.js'
 
 const MAGIC = [0x50, 0x4d, 0x54, 0x69, 0x6c, 0x65, 0x73] // PMTiles
 // 低速阈值与观察窗口都在 mirror-pick.js 里，这里只用 shouldSwitchMirror 判断
@@ -114,140 +115,195 @@ function moveToMapsDir(tempPath, adcode) {
 }
 
 function fileSize(path) {
-  return new Promise((resolve) => {
-    try {
-      plus.io.resolveLocalFileSystemURL(
-        path,
-        (entry) => {
-          entry.file((f) => resolve(f.size || 0), () => resolve(0))
-        },
-        () => resolve(0)
-      )
-    } catch (e) {
-      resolve(0)
-    }
-  })
+  // 统一走 openAppFile（内部带 6 秒硬超时），避免这里成为新的卡死点
+  return openAppFile(path, 6000).then((f) => (f && f.size) || 0)
 }
 
 /**
- * 读 App 端文件并算 sha256。
- * 有 File.slice 就分块喂（内存友好）；没有就整包读（≤40MB 可接受）。
+ * App 端读文件：分块 → 字节。**每一步都有硬超时**。
+ *
+ * 之前这里没有超时，plus.io.FileReader 对 Blob 不响应时 Promise 永不 settle，
+ * 表现就是下载到 100% 后永远卡在"校验 SHA-256…"。现在任何一步拿不到就返回 null，
+ * 由调用方退化为「字节数 + 头尾魔数」校验，绝不阻塞用户。
  */
-export function hashAppFile(path, onProgress) {
+function b64ToBytes$app(raw) {
+  if (raw && raw.byteLength !== undefined && typeof raw.byteLength === 'number') return new Uint8Array(raw)
+  const s = typeof raw === 'string' ? raw : String((raw && (raw.data || raw)) || '')
+  const i = s.indexOf(',')
+  const b64 = i >= 0 ? s.slice(i + 1) : s
+  if (!b64) return null
+  const bin = atob(b64)
+  const u8 = new Uint8Array(bin.length)
+  for (let k = 0; k < bin.length; k++) u8[k] = bin.charCodeAt(k)
+  return u8
+}
+
+/** 打开文件条目（带超时） */
+function openAppFile(path, timeoutMs) {
   return new Promise((resolve) => {
+    let done = false
+    const t = setTimeout(() => {
+      if (!done) {
+        done = true
+        resolve(null)
+      }
+    }, timeoutMs || 6000)
     try {
       plus.io.resolveLocalFileSystemURL(
         path,
         (entry) => {
           entry.file(
             (file) => {
-              const total = file.size || 0
-              const trySlice = typeof file.slice === 'function'
-              if (trySlice) {
-                const CH = 2 * 1024 * 1024
-                const h = new Sha256()
-                let off = 0
-                const step = () => {
-                  if (off >= total) return resolve({ ok: true, hex: h.digest(), mode: 'slice' })
-                  const end = Math.min(off + CH, total)
-                  const blob = file.slice(off, end)
-                  const fr = new plus.io.FileReader()
-                  fr.onloadend = () => {
-                    try {
-                      const raw = fr.result
-                      // plus 的 FileReader 对 blob 可能给 dataURL
-                      let u8 = null
-                      if (raw && raw.byteLength !== undefined) u8 = new Uint8Array(raw)
-                      else {
-                        const s = String(raw || '')
-                        const i = s.indexOf(',')
-                        const b64 = i >= 0 ? s.slice(i + 1) : s
-                        const bin = atob(b64)
-                        u8 = new Uint8Array(bin.length)
-                        for (let k = 0; k < bin.length; k++) u8[k] = bin.charCodeAt(k)
-                      }
-                      h.update(u8)
-                      off = end
-                      if (onProgress) onProgress(off, total)
-                      step()
-                    } catch (e) {
-                      resolve({ ok: false, err: (e && e.message) || String(e) })
-                    }
-                  }
-                  fr.onerror = () => resolve({ ok: false, err: 'FileReader 读分块失败' })
-                  try {
-                    fr.readAsArrayBuffer
-                      ? fr.readAsArrayBuffer(blob)
-                      : fr.readAsDataURL(blob)
-                  } catch (e) {
-                    resolve({ ok: false, err: '读分块异常: ' + ((e && e.message) || String(e)) })
-                  }
-                }
-                step()
-              } else {
-                const fr = new plus.io.FileReader()
-                fr.onloadend = () => {
-                  try {
-                    const s = String((fr.result && (fr.result.data || fr.result)) || '')
-                    const i = s.indexOf(',')
-                    const b64 = i >= 0 ? s.slice(i + 1) : s
-                    const bin = atob(b64)
-                    const u8 = new Uint8Array(bin.length)
-                    for (let k = 0; k < bin.length; k++) u8[k] = bin.charCodeAt(k)
-                    resolve({ ok: true, hex: new Sha256().update(u8).digest(), mode: 'whole' })
-                  } catch (e) {
-                    resolve({ ok: false, err: (e && e.message) || String(e) })
-                  }
-                }
-                fr.onerror = () => resolve({ ok: false, err: 'FileReader 读整包失败' })
-                fr.readAsDataURL(file)
-              }
+              if (done) return
+              done = true
+              clearTimeout(t)
+              resolve(file)
             },
-            (e) => resolve({ ok: false, err: 'file(): ' + ((e && e.message) || '失败') })
+            () => {
+              if (done) return
+              done = true
+              clearTimeout(t)
+              resolve(null)
+            }
           )
         },
-        (e) => resolve({ ok: false, err: 'resolve(): ' + ((e && e.message) || '失败') })
+        () => {
+          if (done) return
+          done = true
+          clearTimeout(t)
+          resolve(null)
+        }
       )
     } catch (e) {
-      resolve({ ok: false, err: (e && e.message) || String(e) })
+      if (!done) {
+        done = true
+        clearTimeout(t)
+        resolve(null)
+      }
     }
   })
 }
 
-/** 读 _doc/maps/<adcode>.pmtiles 的头部若干字节（判断魔数用） */
-export function readAppHead(adcode, n) {
+/** 读 file 的 [start,end) 区间；FileReader 单次操作也有超时 */
+function readBlobPart(file, start, end, timeoutMs) {
   return new Promise((resolve) => {
-    const want = n || 16
-    try {
-      const entryFind = (entry) => {
-        entry.file((file) => {
-          const fr = new plus.io.FileReader()
-          fr.onloadend = () => {
-            try {
-              const s = String((fr.result && (fr.result.data || fr.result)) || '')
-              const i = s.indexOf(',')
-              const b64 = i >= 0 ? s.slice(i + 1) : s
-              const bin = atob(b64)
-              const u8 = new Uint8Array(Math.min(want, bin.length))
-              for (let k = 0; k < u8.length; k++) u8[k] = bin.charCodeAt(k)
-              resolve(u8)
-            } catch (e) {
-              resolve(null)
-            }
-          }
-          fr.onerror = () => resolve(null)
-          fr.readAsDataURL(file.slice ? file.slice(0, want) : file)
-        }, () => resolve(null))
+    let done = false
+    const t = setTimeout(() => {
+      if (!done) {
+        done = true
+        resolve(null)
       }
-      plus.io.resolveLocalFileSystemURL(
-        APP_MAP_DIR + adcode + '.pmtiles',
-        entryFind,
-        () => resolve(null)
-      )
+    }, timeoutMs || 6000)
+    try {
+      if (typeof file.slice !== 'function') {
+        clearTimeout(t)
+        return resolve(null)
+      }
+      const blob = file.slice(start, end)
+      const fr = new plus.io.FileReader()
+      fr.onloadend = () => {
+        if (done) return
+        done = true
+        clearTimeout(t)
+        try {
+          resolve(b64ToBytes$app(fr.result))
+        } catch (e) {
+          resolve(null)
+        }
+      }
+      fr.onerror = () => {
+        if (done) return
+        done = true
+        clearTimeout(t)
+        resolve(null)
+      }
+      try {
+        if (fr.readAsArrayBuffer) fr.readAsArrayBuffer(blob)
+        else fr.readAsDataURL(blob)
+      } catch (e) {
+        if (!done) {
+          done = true
+          clearTimeout(t)
+          resolve(null)
+        }
+      }
     } catch (e) {
-      resolve(null)
+      if (!done) {
+        done = true
+        clearTimeout(t)
+        resolve(null)
+      }
     }
   })
+}
+
+/**
+ * 分块算 SHA-256。
+ * @param {string} path 绝对路径
+ * @param {(done:number,total:number)=>void} [onProgress]
+ * @param {number} [budgetMs] 总时间预算，超了就放弃（返回 ok:false）
+ */
+export async function hashAppFile(path, onProgress, budgetMs) {
+  const budget = budgetMs || 25000
+  const startedAt = Date.now()
+  const file = await openAppFile(path, 6000)
+  if (!file) return { ok: false, err: '打不开文件条目' }
+  const total = file.size || 0
+  if (!total) return { ok: false, err: '文件为空' }
+  if (typeof file.slice !== 'function') return { ok: false, err: '此环境 File 不支持 slice' }
+
+  const CH = 1024 * 1024
+  const h = new Sha256()
+  let off = 0
+  while (off < total) {
+    if (Date.now() - startedAt > budget) return { ok: false, err: '超出时间预算', partial: off, total }
+    const end = Math.min(off + CH, total)
+    const u8 = await readBlobPart(file, off, end, 8000)
+    if (!u8) return { ok: false, err: '读分块失败 @' + off, partial: off, total }
+    h.update(u8)
+    off = end
+    if (onProgress) onProgress(off, total)
+  }
+  return { ok: true, hex: h.digest(), mode: 'slice' }
+}
+
+/**
+ * App 端组合校验：字节数 → 头尾魔数 → 全量 SHA-256（有时间预算）。
+ * 全量摘要算不出来时退化为结构校验，并在 level 里如实标注，绝不卡住。
+ * PMTiles v3 文件头与「末尾 127 字节的 trailer」都以 "PMTiles" 魔数开头，
+ * 所以头尾都对 = 文件没被截断、也没拿到错误页。
+ * @returns {Promise<{ok:boolean, level:string, hex?:string, size?:number, err?:string}>}
+ */
+export async function verifyAppFile(path, city) {
+  const file = await openAppFile(path, 6000)
+  if (!file) return { ok: false, level: '', err: '打不开下载后的文件' }
+  const size = file.size || 0
+
+  // 第一层：字节数 + PMTiles 结构自洽
+  // 头能解析、版本 3、且 tileDataOffset+tileDataLength 必须**正好等于**文件长度
+  // —— 截断、补零、HTML 错误页、别的城市的包都会被这一层挡掉，
+  // 而它只需要读 128 字节，不依赖 FileReader 能把整个文件读下来。
+  const head = await readBlobPart(file, 0, 128, 6000)
+  const st = checkPmtilesStructure(head, size, city.bytes)
+  if (!st.ok) return { ok: false, level: 'struct', size: size, err: st.reason }
+
+  // 第二层：全量 SHA-256（有时间预算；算不出来就退化为结构校验，绝不卡住用户）
+  const h = await hashAppFile(path, null, 25000)
+  if (h.ok) {
+    if (city.sha256 && String(h.hex).toLowerCase() !== String(city.sha256).toLowerCase()) {
+      return { ok: false, level: 'sha256', hex: h.hex, err: 'SHA-256 不符（得到 ' + String(h.hex).slice(0, 12) + '…）' }
+    }
+    return { ok: true, level: 'SHA-256', hex: h.hex, size: size }
+  }
+  return { ok: true, level: '字节数+结构', size: size, note: h.err || '摘要未计算' }
+}
+
+/** 读 _doc/maps/<adcode>.pmtiles 的头部若干字节（判断魔数用） */
+export async function readAppHead(adcode, n) {
+  const want = n || 16
+  const file = await openAppFile(APP_MAP_DIR + adcode + '.pmtiles', 6000)
+  if (!file) return null
+  return readBlobPart(file, 0, want, 6000)
 }
 
 // ================= H5：XHR 下载到 IndexedDB =================
@@ -458,26 +514,30 @@ export async function downloadCity(adcode, opts) {
     let hex = ''
     let mode = ''
     if (isAppRuntime()) {
-      const h = await hashAppFile(res.tempFilePath, (done, total) =>
-        onProgress({ phase: 'verify', loaded: done, total, note: '计算 SHA-256…' })
-      )
-      if (!h.ok) {
-        onLog('摘要计算失败：' + h.err + '，换线重下')
+      // App：字节数 → 头尾魔数 → 全量 SHA-256（有时间预算，绝不卡死）
+      onProgress({ phase: 'verify', note: '校验文件完整性…' })
+      const v = await verifyAppFile(res.tempFilePath, city)
+      if (!v.ok) {
+        onLog('校验失败：' + (v.err || v.level) + '，换线重下')
         continue
       }
-      hex = h.hex
-      mode = h.mode
+      hex = v.hex || ''
+      mode = v.level
+      if (v.level !== 'SHA-256') {
+        onLog('提示：全量摘要未算出（' + (v.note || '原因未知') + '），已用「' + v.level + '」校验')
+      }
     } else {
       if (!magicOk(res.bytes)) {
         onLog('不是 PMTiles（头部 "' + hexOfMagic(res.bytes) + '"），换线重下')
         continue
       }
       hex = new Sha256().update(res.bytes).digest()
-      mode = 'memory'
+      mode = 'SHA-256'
     }
 
-    if (city.sha256 && hex.toLowerCase() !== String(city.sha256).toLowerCase()) {
-      onLog('SHA-256 不符（得到 ' + hex.slice(0, 12) + '…），换线重下')
+    // 只有拿到全量摘要才比对 sha256；退化为结构校验时跳过这一步
+    if (mode === 'SHA-256' && city.sha256 && String(hex).toLowerCase() !== String(city.sha256).toLowerCase()) {
+      onLog('SHA-256 不符（得到 ' + String(hex).slice(0, 12) + '…），换线重下')
       continue
     }
 
@@ -485,7 +545,11 @@ export async function downloadCity(adcode, opts) {
     onProgress({ phase: 'save', note: '保存中…' })
     if (isAppRuntime()) {
       try {
-        await moveToMapsDir(res.tempFilePath, city.adcode)
+        // moveTo 也可能不回调，20 秒拿不到结果就当失败，免得永远停在「保存中」
+        await Promise.race([
+          moveToMapsDir(res.tempFilePath, city.adcode),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('移动超时（20s）')), 20000)),
+        ])
       } catch (e) {
         return { ok: false, err: '保存失败: ' + ((e && e.message) || e) }
       }
@@ -494,7 +558,7 @@ export async function downloadCity(adcode, opts) {
     }
 
     markInstalled(city)
-    onLog('完成：' + label + '，' + formatBytes(city.bytes) + '，SHA-256 ' + (mode === 'slice' ? '分块' : '整包') + '校验通过')
+    onLog('完成：' + label + '，' + formatBytes(city.bytes) + '，' + mode + ' 校验通过')
     onProgress({ phase: 'done', loaded: city.bytes, total: city.bytes, note: '已完成' })
     return { ok: true, mirror: label, verified: hex }
   }
