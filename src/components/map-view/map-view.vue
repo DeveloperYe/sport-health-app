@@ -13,6 +13,8 @@
       :change:mvtheme="mapView.onTheme"
       :mvsync="syncTick"
       :change:mvsync="mapView.onSync"
+      :mvreset="resetTick"
+      :change:mvreset="mapView.onReset"
       :mvhostid="hostId"
       :change:mvhostid="mapView.onHostId"
       :mvpoints="pointsPayload"
@@ -53,6 +55,7 @@
 // App：这里不建图，只负责「用 plus.io 把瓦片读出来、分块过桥」以及显示诊断行。
 //      注意 App 逻辑层绝不能引 map-core.js（会把 maplibre 拖进没有 window 的 v8 层）。
 import { readTilesViaPlusIo, TILE_FILES, tileUserPath } from './tiles.js'
+import { archivesChanged } from './archives-key.js'
 import { getCurrent, isInstalled, getCity, getInstalledPath } from '@/utils/city-maps.js'
 import { makeMapStatus, formatMapStatus } from './map-status.js'
 // #ifdef H5
@@ -99,6 +102,7 @@ export default {
       currentFile: 0, // 当前正在传的档案下标（多档案逐个过桥）
       mapTheme: 'dark', // 地图色标：dark / light（跟随全局主题）
       syncTick: 0, // 切回本页时自增，强制把主题对齐一次
+      resetTick: 0, // 切城市时自增：让视图层彻底销毁旧地图再重建
     }
   },
   computed: {
@@ -257,10 +261,17 @@ export default {
     },
     // 切换城市后重建地图（档案换了，中心点/bbox 也要重新从包头发起）
     reloadForCity() {
+      // ★ 必须先重算档案：以前只在 H5 分支里调 resolveArchives()，
+      //   App 端切城市时 archives 还是旧城市 → 视图层建出来的还是旧底图。
+      this.resolveArchives()
       this.teardownH5()
       this.ready = false
       this.failed = false
       this.core = null
+      // 通知视图层：销毁旧地图重新建。
+      // 光把 appMode 抖成 false→true 不够 —— 视图层 onAppMode 的守卫是 !this.core，
+      // 旧 core 还在，boot() 会被直接跳过，地图就永远停在旧城市。
+      this.resetTick = (this.resetTick || 0) + 1
       // #ifdef APP-PLUS
       this.appMode = false
       this.$nextTick(() => {
@@ -467,7 +478,9 @@ import {
   base64ToBytes,
   hasPlusIo,
   TILE_FILES,
+  toPlusUrl,
 } from './tiles.js'
+import { archivesChanged } from './archives-key.js'
 
 // 视图层拿到的过桥数据在不同运行时可能是对象、也可能是 JSON 串，两种都认
 function asObj(v) {
@@ -533,6 +546,33 @@ export default {
         this.boot()
       }
       // #endif
+    },
+    /**
+     * 切城市：把旧地图彻底销毁后重建。
+     * 一定要 destroy() —— 否则旧 core 里的 PMTiles 协议注册、source、canvas 都留着，
+     * 新档案即使传进来也可能被旧实例吞掉。
+     */
+    onReset() {
+      // onArchives（档案变了）与 mvreset（逻辑层信号）几乎同时到达，防抖避免建两次图
+      const now = Date.now()
+      if (this.__lastReset && now - this.__lastReset < 500) return
+      this.__lastReset = now
+      try {
+        if (this.core && this.core.destroy) this.core.destroy()
+      } catch (e) {
+        /* ignore */
+      }
+      this.booting = false
+      this.core = null
+      this.collected = null
+      this.pending = null
+      this.curFile = 0
+      this.tileB64 = ''
+      this.tileChunkCount = 0
+      this.tileAbs = ''
+      this.ready = false
+      this.syncThemeFromDom()
+      this.boot()
     },
     /** 逻辑层要求强制对齐（切回页面时）：以 DOM 为准再切一次 */
     onSync() {
@@ -630,7 +670,11 @@ export default {
     // 逻辑层推下来的档案清单（视图层与逻辑层是两个上下文，不能共享模块状态）
     onArchives(v) {
       const list = asObj(v)
-      if (Array.isArray(list)) this.archiveList = list
+      if (!Array.isArray(list)) return
+      const changed = archivesChanged(this.archiveList, list)
+      this.archiveList = list
+      // 档案换了就重建：即使 reset 信号丢了也不会停在旧城市（自愈）
+      if (changed && this.core) this.onReset()
     },
     onVisible(v) {
       // 只做尺寸恢复；渲染与轮询不停（保持轨迹连续）
@@ -840,13 +884,13 @@ export default {
           const cands = []
           try {
             const rel = item.path || '_doc/maps/' + file
-            const abs =
-              typeof plus !== 'undefined' && plus.io && plus.io.convertLocalFileSystemURL
-                ? plus.io.convertLocalFileSystemURL(rel)
-                : ''
-            if (abs) {
-              cands.push(abs)
-              cands.push('file://' + (abs.charAt(0) === '/' ? abs : '/' + abs))
+            // 下载退路可能给的是裸绝对路径，toPlusUrl 会补成 file://；
+            // 两个变体都试，不同 WebView 认的形式不一样
+            const url = toPlusUrl(rel)
+            if (url) {
+              cands.push(url)
+              if (url.indexOf('file://') === 0) cands.push(url.slice(7))
+              else cands.push('file://' + (url.charAt(0) === '/' ? url : '/' + url))
             }
           } catch (e) {
             /* ignore */

@@ -12,6 +12,7 @@
 
 import {
   getCity,
+  getCurrent,
   resolveMirrors,
   mirrorLabel,
   formatSpeed,
@@ -982,4 +983,79 @@ export async function readPackedBytes(adcode) {
   } catch (e) {
     return null
   }
+}
+
+/**
+ * 底图自检：逐条回答「切城市到底能不能成功」。
+ * 只做与本机环境相关的判定，不联网：
+ *   1) 当前选中的城市 / 已装清单 / 实际路径
+ *   2) 每个已装包能否被「地图用的那条通道」读到（openAppFile + 读 128 字节首部）
+ *   3) 首部是不是 PMTiles、声明字节数与实际是否一致
+ *   4) 地图最终会加载哪一个（与 map-view 的 resolveArchives 同规则）
+ * 返回可直接展示/复制的文本行。
+ */
+export async function mapSelfTest() {
+  const lines = []
+  const app = isAppRuntime()
+  lines.push('运行时: ' + (app ? 'App' : 'H5'))
+  const cur = getCurrent()
+  const inst = getInstalled()
+  const codes = Object.keys(inst)
+  lines.push('当前选中: ' + (cur ? cur + (getCity(cur) ? '（' + getCity(cur).name + '）' : '') : '（无，用内置包）'))
+  lines.push('已装城市: ' + (codes.length ? codes.length + ' 个' : '0 个'))
+
+  // 2) 逐个包做"能不能被读出来"的检查
+  let okCount = 0
+  for (const code of codes) {
+    const rec = inst[code] || {}
+    const p = rec.path || appMapPath(code)
+    const want = Number(rec.bytes) || 0
+    if (!app) {
+      // H5：走 IndexedDB
+      const bytes = await idbGet(String(code)).catch(() => null)
+      const n = bytes ? bytes.length : 0
+      const head = bytes ? new Uint8Array(bytes.slice(0, 16)) : null
+      const isPm = head && head[0] === 0x50 && head[1] === 0x4d
+      lines.push(
+        '· ' + code + '（IndexedDB）' + (n ? n + ' 字节' : '读不到') + (isPm ? '，PMTiles ✓' : '，头部异常 ✗')
+      )
+      if (n && isPm && (!want || n === want)) okCount++
+      continue
+    }
+    const file = await openAppFile(p, 5000)
+    if (!file) {
+      lines.push('· ' + code + ' ✗ 打不开文件：' + p)
+      continue
+    }
+    const size = file.size || 0
+    const head = await readBlobPart(file, 0, 128, 2500, absPathOf(p))
+    const via = getReadStrategy() || ''
+    if (!head) {
+      lines.push('· ' + code + ' ✗ 文件在（' + size + ' 字节）但读不出内容，路径 ' + p)
+      continue
+    }
+    const st = checkPmtilesStructure(head, size, want || 0)
+    lines.push(
+      '· ' + code + ' ' + (st.ok ? '✓' : '✗') + ' ' + formatBytes(size) + '，读法 ' + (via || '?') +
+        '，' + (st.ok ? 'PMTiles 结构通过' : '结构不通过：' + st.reason) +
+        '，路径 ' + p
+    )
+    if (st.ok) okCount++
+  }
+
+  // 4) 地图会加载哪个（H5 走 IndexedDB，App 走文件，两者来源不同，别混着写）
+  let willLoad = '内置青岛包'
+  if (cur && inst[cur]) {
+    if (app) {
+      const rec = inst[cur] || {}
+      willLoad = (rec.path || appMapPath(cur)) + (okCount ? '（已装且可读）' : '（已装但读取存疑）')
+    } else {
+      willLoad = 'IndexedDB 里的 ' + cur + '.pmtiles' + (okCount ? '（已装且可读）' : '（已装但读取存疑）')
+    }
+  } else if (cur && !inst[cur]) {
+    willLoad = '内置青岛包（选中的城市未安装，已回退）'
+  }
+  lines.push('地图将加载: ' + willLoad)
+  lines.push(okCount === codes.length ? '结论: 已装包全部可读，切换应当生效' : '结论: 有包读不出来，切换会失败——把这段发我')
+  return { lines }
 }

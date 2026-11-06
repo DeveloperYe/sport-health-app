@@ -79,12 +79,30 @@ export function hasPlusIo() {
 
 /** _www/... -> 设备上的绝对路径（拿不到就返回空串） */
 export function plusLocalPath(p) {
+  const v = String(p || '')
+  if (!v) return ''
+  // 已经是设备绝对路径（下载退路可能给出 /storage/... ）就别再转换
+  if (v.charAt(0) === '/') return v
   try {
     if (!hasPlusIo()) return ''
-    return plus.io.convertLocalFileSystemURL(p) || ''
+    return plus.io.convertLocalFileSystemURL(v) || ''
   } catch (e) {
     return ''
   }
+}
+
+/**
+ * 把「相对路径 / 绝对路径 / file:// URL」统一成 plus.io 能接受的 URL。
+ * 为什么要统一：plus.io.resolveLocalFileSystemURL 认 `_doc/...` 相对路径和 `file://`，
+ * 但**不认** `/storage/emulated/0/...` 这种裸绝对路径 —— 而下载退路（_downloads 或临时目录）
+ * 存下来的正是绝对路径，直接丢进去会解析失败，表现为「下载成功但地图加载不出来」。
+ */
+export function toPlusUrl(p) {
+  const v = String(p || '')
+  if (!v) return ''
+  if (v.indexOf('file://') === 0) return v
+  if (v.charAt(0) === '/') return 'file://' + v
+  return v
 }
 
 /**
@@ -111,7 +129,8 @@ export function tileUrlCandidates(file) {
   const abs = plusLocalPath(www)
   if (abs) {
     list.push(abs)
-    list.push('file://' + (abs[0] === '/' ? abs : '/' + abs))
+    if (abs.indexOf('file://') === 0) list.push(abs.slice(7))
+    else list.push('file://' + (abs[0] === '/' ? abs : '/' + abs))
   }
   const seen = {}
   return list.filter((u) => (u && !seen[u] ? ((seen[u] = 1), true) : false))
@@ -224,7 +243,7 @@ export async function loadTilesFromUrls(urls) {
  */
 export function readTilesViaPlusIo(file, onBase64, onError, absPath) {
   // absPath 给「已下载到 _doc/maps/ 的城市包」用；不传则读包内 _www/static/tiles/
-  const www = absPath || tileWww(file)
+  const www = toPlusUrl(absPath || tileWww(file))
   const fail = (m) => {
     try {
       onError && onError(m)

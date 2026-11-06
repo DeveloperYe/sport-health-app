@@ -99,6 +99,7 @@
       <view class="list-head diag-head">
         <text class="card-title">诊断</text>
         <view class="mini-btn small ghost" @click="runStorageTest">存储自检</view>
+        <view class="mini-btn small ghost" @click="runMapTest">底图自检</view>
         <view class="mini-btn small ghost" @click="copyDiag">复制</view>
       </view>
       <text class="diag-line">运行时：{{ diagInfo.runtime }}</text>
@@ -143,7 +144,7 @@ import {
   startMeasureInBackground,
   measureState,
 } from '@/utils/city-maps.js'
-import { downloadCity, deleteCity, storageSelfTest } from '@/utils/city-map-download.js'
+import { downloadCity, deleteCity, storageSelfTest, mapSelfTest } from '@/utils/city-map-download.js'
 
 export default {
   data() {
@@ -392,6 +393,15 @@ export default {
     clearManual() {
       this.manualPrefix = ''
       uni.showToast({ title: '已恢复自动测速', icon: 'none' })
+    },
+    async runMapTest() {
+      this.storageLines = ['底图自检中…']
+      try {
+        const r = await mapSelfTest()
+        this.storageLines = r.lines || []
+      } catch (e) {
+        this.storageLines = ['自检异常: ' + ((e && e.message) || e)]
+      }
     },
     async runStorageTest() {
       this.storageLines = ['检测中…']
