@@ -9,7 +9,7 @@
  *  - plus.io 只在真机存在，全部用 typeof 探测，H5 打包进来也不会炸。
  */
 
-import { nativeReadBase64 } from '@/utils/native-file.js'
+import { nativeReadBase64 } from '../../utils/native-file.js'
 
 // PMTiles v3 档案头 7 字节魔数
 const MAGIC = [0x50, 0x4d, 0x54, 0x69, 0x6c, 0x65, 0x73] // "PMTiles"
