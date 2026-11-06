@@ -825,8 +825,9 @@ export default {
   gap: 10rpx;
   padding: 10rpx 20rpx;
   border-radius: 999rpx;
-  background: rgba(16, 16, 20, 0.82);
-  border: 1rpx solid $border-subtle;
+  /* 之前写死深色底：亮色主题下变成"深色片+深色字"，字就看不见了 */
+  background: var(--chip-bg);
+  border: 1rpx solid var(--chip-line);
 }
 .map-city-txt {
   font-size: 22rpx;

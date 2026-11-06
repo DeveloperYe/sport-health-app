@@ -9,6 +9,8 @@
       :id="hostId"
       :mvappmode="appMode"
       :change:mvappmode="mapView.onAppMode"
+      :mvtheme="mapTheme"
+      :change:mvtheme="mapView.onTheme"
       :mvhostid="hostId"
       :change:mvhostid="mapView.onHostId"
       :mvpoints="pointsPayload"
@@ -109,6 +111,23 @@ export default {
     },
   },
   watch: {
+    // 全局主题变化 → 地图跟着换色标（只重建 style，不重新读瓦片）
+    theme: {
+      immediate: true,
+      handler(v) {
+        const next = v === 'light' ? 'light' : 'dark'
+        this.mapTheme = next
+        // H5 走的是逻辑层建图（没有 renderjs），所以要在这里也切一次；
+        // App 端由 renderjs 的 onTheme 负责，这条对它是重复调用但有幂等保护。
+        if (this.core && this.core.setTheme) {
+          try {
+            this.core.setTheme(next)
+          } catch (e) {
+            /* ignore */
+          }
+        }
+      },
+    },
     // 城市变了就整图重建：档案换了、中心点和 bbox 都要重新从包头发起
     cityKey() {
       if (this.booted || this.appMode) this.reloadForCity()
@@ -275,6 +294,7 @@ export default {
           container: el,
           archives: archives,
           status: this.status,
+          theme: this.mapTheme,
           points: this.points,
           onOutOfBounds: (b) => this.$emit('outofbounds', b),
           onReady: () => {
@@ -466,8 +486,27 @@ export default {
     // 逻辑层第一次把 appMode 推成 true -> 真正启动
     onAppMode(v) {
       // #ifdef APP-PLUS
-      if (v && !this.booting && !this.core) this.boot()
+      if (v && !this.booting && !this.core) {
+        // 首帧 prop 不会触发 change 回调，这里主动对齐一次，避免"界面白、地图黑"
+        if (typeof this.mvtheme === 'string') {
+          this.mapTheme = this.mvtheme === 'light' ? 'light' : 'dark'
+        }
+        this.boot()
+      }
       // #endif
+    },
+    /** 逻辑层主题变化：先记住，建图时用；已有地图则原地换色标 */
+    onTheme(v) {
+      const t = v === 'light' ? 'light' : 'dark'
+      if (this.mapTheme === t) return
+      this.mapTheme = t
+      if (this.core && this.core.setTheme) {
+        try {
+          this.core.setTheme(t)
+        } catch (e) {
+          /* ignore */
+        }
+      }
     },
     // 兜底：万一拿不到 this.$el（不同运行时差异），还能靠 id 找到容器
     onHostId(id) {
@@ -783,6 +822,7 @@ export default {
           container: found.el,
           archives: archives,
           status: this.status,
+          theme: this.mapTheme,
           points: this.lastPoints,
           onOutOfBounds: (b) => {
             try {
@@ -839,8 +879,8 @@ export default {
 }
 .mv-hint-text {
   font-size: 24rpx;
-  color: rgba(255, 255, 255, 0.72);
-  background: rgba(0, 0, 0, 0.42);
+  color: var(--text-1);
+  background: var(--chip-bg);
   padding: 8rpx 20rpx;
   border-radius: 999rpx;
 }
@@ -852,8 +892,8 @@ export default {
 }
 .mv-attr-text {
   font-size: 18rpx;
-  color: rgba(255, 255, 255, 0.75);
-  background: rgba(0, 0, 0, 0.45);
+  color: var(--text-2);
+  background: var(--chip-bg);
   padding: 2rpx 8rpx;
   border-radius: 6rpx;
 }

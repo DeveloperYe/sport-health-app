@@ -40,6 +40,10 @@ page {
   --shadow-card: none;
   --shadow-pop: 0 18rpx 48rpx rgba(0, 0, 0, 0.55);
   --mask: rgba(4, 6, 8, 0.72);
+  /* 叠在地图/内容上的小胶囊（如"切换底图"按钮、署名条）：底色必须随主题走，
+     否则亮色主题下会出现"深色片 + 深色字"看不见的组合 */
+  --chip-bg: rgba(21, 24, 29, 0.88);
+  --chip-line: rgba(255, 255, 255, 0.1);
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
@@ -69,6 +73,8 @@ page {
   --shadow-card: none;
   --shadow-pop: 0 18rpx 48rpx rgba(0, 0, 0, 0.55);
   --mask: rgba(4, 6, 8, 0.72);
+  --chip-bg: rgba(21, 24, 29, 0.88);
+  --chip-line: rgba(255, 255, 255, 0.1);
 }
 
 /* ===================== 白天 ===================== */
@@ -103,6 +109,8 @@ page {
   --shadow-card: 0 6rpx 20rpx rgba(17, 22, 28, 0.06);
   --shadow-pop: 0 20rpx 60rpx rgba(17, 22, 28, 0.16);
   --mask: rgba(238, 243, 249, 0.82);
+  --chip-bg: rgba(255, 255, 255, 0.95);
+  --chip-line: rgba(17, 22, 28, 0.12);
 }
 
 /* ============ 通用平面组件基线（全局，非 scoped） ============ */

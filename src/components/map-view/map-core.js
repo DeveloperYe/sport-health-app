@@ -25,7 +25,7 @@
 import * as maplibregl from 'maplibre-gl'
 import { PMTiles, Protocol } from 'pmtiles'
 import { layers as basemapLayers, namedFlavor } from '@protomaps/basemaps'
-import { highContrastDark } from './theme.js'
+import { paletteFor } from './theme.js'
 import { containerOk, describeValue } from './dom.js'
 // worker 源码以原始字符串内联：?raw 不经过 esbuild，worker 里的 BigInt 与
 // 打包 target 无关；运行时再由 ensureWorker() 转成 blob URL 交给 setWorkerUrl。
@@ -381,7 +381,9 @@ export function createTrackMap(opts) {
   const tileKeys = {}
   const instances = []
   const sourceIds = {}
-  let baseLayers = []
+
+  // 主题：'dark' | 'light'。图层不再只生成一次 —— 运行时要能原地换色标
+  let themeName = opts.theme === 'light' ? 'light' : 'dark'
 
   for (let ai = 0; ai < archives.length; ai++) {
     const a = archives[ai]
@@ -389,16 +391,26 @@ export function createTrackMap(opts) {
     protocol.add(inst)
     instances.push(inst)
     sourceIds[a.key] = 1
-    // 每个档案要有自己的图层组：basemaps 的 layers() 生成的是绑定到指定 source 名的图层，
-    // 多个档案就得生成多份，并把 id 加前缀避免重复 id 报错。
-    // 深色高对比配色：原生 dark 的色标层次太浅（地面 12% vs 支路 20%，建筑比地面还暗
-    // 7%），手机上糊成一片。规则见 theme.js 顶部注释。
-    const ls = basemapLayers(a.key, highContrastDark(namedFlavor('dark')), { lang: 'zh' }).filter(
-      (l) => l.type !== 'symbol' // 离线包没有字体包
-    )
-    for (let li = 0; li < ls.length; li++) {
-      baseLayers.push(Object.assign({}, ls[li], { id: a.key + ':' + ls[li].id }))
+  }
+
+  /**
+   * 按当前主题生成底图图层。
+   * 每个档案要有自己的图层组：basemaps 的 layers() 生成的是绑定到指定 source 名的图层，
+   * 多个档案就得生成多份，并把 id 加前缀避免重复 id 报错。
+   * 色标见 theme.js（暗/亮各自做过对比度校准，规则写在文件顶部）。
+   */
+  function buildBaseLayers() {
+    const flavor = paletteFor(themeName, namedFlavor(themeName))
+    const out = []
+    for (let ai = 0; ai < archives.length; ai++) {
+      const a = archives[ai]
+      // 离线包没有字体包，symbol 层留着只会报错
+      const ls = basemapLayers(a.key, flavor, { lang: 'zh' }).filter((l) => l.type !== 'symbol')
+      for (let li = 0; li < ls.length; li++) {
+        out.push(Object.assign({}, ls[li], { id: a.key + ':' + ls[li].id }))
+      }
     }
+    return out
   }
 
   const sources = { track: { type: 'geojson', data: trackGeoJSON(lastPoints) } }
@@ -410,10 +422,11 @@ export function createTrackMap(opts) {
     }
   }
 
-  const style = {
-    version: 8,
-    sources: sources,
-    layers: baseLayers.concat([
+  /** 轨迹图层：端点颜色跟随主题（亮色地图上要用深色端点才看得见） */
+  function buildTrackLayers() {
+    const startFill = themeName === 'light' ? '#ffffff' : '#15151a'
+    const endFill = themeName === 'light' ? '#12b14a' : '#7cf29d'
+    return [
       {
         id: 'track-line',
         type: 'line',
@@ -429,7 +442,7 @@ export function createTrackMap(opts) {
         filter: ['==', ['get', 'kind'], 'start'],
         paint: {
           'circle-radius': 6,
-          'circle-color': '#15151a',
+          'circle-color': startFill,
           'circle-stroke-color': TRACK_COLOR,
           'circle-stroke-width': 2,
         },
@@ -441,13 +454,24 @@ export function createTrackMap(opts) {
         filter: ['==', ['get', 'kind'], 'end'],
         paint: {
           'circle-radius': 6,
-          'circle-color': '#7cf29d',
+          'circle-color': endFill,
           'circle-stroke-color': '#ffffff',
           'circle-stroke-width': 2,
         },
       },
-    ]),
+    ]
   }
+
+  /** 完整 style（切换主题时整体重建；瓦片不用动，矢量包本身不含颜色） */
+  function buildStyle() {
+    return {
+      version: 8,
+      sources: sources,
+      layers: buildBaseLayers().concat(buildTrackLayers()),
+    }
+  }
+
+  const style = buildStyle()
 
   // 容器校验：MapLibre 只接受选择器字符串或真实元素，否则抛
   // "Invalid type: 'container' must be a String or HTMLElement."。这里提前拦，
@@ -541,6 +565,31 @@ export function createTrackMap(opts) {
   const api = {
     map: map,
     status: status,
+    /** 运行时切换地图亮/暗色标：只重建 style，不重新下载瓦片 */
+    setTheme(t) {
+      const next = t === 'light' ? 'light' : 'dark'
+      if (destroyed || next === themeName) return themeName
+      themeName = next
+      try {
+        map.setStyle(buildStyle(), { diff: false })
+        map.once('style.load', () => {
+          if (destroyed) return
+          status.maplibre = 'ok'
+          try {
+            const src = map.getSource('track')
+            if (src && src.setData) src.setData(trackGeoJSON(lastPoints || []))
+          } catch (e) {
+            /* ignore */
+          }
+        })
+      } catch (e) {
+        setErr('theme:' + ((e && e.message) || String(e)))
+      }
+      return themeName
+    },
+    getTheme() {
+      return themeName
+    },
     getBounds() {
       return bounds
     },

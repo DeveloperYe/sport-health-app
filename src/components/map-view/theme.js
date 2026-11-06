@@ -130,6 +130,23 @@ export const PALETTE = {
 }
 
 /**
+ * 把一组覆盖色标叠到基础 flavor 上（亮/暗共用）。
+ * 对「嵌套对象型」token（landcover、pois 这类按 kind/颜色名分组的）做一层合并：
+ * 直接整体覆盖会丢掉没写到的子键，layers() 生成的 match 表达式里就会出现 undefined，
+ * MapLibre 会拒绝整个样式（真机上表现为 maplibre:fail + tiles:0）。
+ */
+export function mergeFlavor(base, overrides) {
+  const b = base || {}
+  const out = Object.assign({}, b)
+  for (const [k, v] of Object.entries(overrides || {})) {
+    const cur = b[k]
+    const isObj = (x) => x && typeof x === 'object' && !Array.isArray(x)
+    out[k] = isObj(cur) && isObj(v) ? Object.assign({}, cur, v) : v
+  }
+  return out
+}
+
+/**
  * 把高对比色标叠到基础 flavor 上。
  * 用展开而不是替换：basemaps 以后新增的 token 会原样保留，不会因缺 key 出错。
  * 对「嵌套对象型」token（landcover、pois 这类按 kind/颜色名分组的）做一层合并：
@@ -137,14 +154,133 @@ export const PALETTE = {
  * MapLibre 会拒绝整个样式（真机上表现为 maplibre:fail + tiles:0）。
  */
 export function highContrastDark(base) {
-  const b = base || {}
-  const out = Object.assign({}, b)
-  for (const [k, v] of Object.entries(PALETTE)) {
-    const cur = b[k]
-    const isObj = (x) => x && typeof x === 'object' && !Array.isArray(x)
-    out[k] = isObj(cur) && isObj(v) ? Object.assign({}, cur, v) : v
-  }
-  return out
+  return mergeFlavor(base, PALETTE)
+}
+
+/**
+ * 亮色（白天）高对比色标。
+ *
+ * 与暗色同一套思路的反向版：底子提亮，把"对比度预算"让给道路。
+ * 三条规则：
+ *   1. 地表接近白（earth ≈ 96%），建筑略深一档当作肌理；
+ *   2. 道路**压深**而不是留白 —— 白底上白色道路等于消失（实测白路 vs 地表
+ *      对比度仅 1.1:1）；按等级压深：支路 ~78% → 次干 ~62% → 主干 ~40% → 快速路 ~24%；
+ *   3. 描边一律用比路面更**亮**的一档（浅底上用浅色勾边才出轮廓），水与绿地靠色相区分。
+ */
+export const LIGHT_PALETTE = {
+  // —— 画布与地表：接近白，但不刺眼 ——
+  background: '#e9edf2',
+  earth: '#f4f6f8',
+  glacier: '#eef2f6',
+  sand: '#f3efe4',
+  beach: '#f6f2e6',
+  pedestrian: '#eef1f5',
+  aerodrome: '#eef1f5',
+  runway: '#c6cdd8',
+  pier: '#c9d1dc',
+
+  // —— 绿地/自然：淡绿，靠色相与灰底区分，不靠明度 ——
+  park_a: '#dbe9d6',
+  park_b: '#d5e4cf',
+  wood_a: '#d3e3cd',
+  wood_b: '#d3e3cd',
+  scrub_a: '#e2e9d8',
+  scrub_b: '#e2e9d8',
+  zoo: '#e2e9d8',
+  landcover: {
+    grassland: '#e0ebd8',
+    barren: '#ece9df',
+    urban_area: '#e9ecf1',
+    farmland: '#e4ecdb',
+    glacier: '#eef2f6',
+    scrub: '#e3ead9',
+    forest: '#d8e5d2',
+  },
+
+  // —— 各类用地：只留一点点区分 ——
+  hospital: '#f0ecef',
+  industrial: '#e9ebee',
+  school: '#f0ecec',
+  military: '#efedea',
+
+  // —— 水系：明确偏蓝，和陆地一眼分开 ——
+  water: '#a8cde8',
+
+  // —— 建筑：比地表深一档，读作肌理 ——
+  buildings: '#e2e7ee',
+
+  // —— 道路：按等级压深（这是亮色模式最反直觉、也最关键的一条）——
+  other: '#b3bcc9',
+  minor_service: '#b3bcc9',
+  minor_b: '#a7b1c0',
+  minor_a: '#98a3b3',
+  link: '#98a3b3',
+  major: '#6d7889',
+  highway: '#3e4a59',
+
+  // —— 描边：比路面更亮一档（浅底上靠浅色勾边）——
+  minor_service_casing: '#dfe5ec',
+  minor_casing: '#dfe5ec',
+  link_casing: '#dfe5ec',
+  major_casing_early: '#dfe5ec',
+  major_casing_late: '#dfe5ec',
+  highway_casing_early: '#e4e9ef',
+  highway_casing_late: '#e4e9ef',
+
+  // —— 铁路与边界 ——
+  railway: '#a9b3c1',
+  boundaries: '#8d99a9',
+
+  // —— 隧道：比同级路面浅，表示"在下方" ——
+  tunnel_other: '#cbd3de',
+  tunnel_minor: '#cbd3de',
+  tunnel_link: '#cbd3de',
+  tunnel_major: '#aeb8c6',
+  tunnel_highway: '#96a1b1',
+  tunnel_other_casing: '#e4e9ef',
+  tunnel_minor_casing: '#e4e9ef',
+  tunnel_link_casing: '#e4e9ef',
+  tunnel_major_casing: '#e4e9ef',
+  tunnel_highway_casing: '#e4e9ef',
+
+  // —— 桥梁：与同级道路同色 ——
+  bridges_other: '#b3bcc9',
+  bridges_minor: '#a7b1c0',
+  bridges_link: '#98a3b3',
+  bridges_major: '#6d7889',
+  bridges_highway: '#3e4a59',
+  bridges_other_casing: '#dfe5ec',
+  bridges_minor_casing: '#dfe5ec',
+  bridges_link_casing: '#dfe5ec',
+  bridges_major_casing: '#dfe5ec',
+  bridges_highway_casing: '#e4e9ef',
+
+  // —— 标注（离线包无字体，symbol 层已过滤；留着防以后加字体）——
+  roads_label_minor: '#5a6575',
+  roads_label_major: '#39424f',
+  roads_label_minor_halo: '#ffffff',
+  roads_label_major_halo: '#ffffff',
+  ocean_label: '#4b7fa5',
+  subplace_label: '#5a6575',
+  subplace_label_halo: '#ffffff',
+  city_label: '#39424f',
+  city_label_halo: '#ffffff',
+  state_label: '#4c5765',
+  state_label_halo: '#ffffff',
+  address_label: '#5a6575',
+  address_label_halo: '#ffffff',
+}
+
+/** 亮色高对比：叠到 namedFlavor('light') 上 */
+export function highContrastLight(base) {
+  return mergeFlavor(base, LIGHT_PALETTE)
+}
+
+/** 按主题名取色标（'light' / 'dark'，缺省按暗色） */
+export function paletteFor(themeName, base) {
+  return String(themeName || '').toLowerCase() === 'light'
+    ? highContrastLight(base)
+    : highContrastDark(base)
 }
 
 /** #rgb / #rrggbb / rgba(...) → [r,g,b]（0–255）；解析失败返回 null */
