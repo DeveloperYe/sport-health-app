@@ -26,6 +26,7 @@ import { Sha256 } from './sha256.js'
 import { idbPut, idbGet, idbDelete, idbKeys } from './idb-tiles.js'
 import { shouldSwitchMirror, SLOW_WINDOW_MS } from './mirror-pick.js'
 import { checkPmtilesStructure } from './pmtiles-check.js'
+import { readAny, fileReaderRead, nativeReadBase64, toBytes, getReadStrategy } from './native-file.js'
 
 const MAGIC = [0x50, 0x4d, 0x54, 0x69, 0x6c, 0x65, 0x73] // PMTiles
 // 低速阈值与观察窗口都在 mirror-pick.js 里，这里只用 shouldSwitchMirror 判断
@@ -260,57 +261,19 @@ function openAppFile(path, timeoutMs) {
   })
 }
 
-/** 读 file 的 [start,end) 区间；FileReader 单次操作也有超时 */
-function readBlobPart(file, start, end, timeoutMs) {
-  return new Promise((resolve) => {
-    let done = false
-    const t = setTimeout(() => {
-      if (!done) {
-        done = true
-        resolve(null)
-      }
-    }, timeoutMs || 6000)
-    try {
-      if (typeof file.slice !== 'function') {
-        clearTimeout(t)
-        return resolve(null)
-      }
-      const blob = file.slice(start, end)
-      const fr = new plus.io.FileReader()
-      fr.onloadend = () => {
-        if (done) return
-        done = true
-        clearTimeout(t)
-        try {
-          resolve(b64ToBytes$app(fr.result))
-        } catch (e) {
-          resolve(null)
-        }
-      }
-      fr.onerror = () => {
-        if (done) return
-        done = true
-        clearTimeout(t)
-        resolve(null)
-      }
-      try {
-        if (fr.readAsArrayBuffer) fr.readAsArrayBuffer(blob)
-        else fr.readAsDataURL(blob)
-      } catch (e) {
-        if (!done) {
-          done = true
-          clearTimeout(t)
-          resolve(null)
-        }
-      }
-    } catch (e) {
-      if (!done) {
-        done = true
-        clearTimeout(t)
-        resolve(null)
-      }
-    }
-  })
+/**
+ * 读 file 的 [start,end) 区间。
+ * 走 native-file.js 的多路径：FileReader（整文件 / 分块、arraybuffer / dataurl）→
+ * Native.js（RandomAccessFile + Base64）。
+ * 真机上 FileReader 会读出空内容（实测），那时必须靠 Native 兜底，否则功能整条不可用。
+ */
+function readBlobPart(file, start, end, timeoutMs, absPath) {
+  return readAny(file, {
+    start: start,
+    end: end,
+    timeoutMs: timeoutMs || 6000,
+    absPath: absPath || '',
+  }).then((r) => (r && r.ok && r.bytes ? r.bytes : null))
 }
 
 /**
@@ -334,7 +297,7 @@ export async function hashAppFile(path, onProgress, budgetMs) {
   while (off < total) {
     if (Date.now() - startedAt > budget) return { ok: false, err: '超出时间预算', partial: off, total }
     const end = Math.min(off + CH, total)
-    const u8 = await readBlobPart(file, off, end, 8000)
+    const u8 = await readBlobPart(file, off, end, 8000, absPathOf(path))
     if (!u8) return { ok: false, err: '读分块失败 @' + off, partial: off, total }
     h.update(u8)
     off = end
@@ -404,7 +367,7 @@ export async function quickCheckAppFile(path, city) {
   const file = await openAppFile(path, 6000)
   if (!file) return { ok: false, err: '打不开下载后的文件' }
   const size = file.size || 0
-  const head = await readBlobPart(file, 0, 128, 6000)
+  const head = await readBlobPart(file, 0, 128, 6000, absPathOf(path))
   const st = checkPmtilesStructure(head, size, city.bytes)
   if (!st.ok) return { ok: false, err: st.reason, size: size }
   return { ok: true, size: size }
@@ -419,7 +382,7 @@ export async function verifyAppFile(path, city) {
   // 头能解析、版本 3、且 tileDataOffset+tileDataLength 必须**正好等于**文件长度
   // —— 截断、补零、HTML 错误页、别的城市的包都会被这一层挡掉，
   // 而它只需要读 128 字节，不依赖 FileReader 能把整个文件读下来。
-  const head = await readBlobPart(file, 0, 128, 6000)
+  const head = await readBlobPart(file, 0, 128, 6000, absPathOf(path))
   const st = checkPmtilesStructure(head, size, city.bytes)
   if (!st.ok) return { ok: false, level: 'struct', size: size, err: st.reason }
 
@@ -437,9 +400,10 @@ export async function verifyAppFile(path, city) {
 /** 读 _doc/maps/<adcode>.pmtiles 的头部若干字节（判断魔数用） */
 export async function readAppHead(adcode, n) {
   const want = n || 16
-  const file = await openAppFile(APP_MAP_DIR + adcode + '.pmtiles', 6000)
+  const rel = APP_MAP_DIR + adcode + '.pmtiles'
+  const file = await openAppFile(rel, 6000)
   if (!file) return null
-  return readBlobPart(file, 0, want, 6000)
+  return readBlobPart(file, 0, want, 6000, absPathOf(rel))
 }
 
 // ================= H5：XHR 下载到 IndexedDB =================
@@ -855,14 +819,47 @@ export async function storageSelfTest() {
     )
   })
   lines.push((w === true ? '✅' : '❌') + ' 写测试文件: ' + (w === true ? rel : w))
-  // 2) 读回来
+  // 2) 逐个读取方式试一遍 —— 用户机上 FileReader 能写能删却读不出内容，
+  //    必须让 App 自己报出"哪条路能用"，否则只能瞎猜。
   const f2 = await openAppFile(rel, 5000)
+  const absRel = absPathOf(rel) || ''
   if (!f2) {
-    lines.push('❌ 读不回测试文件（写入或路径映射有问题）')
+    lines.push('❌ 拿不到文件对象（entry.file 失败）')
   } else {
-    const u8 = await readBlobPart(f2, 0, body.length, 5000)
-    const got = u8 ? String.fromCharCode.apply(null, Array.from(u8)) : ''
-    lines.push((got === body ? '✅' : '❌') + ' 读回内容: ' + JSON.stringify(got))
+    const probes = [
+      ['FileReader 整文件 readAsArrayBuffer', { asArrayBuffer: true }],
+      ['FileReader 整文件 readAsDataURL', { asArrayBuffer: false }],
+      ['FileReader 分块 readAsArrayBuffer', { asArrayBuffer: true, start: 0, end: body.length }],
+      ['FileReader 分块 readAsDataURL', { asArrayBuffer: false, start: 0, end: body.length }],
+    ]
+    for (let i = 0; i < probes.length; i++) {
+      const name = probes[i][0]
+      const opt = probes[i][1]
+      const r = await fileReaderRead(f2, {
+        asArrayBuffer: opt.asArrayBuffer,
+        start: opt.start,
+        end: opt.end,
+        timeoutMs: 4000,
+      })
+      if (r && r.ok) {
+        const u8 = r.bytes || toBytes(r.b64) || new Uint8Array(0)
+        const txt = u8.length ? String.fromCharCode.apply(null, Array.from(u8)) : ''
+        lines.push('✅ ' + name + ' → ' + JSON.stringify(txt) + (txt === body ? '' : '（内容不符）'))
+      } else {
+        lines.push('❌ ' + name + '（' + ((r && r.err) || '未知') + '）')
+      }
+    }
+    // Native.js 两条路
+    const nb = nativeReadBase64(absRel, 0, body.length)
+    let ntxt = ''
+    if (nb) {
+      const u8 = toBytes(nb)
+      ntxt = u8 && u8.length ? String.fromCharCode.apply(null, Array.from(u8)) : ''
+    }
+    lines.push((nb ? '✅' : '❌') + ' Native 分块 Base64' + (nb ? ' → ' + JSON.stringify(ntxt) : '（不可用）'))
+    const nw = nativeReadBase64(absRel)
+    lines.push((nw ? '✅' : '❌') + ' Native 整文件 Base64' + (nw ? '（' + nw.length + ' 字符）' : '（不可用）'))
+    lines.push('当前选用读取方式: ' + (getReadStrategy() || '尚未确定'))
   }
   // 3) 删掉
   const del = await new Promise((resolve) => {

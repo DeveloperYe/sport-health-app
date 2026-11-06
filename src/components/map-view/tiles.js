@@ -9,6 +9,8 @@
  *  - plus.io 只在真机存在，全部用 typeof 探测，H5 打包进来也不会炸。
  */
 
+import { nativeReadBase64 } from '@/utils/native-file.js'
+
 // PMTiles v3 档案头 7 字节魔数
 const MAGIC = [0x50, 0x4d, 0x54, 0x69, 0x6c, 0x65, 0x73] // "PMTiles"
 
@@ -212,6 +214,12 @@ export async function loadTilesFromUrls(urls) {
 /**
  * 用 plus.io 读文件，回调 base64 正文（不含 data: 前缀）。
  * 逻辑层与视图层共用：视图层拿到 base64 自己 atob，逻辑层切成块过桥。
+ *
+ * 读取顺序（真机实测踩过坑，必须多路径）：
+ *   1) Native.js 整文件 Base64 —— Java 侧读，最快最稳；
+ *   2) Native.js 分块（3 MB/块，3 的倍数保证 base64 可直接拼接）—— 大文件用；
+ *   3) plus.io.FileReader(readAsDataURL) —— 部分机型能写能删却**读空**，
+ *      所以它只能当最后一道，且超时后要能继续退。
  * @returns {boolean} 是否成功发起
  */
 export function readTilesViaPlusIo(file, onBase64, onError, absPath) {
@@ -228,23 +236,74 @@ export function readTilesViaPlusIo(file, onBase64, onError, absPath) {
     fail('plus.io 不可用')
     return false
   }
+
+  const viaNative = (abs, size) => {
+    if (!abs) return false
+    // 1) 整文件
+    const whole = nativeReadBase64(abs)
+    if (whole && whole.length) {
+      onBase64 && onBase64(whole, size)
+      return true
+    }
+    // 2) 分块（每块 3 MB：3 的倍数，拼出来的 base64 仍然合法）
+    if (size > 0) {
+      const CH = 3 * 1024 * 1024
+      const parts = []
+      let off = 0
+      while (off < size) {
+        const end = Math.min(off + CH, size)
+        const b = nativeReadBase64(abs, off, end)
+        if (!b) {
+          parts.length = 0
+          break
+        }
+        parts.push(b)
+        off = end
+      }
+      if (parts.length) {
+        onBase64 && onBase64(parts.join(''), size)
+        return true
+      }
+    }
+    return false
+  }
+
   try {
     plus.io.resolveLocalFileSystemURL(
       www,
       (entry) => {
         entry.file(
-          (file) => {
+          (f) => {
+            const size = (f && f.size) || 0
+            const abs = plusLocalPath(www) || ''
+            // 先试 Native（同步、快）
+            if (viaNative(abs, size)) return
+            // 再试 FileReader
             const fr = new plus.io.FileReader()
+            let done = false
+            const timer = setTimeout(() => {
+              if (done) return
+              done = true
+              fail('FileReader 超时且 Native 读取不可用')
+            }, 15000)
             fr.onloadend = () => {
+              if (done) return
+              done = true
+              clearTimeout(timer)
               const raw = (fr.result && (fr.result.data || fr.result)) || ''
               const s = typeof raw === 'string' ? raw : String(raw)
               const i = s.indexOf(',')
               const b64 = i >= 0 ? s.slice(i + 1) : s
-              if (!b64) return fail('plus.io 读到空内容')
-              onBase64 && onBase64(b64, file && file.size)
+              if (!b64) return fail('FileReader 读到空内容（本机不支持读取，且 Native 通道不可用）')
+              onBase64 && onBase64(b64, size)
             }
-            fr.onerror = (e) => fail('FileReader: ' + ((e && e.message) || '未知错误'))
-            fr.readAsDataURL(file)
+            fr.onerror = (e) => {
+              if (done) return
+              done = true
+              clearTimeout(timer)
+              fail('FileReader: ' + ((e && e.message) || '未知错误'))
+            }
+            fr.readAsDataURL(f)
           },
           (e) => fail('file(): ' + ((e && e.message) || '未知错误'))
         )
