@@ -562,30 +562,71 @@ export function createTrackMap(opts) {
     }
   }
 
+  // ===== 主题切换状态机 =====
+  // map.setStyle 是异步的：新样式要等 style.load 才算生效。
+  // 之前直接用 "themeName === 目标就跳过"，会出两个问题：
+  //   ① 连点时第二次被当成"已生效"直接跳过 → 颜色停在中间态（用户看到"要再切一下才行"）
+  //   ② 切换途中再次请求，两个 style.load 回调互相覆盖 → 最终色标不确定
+  // 这里改成：正在切换时把目标挂起（pending），等 style.load 之后再补一次；
+  // 同时给 style.load 兜一个超时，避免回调不触发导致此后永久卡在"切换中"。
+  let switching = false
+  let pendingTheme = null
+  let switchTimer = null
+
+  function doSwitch(next) {
+    if (destroyed) return
+    switching = true
+    themeName = next
+    if (switchTimer) clearTimeout(switchTimer)
+    const done = (reason) => {
+      if (switchTimer) {
+        clearTimeout(switchTimer)
+        switchTimer = null
+      }
+      switching = false
+      if (destroyed) return
+      if (reason === 'load') status.maplibre = 'ok'
+      // 切完把轨迹数据补回去（setStyle 会重建所有 source）
+      try {
+        const src = map.getSource('track')
+        if (src && src.setData) src.setData(trackGeoJSON(lastPoints || []))
+      } catch (e) {
+        /* ignore */
+      }
+      // 切换途中又有新请求：补切到最新目标
+      const p = pendingTheme
+      pendingTheme = null
+      if (p && p !== themeName) doSwitch(p)
+    }
+    try {
+      map.once('style.load', () => done('load'))
+      map.setStyle(buildStyle(), { diff: false })
+      // 兜底：style.load 没来也不能永久卡死
+      switchTimer = setTimeout(() => done('timeout'), 4000)
+    } catch (e) {
+      setErr('theme:' + ((e && e.message) || String(e)))
+      done('error')
+    }
+  }
+
+  function requestTheme(t) {
+    const next = t === 'light' ? 'light' : 'dark'
+    if (destroyed) return themeName
+    if (next === themeName && !switching) return themeName
+    if (switching) {
+      pendingTheme = next
+      return themeName
+    }
+    doSwitch(next)
+    return next
+  }
+
   const api = {
     map: map,
     status: status,
     /** 运行时切换地图亮/暗色标：只重建 style，不重新下载瓦片 */
     setTheme(t) {
-      const next = t === 'light' ? 'light' : 'dark'
-      if (destroyed || next === themeName) return themeName
-      themeName = next
-      try {
-        map.setStyle(buildStyle(), { diff: false })
-        map.once('style.load', () => {
-          if (destroyed) return
-          status.maplibre = 'ok'
-          try {
-            const src = map.getSource('track')
-            if (src && src.setData) src.setData(trackGeoJSON(lastPoints || []))
-          } catch (e) {
-            /* ignore */
-          }
-        })
-      } catch (e) {
-        setErr('theme:' + ((e && e.message) || String(e)))
-      }
-      return themeName
+      return requestTheme(t)
     },
     getTheme() {
       return themeName

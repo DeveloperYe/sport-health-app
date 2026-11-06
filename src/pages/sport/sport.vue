@@ -30,9 +30,11 @@
       <view class="map-wrap">
         <map-view
           v-if="mapMode === 'basemap'"
+          ref="mvm"
           :points="trackPoints"
           :hint-text="mapHintText"
           :city-key="mapCityKey"
+          :visible="pageVisible"
           @fail="onMapFail"
           @outofbounds="onMapOutOfBounds"
         />
@@ -240,7 +242,7 @@ import {
 import { today as todayStr } from '@/utils/body-store.js'
 import { allWorkoutRecords } from '@/utils/day-summary.js'
 // GPS 轨迹：采集/滤波/距离在 track.js，格式化在 geo.js
-import { startTrack, stopTrack, pauseTrack, resumeTrack, onTrackUpdate, getTrack } from '@/utils/track.js'
+import { startTrack, stopTrack, pauseTrack, resumeTrack, onTrackUpdate, getTrack, elapsedMs } from '@/utils/track.js'
 import { formatDistance, formatPace } from '@/utils/geo.js'
 import { getCurrent, getCity } from '@/utils/city-maps.js'
 
@@ -277,6 +279,7 @@ export default {
       offTrack: null, // track.js 的退订函数
       // ===== 轨迹图模式：离线底图 或 自绘兜底（二选一）=====
       mapMode: 'basemap',
+      pageVisible: true, // 页面是否在前台：切走时停掉地图渲染与状态轮询
       mapCityKey: '',
       mapCityName: '青岛（内置）',
       mapBroken: false, // 底图彻底不可用（整轮会话都不再试）
@@ -368,11 +371,21 @@ export default {
     },
   },
   onShow() {
+    this.pageVisible = true
     this.weight = getWeight()
     this.loadTodayOther()
     this.loadTodayRuns()
     // 底图城市可能刚在地图页换掉：刷新一下，city-key 一变 map-view 就重建
     this.refreshMapCity()
+    // 主题可能在别的页切过：回来的这一刻地图必须已经是对的颜色
+    if (this.$refs && this.$refs.mvm && this.$refs.mvm.syncThemeNow) {
+      this.$refs.mvm.syncThemeNow()
+    }
+    // 计时按真实时间校正：tick 会因系统节流丢，切回来数字不能偏
+    if (this.state === 'running') {
+      const ms = elapsedMs()
+      if (ms >= 0) this.seconds = Math.floor(ms / 1000)
+    }
     // 从后台回来时立刻按真实时间刷新一次，不用等下一个 tick
     if (this.otState === 'running') this.startOtTimer()
     // 后台保活是否真的在工作：对比切后台前后的轨迹点数，直接显示出来
@@ -382,6 +395,7 @@ export default {
     }
   },
   onHide() {
+    this.pageVisible = false
     // 只要在采集中就记下当前点数，回前台时算增量
     if (this.state !== 'idle') this.pointsAtHide = this.trackPoints.length
   },

@@ -11,6 +11,8 @@
       :change:mvappmode="mapView.onAppMode"
       :mvtheme="mapTheme"
       :change:mvtheme="mapView.onTheme"
+      :mvsync="syncTick"
+      :change:mvsync="mapView.onSync"
       :mvhostid="hostId"
       :change:mvhostid="mapView.onHostId"
       :mvpoints="pointsPayload"
@@ -141,6 +143,13 @@ export default {
     visible(v) {
       // #ifdef H5
       if (this.core && this.core.setVisible) this.core.setVisible(v)
+      // 切走就停轮询，切回立刻刷新并恢复
+      if (v) {
+        this.startStatusTimer()
+        this.pushStatus()
+      } else {
+        this.stopStatusTimer()
+      }
       // #endif
     },
   },
@@ -182,6 +191,24 @@ export default {
     this.teardownH5()
   },
   methods: {
+    /**
+     * 切回本页时调用：确保"回来的那一刻地图已经是当前主题"。
+     * 做法是把 mapTheme 重新赋值并自增 syncTick —— 值变化才会触发 renderjs 的 change 回调，
+     * 光改 mapTheme 在"值没变"的情况下根本不会通知视图层。
+     */
+    syncThemeNow() {
+      const want = this.theme === 'light' ? 'light' : 'dark'
+      this.mapTheme = want
+      this.syncTick = (this.syncTick || 0) + 1
+      // H5 走逻辑层建图，可以立刻切
+      if (this.core && this.core.setTheme) {
+        try {
+          this.core.setTheme(want)
+        } catch (e) {
+          /* ignore */
+        }
+      }
+    },
     pushStatus() {
       this.diagText = formatMapStatus(this.status)
       // 只有「出问题」时才把诊断行露出来：正常跑步时不该有一行调试字挡在地图上。
@@ -299,13 +326,15 @@ export default {
           onOutOfBounds: (b) => this.$emit('outofbounds', b),
           onReady: () => {
             this.ready = true
+            // 建图成功就开始盯主题 class（App 端主题切换的主通道）
+            this.watchThemeClass()
           },
         })
       } catch (e) {
         return this.failH5('建图异常: ' + ((e && e.message) || e))
       }
       this.core.setVisible(this.visible)
-      this.timer = setInterval(() => this.pushStatus(), 1000)
+      this.startStatusTimer()
       // #endif
     },
     resolveHostEl() {
@@ -317,6 +346,21 @@ export default {
       // #endif
       return null
     },
+    /** 状态轮询：只在页面可见时跑，切走就停（省电，回来立刻补一次） */
+    startStatusTimer() {
+      this.stopStatusTimer()
+      if (!this.isVisibleNow()) return
+      this.timer = setInterval(() => this.pushStatus(), 1000)
+    },
+    stopStatusTimer() {
+      if (this.timer) {
+        clearInterval(this.timer)
+        this.timer = null
+      }
+    },
+    isVisibleNow() {
+      return this.visible !== false
+    },
     clearWatchdog() {
       if (this.renderjsWatchdog) {
         clearTimeout(this.renderjsWatchdog)
@@ -324,10 +368,7 @@ export default {
       }
     },
     teardownH5() {
-      if (this.timer) {
-        clearInterval(this.timer)
-        this.timer = null
-      }
+      this.stopStatusTimer()
       // #ifdef H5
       if (this.core) {
         this.core.destroy()
@@ -487,17 +528,80 @@ export default {
     onAppMode(v) {
       // #ifdef APP-PLUS
       if (v && !this.booting && !this.core) {
-        // 首帧 prop 不会触发 change 回调，这里主动对齐一次，避免"界面白、地图黑"
-        if (typeof this.mvtheme === 'string') {
-          this.mapTheme = this.mvtheme === 'light' ? 'light' : 'dark'
-        }
+        // 首帧 prop 不会触发 change 回调 → 直接问 DOM 要主题（页面根节点带 t-dark / t-light）。
+        // 之前靠 this.mvtheme，真机上拿不到就一直按暗色建图，表现就是"切了白天，地图还是黑的"。
+        this.syncThemeFromDom()
         this.boot()
       }
       // #endif
     },
+    /** 逻辑层要求强制对齐（切回页面时）：以 DOM 为准再切一次 */
+    onSync() {
+      this.syncThemeFromDom()
+      if (this.core && this.core.setTheme) {
+        try {
+          this.core.setTheme(this.mapTheme)
+        } catch (e) {
+          /* ignore */
+        }
+      }
+      // 页面重新可见：把状态轮询拉起来
+      this.startStatusTimer()
+      this.pushStatus()
+    },
+    /** 从 DOM 读当前主题：页面根节点的 class 是唯一不会滞后的事实来源 */
+    readThemeFromDom() {
+      try {
+        const el = this.el || document.querySelector('.mv-root')
+        const host = el && el.closest ? el.closest('.t-light, .t-dark') : null
+        if (host) return host.classList.contains('t-light') ? 'light' : 'dark'
+        const page = document.querySelector('.page')
+        if (page && page.className) {
+          return String(page.className).indexOf('t-light') >= 0 ? 'light' : 'dark'
+        }
+      } catch (e) {
+        /* ignore */
+      }
+      return ''
+    },
+    /** 对齐一次 DOM 主题（建图前调用） */
+    syncThemeFromDom() {
+      const t = this.readThemeFromDom()
+      if (t) this.mapTheme = t
+      else if (typeof this.mvtheme === 'string') this.mapTheme = this.mvtheme === 'light' ? 'light' : 'dark'
+    },
+    /**
+     * 盯住页面根节点的 class 变化：主题一变立刻换色标。
+     * 不走逻辑层 props 通道 —— 那条通道在 App 上是批处理投递的，会慢一拍。
+     */
+    watchThemeClass() {
+      try {
+        if (this.__themeMo || typeof MutationObserver === 'undefined') return
+        const el = this.el || document.querySelector('.mv-root')
+        const host = (el && el.closest && el.closest('.t-light, .t-dark')) || document.querySelector('.page')
+        if (!host) return
+        this.__themeMo = new MutationObserver(() => {
+          const t = this.readThemeFromDom()
+          if (t && t !== this.mapTheme) {
+            this.mapTheme = t
+            if (this.core && this.core.setTheme) {
+              try {
+                this.core.setTheme(t)
+              } catch (e) {
+                /* ignore */
+              }
+            }
+          }
+        })
+        this.__themeMo.observe(host, { attributes: true, attributeFilter: ['class'] })
+      } catch (e) {
+        /* ignore */
+      }
+    },
     /** 逻辑层主题变化：先记住，建图时用；已有地图则原地换色标 */
     onTheme(v) {
-      const t = v === 'light' ? 'light' : 'dark'
+      const dom = this.readThemeFromDom()
+      const t = dom || (v === 'light' ? 'light' : 'dark')
       if (this.mapTheme === t) return
       this.mapTheme = t
       if (this.core && this.core.setTheme) {
@@ -530,6 +634,12 @@ export default {
     },
     onVisible(v) {
       if (this.core && this.core.setVisible) this.core.setVisible(!!v)
+      if (v) {
+        this.startStatusTimer()
+        this.pushStatus()
+      } else {
+        this.stopStatusTimer()
+      }
     },
     onChunk(payload) {
       const c = asObj(payload)
@@ -839,13 +949,15 @@ export default {
             }
           },
         })
+        // App 端：建图完成后开始盯主题 class 变化
+        this.watchThemeClass()
       } catch (e) {
         return this.fail('建图异常: ' + ((e && e.message) || e))
       }
       // src 末尾补上容器来源（byId/selector/cached/data/$el），真机诊断用
       this.setSrc(this.status.src || '', 'host:' + found.from)
       // tiles 计数是异步长出来的，定时刷回逻辑层显示
-      this.timer = setInterval(() => this.pushStatus(), 1000)
+      this.startStatusTimer()
     },
   },
 }
