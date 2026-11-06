@@ -365,13 +365,20 @@ function absPathOf(relPath) {
  * 下载刚结束用它先给出结论，让用户立刻能用地图。
  */
 export async function quickCheckAppFile(path, city) {
-  const file = await openAppFile(path, 6000)
-  if (!file) return { ok: false, err: '打不开下载后的文件' }
-  const size = file.size || 0
-  const head = await readBlobPart(file, 0, 128, 6000, absPathOf(path))
-  const st = checkPmtilesStructure(head, size, city.bytes)
-  if (!st.ok) return { ok: false, err: st.reason, size: size }
-  return { ok: true, size: size }
+  // 结构校验必须"要么很快，要么明确失败"：整体 5 秒封顶。
+  // 之前这里没有总上限，加上 FileReader 每条 6 秒的超时，实际能拖到 30 秒。
+  const work = (async () => {
+    const file = await openAppFile(path, 5000)
+    if (!file) return { ok: false, err: '打不开下载后的文件' }
+    const size = file.size || 0
+    const head = await readBlobPart(file, 0, 128, 2000, absPathOf(path))
+    if (!head) return { ok: false, err: '读不出文件头（FileReader 与 Native 都不可用）', size: size }
+    const st = checkPmtilesStructure(head, size, city.bytes)
+    if (!st.ok) return { ok: false, err: st.reason, size: size }
+    return { ok: true, size: size, via: getReadStrategy() || '' }
+  })()
+  const cap = new Promise((resolve) => setTimeout(() => resolve({ ok: false, err: '结构校验超时（5 秒）' }), 5000))
+  return Promise.race([work, cap])
 }
 
 export async function verifyAppFile(path, city) {
@@ -383,7 +390,8 @@ export async function verifyAppFile(path, city) {
   // 头能解析、版本 3、且 tileDataOffset+tileDataLength 必须**正好等于**文件长度
   // —— 截断、补零、HTML 错误页、别的城市的包都会被这一层挡掉，
   // 而它只需要读 128 字节，不依赖 FileReader 能把整个文件读下来。
-  const head = await readBlobPart(file, 0, 128, 6000, absPathOf(path))
+  const head = await readBlobPart(file, 0, 128, 2000, absPathOf(path))
+  if (!head) return { ok: false, level: 'struct', size: size, err: '读不出文件头' }
   const st = checkPmtilesStructure(head, size, city.bytes)
   if (!st.ok) return { ok: false, level: 'struct', size: size, err: st.reason }
 
@@ -650,6 +658,17 @@ export async function downloadCity(adcode, opts) {
       onProgress({ phase: 'verify', note: '校验文件结构…' })
       const q = await quickCheckAppFile(res.tempFilePath, city)
       if (!q.ok) {
+        // 读不出内容属于"本机读取通道不可用"，换线路也没用 —— 直接停，别白耗 4 条线
+        const readFail = /读不出|超时/.test(q.err || '')
+        if (readFail) {
+          return {
+            ok: false,
+            err:
+              '下载成功（' + formatBytes(city.bytes) + '），但本机读不出文件内容：' +
+              (q.err || '') +
+              '。请到「诊断 → 存储自检」看哪条读取通道可用并反馈。',
+          }
+        }
         onLog('结构校验失败：' + q.err + '，换线重下')
         continue
       }

@@ -199,14 +199,25 @@ export async function readAny(file, opt) {
   const sliced = o.start !== undefined && o.end !== undefined
   const order = []
 
-  if (file) {
-    // 分块读时绝不回退"整文件读"：那会让每个分块都读一遍整包（哈希场景是灾难）
-    if (sliced) order.push('slice-arraybuffer', 'slice-dataurl')
-    else order.push('file-arraybuffer', 'file-dataurl')
-  }
+  // **Native 优先**：它是同步调用，成功就立刻返回、失败也立刻返回；
+  // 而 FileReader 在部分机型上既不回调也不报错，只能靠超时兜 —— 放前面等于白等。
+  // 实测教训：用户机上 FileReader 读空，结构校验因此在 6s×2 的空等上白耗。
   if (o.absPath) {
     if (sliced) order.push('native-chunk')
     else order.push('native-whole', 'native-chunk')
+  }
+  if (file) {
+    // 分块读时不回退"整文件读"：那会让每个分块都读一遍整包（哈希场景是灾难）
+    if (sliced) order.push('slice-arraybuffer', 'slice-dataurl')
+    else order.push('file-arraybuffer', 'file-dataurl')
+  }
+  // 已经知道哪条能用，就把它提到最前面
+  if (goodStrategy) {
+    const i = order.indexOf(goodStrategy)
+    if (i > 0) {
+      order.splice(i, 1)
+      order.unshift(goodStrategy)
+    }
   }
 
   for (let i = 0; i < order.length; i++) {

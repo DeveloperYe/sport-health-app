@@ -203,7 +203,7 @@ export default {
       if (cur && isInstalled(cur)) {
         const c = getCity(cur)
         if (c) {
-          this.archives = [{ file: c.adcode + '.pmtiles', where: 'user', adcode: c.adcode, name: c.name }]
+          this.archives = [{ file: c.adcode + '.pmtiles', where: 'user', adcode: c.adcode, name: c.name, path: getInstalledPath(c.adcode) || '' }]
           return this.archives
         }
       }
@@ -683,12 +683,43 @@ export default {
       for (let i = 0; i < list.length; i++) {
         const item = list[i]
         const file = item.file
+        let r = null
         if (item.where === 'user') {
-          pending.push(i)
-          notes.push(file + '?')
+          // 用户下载的包在 _doc/maps/（或保存退路目录）。先让**视图层自己 fetch**
+          // 这个 file:// 绝对路径 —— WebView 读文件不走 plus.io.FileReader，
+          // 实测有的机型 FileReader 读不出来、fetch 却能读；而且 fetch 是流式的，更快。
+          // 只有这里失败才退回逻辑层（plus.io / Native）过桥。
+          const cands = []
+          try {
+            const rel = item.path || '_doc/maps/' + file
+            const abs =
+              typeof plus !== 'undefined' && plus.io && plus.io.convertLocalFileSystemURL
+                ? plus.io.convertLocalFileSystemURL(rel)
+                : ''
+            if (abs) {
+              cands.push(abs)
+              cands.push('file://' + (abs.charAt(0) === '/' ? abs : '/' + abs))
+            }
+          } catch (e) {
+            /* ignore */
+          }
+          if (cands.length) {
+            try {
+              r = await loadTilesFromUrls(cands)
+            } catch (e) {
+              r = null
+            }
+          }
+          if (r && r.bytes) {
+            collected.push({ key: file, bytes: r.bytes })
+            notes.push(file + '←viewfetch')
+            if (r.abs && !this.tileAbs) this.tileAbs = r.abs
+          } else {
+            pending.push(i)
+            notes.push(file + '?')
+          }
           continue
         }
-        let r = null
         try {
           r = await loadTilesFromUrls(tileUrlCandidates(file))
         } catch (e) {
