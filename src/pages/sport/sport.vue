@@ -781,7 +781,7 @@ export default {
 .page {
   min-height: 100vh;
   /* 底部多留一些，避免最后一张卡被固定 tabBar 压住 */
-  padding: 32rpx 32rpx 160rpx;
+  padding: calc(var(--status-bar-height) + 32rpx) 32rpx 160rpx;
   background-color: $bg-page;
   display: flex;
   flex-direction: column;

@@ -491,6 +491,7 @@ export default {
 <style lang="scss" scoped>
 .page {
   min-height: 100vh;
+  padding-top: calc(var(--status-bar-height) + 16rpx);
   padding-bottom: 160rpx; // 让出底部 tabBar 的高度，避免最后一张卡被压住
   background: $bg-page;
 }

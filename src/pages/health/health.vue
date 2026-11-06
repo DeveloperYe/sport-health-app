@@ -516,7 +516,7 @@ export default {
 <style lang="scss" scoped>
 .page {
   min-height: 100vh;
-  padding: 24rpx 24rpx 160rpx;
+  padding: calc(var(--status-bar-height) + 24rpx) 24rpx 160rpx;
   background: $bg-page;
 }
 

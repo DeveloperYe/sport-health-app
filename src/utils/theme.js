@@ -102,6 +102,14 @@ function applyNative(theme) {
       selectedColor: dark ? '#2bd45c' : '#12b14a',
     })
   )
+  // App：状态栏文字颜色（去掉导航栏后，状态栏是唯一还在的原生元素）
+  safe(() => {
+    if (typeof plus !== 'undefined' && plus.navigator) {
+      // setStatusBarStyle 的入参是"文字颜色"：dark=黑字（用于亮背景），light=白字（用于暗背景）
+      plus.navigator.setStatusBarStyle(dark ? 'light' : 'dark')
+      if (plus.navigator.setStatusBarBackground) plus.navigator.setStatusBarBackground(bg)
+    }
+  }, null)
   // App：page 元素是透明的，WebView 自身底色也要跟着改，
   // 否则深色主题下可能闪白（原生窗口底色 + WebView 底色双保险）
   safe(() => {

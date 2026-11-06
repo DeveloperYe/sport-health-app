@@ -32,6 +32,10 @@
 		}
 	],
 	"globalStyle": {
+		/* 2026-11-06：去掉原生顶部导航栏 —— 那条栏的颜色靠 uni API 同步不可靠，
+		   干脆不画它，由各页面自己的头部（问候语/日期/标题）承担，界面也更整体。
+		   状态栏文字颜色改由 plus.navigator.setStatusBarStyle 按主题动态设置。 */
+		"navigationStyle": "custom",
 		"navigationBarTextStyle": "white",
 		"navigationBarTitleText": "运动健康",
 		"navigationBarBackgroundColor": "#101014",

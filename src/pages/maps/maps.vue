@@ -1,5 +1,14 @@
 <template>
   <view class="page" :class="themeClass">
+    <!-- 二级页没有原生导航栏了，自带返回头 -->
+    <view class="page-back">
+      <view class="back-btn" @click="goBack">
+        <text class="back-ico">‹</text>
+        <text class="back-txt">返回</text>
+      </view>
+      <text class="page-name">离线底图</text>
+      <view class="back-ph"></view>
+    </view>
     <!-- 当前状态 -->
     <view class="card hero">
       <view class="hero-top">
@@ -214,6 +223,12 @@ export default {
     this.stopTick()
   },
   methods: {
+
+    goBack() {
+      const pages = getCurrentPages ? getCurrentPages() : []
+      if (pages.length > 1) uni.navigateBack()
+      else uni.switchTab({ url: '/pages/health/health' })
+    },
     fmtSize(n) {
       return formatBytes(n)
     },
@@ -441,7 +456,7 @@ export default {
 <style lang="scss" scoped>
 .page {
   min-height: 100vh;
-  padding: 20rpx 0 60rpx;
+  padding: calc(var(--status-bar-height) + 20rpx) 0 60rpx;
   background: $bg-page;
 }
 
@@ -678,4 +693,47 @@ export default {
   transform: scale(0.97);
   opacity: 0.9;
 }
+
+/* 自带返回头（2026-11-06 去掉原生导航栏后补上） */
+.page-back {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8rpx 24rpx 4rpx;
+}
+.back-btn {
+  display: flex;
+  align-items: center;
+  gap: 4rpx;
+  height: 64rpx;
+  padding: 0 20rpx 0 14rpx;
+  border-radius: 999rpx;
+  background: var(--bg-card);
+  border: 1rpx solid var(--line);
+  transition: transform 0.12s var(--ease), background-color 0.18s var(--ease);
+}
+.back-btn:active {
+  transform: scale(0.96);
+}
+.back-ico {
+  font-size: 40rpx;
+  line-height: 1;
+  color: var(--text-1);
+  margin-top: -4rpx;
+}
+.back-txt {
+  font-size: 24rpx;
+  color: var(--text-2);
+}
+.page-name {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: var(--text-1);
+}
+/* 占位让标题真正居中 */
+.back-ph {
+  width: 128rpx;
+}
+
+/* back-method:2026-11-06 */
 </style>
