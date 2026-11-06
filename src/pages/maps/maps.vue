@@ -131,6 +131,8 @@ import {
   cachedMirrors,
   mirrorLabel,
   probeTransportName,
+  startMeasureInBackground,
+  measureState,
 } from '@/utils/city-maps.js'
 import { downloadCity, deleteCity, storageSelfTest } from '@/utils/city-map-download.js'
 
@@ -203,6 +205,7 @@ export default {
     this.transport = probeTransportName()
     this.fillEnv()
     this.startTick()
+    this.kickMeasure(false)
   },
   onHide() {
     this.stopTick()
@@ -234,14 +237,15 @@ export default {
     startTick() {
       this.stopTick()
       this.tickTimer = setInterval(() => {
-        const all = this.installed || {}
-        const pending = Object.keys(all).some((k) => all[k] && all[k].verify === 'pending')
-        if (pending) this.reloadState()
-        else if (this.tickTimer) {
-          clearInterval(this.tickTimer)
-          this.tickTimer = null
+        // 测速进度（每秒，最多 10 秒就结束）
+        const st = measureState()
+        if (st && st.running) {
+          this.speedLine = '测速中… ' + Math.round((st.elapsedMs || 0) / 1000) + 's（最长 10 秒）'
         }
-      }, 2500)
+        // 后台摘要校验完就把状态刷上来
+        const all = this.installed || {}
+        if (Object.keys(all).some((k) => all[k] && all[k].verify === 'pending')) this.reloadState()
+      }, 1000)
     },
     stopTick() {
       if (this.tickTimer) {
@@ -395,20 +399,37 @@ export default {
         fail: () => uni.showToast({ title: '复制失败', icon: 'none' }),
       })
     },
-    async retest() {
-      uni.showToast({ title: '测速中…', icon: 'none' })
+    // 页面打开就后台测速（force=false 时命中缓存/在途任务直接返回，不重复测）
+    kickMeasure(force) {
       const city = getCity('370200') || CITIES[0]
-      const r = await measureMirrors(city.url)
-      const okLines = r.list.map((x) => '✅ ' + mirrorLabel(x.prefix) + ' ' + formatSpeed(x.bps))
-      const badLines = (r.failed || []).map((f) => '❌ ' + f.id + '：' + (f.err || '失败'))
-      this.diagInfo = { ...this.diagInfo, lines: okLines.concat(badLines) }
-      if (!r.list.length) {
-        const why = (r.failed || []).map((f) => f.id + '(' + (f.err || '失败') + ')').join(' ')
+      startMeasureInBackground(city.url, (st) => this.applyMeasure(st), { force: !!force })
+    },
+    applyMeasure(st) {
+      const list = (st && st.list) || []
+      if (st && st.running) {
+        if (list.length) {
+          const part = list.slice(0, 3).map((x) => mirrorLabel(x.prefix) + ' ' + formatSpeed(x.bps))
+          this.speedLine = '测速中…第一轮已完成：' + part.join(' ｜ ')
+        } else {
+          this.speedLine = '测速中… ' + Math.round((st.elapsedMs || 0) / 1000) + 's（最长 10 秒）'
+        }
+        return
+      }
+      if (!list.length) {
+        const why = ((st && st.failed) || []).map((f) => f.id + '(' + (f.err || '失败') + ')').join(' ')
         this.speedLine = '测速全失败：' + (why || '未知原因') + '　—— 下载时仍会逐条线路重试'
         return
       }
-      const lines = r.list.slice(0, 3).map((x) => mirrorLabel(x.prefix) + ' ' + formatSpeed(x.bps))
-      this.speedLine = '最快：' + lines.join(' ｜ ')
+      const okLines = list.map((x) => '✅ ' + mirrorLabel(x.prefix) + ' ' + formatSpeed(x.bps) + (x.round2 ? '（复测）' : ''))
+      const badLines = ((st && st.failed) || []).map((f) => '❌ ' + f.id + '：' + (f.err || '失败'))
+      this.diagInfo = { ...this.diagInfo, lines: okLines.concat(badLines) }
+      const top = list.slice(0, 3).map((x) => mirrorLabel(x.prefix) + ' ' + formatSpeed(x.bps))
+      this.speedLine = '最快：' + top.join(' ｜ ') + '（' + Math.round(((st && st.elapsedMs) || 0) / 1000) + 's）'
+    },
+    async retest() {
+      uni.showToast({ title: '重新测速中…', icon: 'none' })
+      this.speedLine = '测速中… 0s（最长 10 秒）'
+      this.kickMeasure(true)
     },
     goSport() {
       uni.switchTab({ url: '/pages/sport/sport' })

@@ -21,6 +21,7 @@ import {
   unmarkInstalled,
   getInstalled,
   setInstalledVerify,
+  markDownloadBusy,
 } from './city-maps.js'
 import { Sha256 } from './sha256.js'
 import { idbPut, idbGet, idbDelete, idbKeys } from './idb-tiles.js'
@@ -574,10 +575,17 @@ export async function downloadCity(adcode, opts) {
     onProgress({ phase: 'probe', note: '测速中…' })
     r = await resolveMirrors(city.url, (msg) => onProgress({ phase: 'probe', note: msg }))
   }
-  if (r.best) onLog('最快线路 ' + mirrorLabel(r.best.prefix) + ' ' + formatSpeed(r.best.bps))
-  else onLog('测速全部失败，按兜底顺序尝试')
+  if (r.best) {
+    onLog('用线路：' + mirrorLabel(r.best.prefix) + ' ' + formatSpeed(r.best.bps) + (r.fromCache ? '（缓存结果）' : r.partial ? '（测速未完成，先用当前最优）' : ''))
+  } else if (r.startedMeasure || r.partial) {
+    onLog('按默认线路开始下载（后台测速中，太慢会自动换线）')
+  } else {
+    onLog('测速全部失败，按兜底顺序逐条尝试')
+  }
 
   // 2) 逐条线路尝试
+  markDownloadBusy(true)
+  try {
   let attempt = 0
   for (let mi = 0; mi < r.order.length; mi++) {
     const prefix = r.order[mi]
@@ -725,6 +733,9 @@ export async function downloadCity(adcode, opts) {
   }
 
   return { ok: false, err: '所有线路都失败了（共 ' + r.order.length + ' 条）' }
+  } finally {
+    markDownloadBusy(false)
+  }
 }
 
 // ================= 后台校验（不阻塞用户） =================

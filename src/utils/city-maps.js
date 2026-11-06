@@ -241,6 +241,12 @@ function isApp() {
 //     全部线路并行 256 KB 初测 → 取前两名串行各测 1 MB 复测定位。
 //  ④ 全失败时的兜底顺序和"排序"逻辑各写了一份，容易跑偏。统一用 mirror-pick.buildAttemptOrder。
 const PROBE_TIMEOUT_MS = 8000
+/** 测速总预算：用户要求 10 秒内必须出结果 */
+export const MEASURE_BUDGET_MS = 10000
+/** 第一轮每条线路的超时（并行） */
+const ROUND1_TIMEOUT_MS = 4000
+/** 第二轮复测的超时（前两名并行） */
+const ROUND2_TIMEOUT_MS = 3500
 /** App 端初测字节数（手机流量友好） */
 const PROBE_BYTES_APP = 256 * 1024
 /** 第二轮复测字节数 */
@@ -409,31 +415,37 @@ function probeOne(mirror, url, opts) {
  */
 export async function measureMirrors(url, opts) {
   const o = opts || {}
+  const budget = o.budgetMs || MEASURE_BUDGET_MS
+  const startedAt = Date.now()
+  const left = () => budget - (Date.now() - startedAt)
   const firstBytes = isApp() ? PROBE_BYTES_APP : PROBE_BYTES
   const mates = usableMirrors()
-  const first = await Promise.all(mates.map((m) => probeOne(m, url, { bytes: firstBytes })))
+
+  // 第一轮：全部线路并行，超时按剩余预算收紧
+  const r1Timeout = Math.max(800, Math.min(ROUND1_TIMEOUT_MS, left()))
+  const first = await Promise.all(mates.map((m) => probeOne(m, url, { bytes: firstBytes, timeoutMs: r1Timeout })))
   let list = first.filter((r) => r.ok && r.bps > 0).sort((a, b) => b.bps - a.bps)
   const failed = first.filter((r) => !r.ok).map((r) => ({ id: r.id, err: r.err }))
   if (o.onRound) o.onRound(1, list)
 
-  // 第二轮：前两名复测（只对还活着的线路）
-  if (!o.single && list.length >= 1) {
+  // 第二轮：前两名**并行**复测（串行会吃掉一倍预算，10 秒内跑不完）
+  if (!o.single && list.length >= 2 && left() > 900) {
     const top = pickTopN(list, 2)
     const byId = {}
     mates.forEach((m) => {
       byId[m.id] = m
     })
-    for (let i = 0; i < top.length; i++) {
-      const m = byId[top[i].id]
-      if (!m) continue
-      const again = await probeOne(m, url, { bytes: PROBE_BYTES_ROUND2 })
-      if (again.ok && again.bps > 0) {
-        top[i].bps = again.bps
-        top[i].probeBytes = again.probeBytes
+    const r2Timeout = Math.max(700, Math.min(ROUND2_TIMEOUT_MS, left() - 300))
+    const again = await Promise.all(
+      top.map((t) => (byId[t.id] ? probeOne(byId[t.id], url, { bytes: PROBE_BYTES_ROUND2, timeoutMs: r2Timeout }) : null))
+    )
+    again.forEach((r, i) => {
+      if (r && r.ok && r.bps > 0) {
+        top[i].bps = r.bps
+        top[i].probeBytes = r.probeBytes
         top[i].round2 = true
       }
-    }
-    // 只按复测结果重排前两名，其余保持第一轮名次
+    })
     top.sort((a, b) => b.bps - a.bps)
     list = top.concat(list.slice(top.length))
   }
@@ -441,7 +453,103 @@ export async function measureMirrors(url, opts) {
   if (list.length) {
     writeJson(K_MIRROR, { at: Date.now(), best: list[0], list: list.slice(0, 4) })
   }
-  return { list, failed }
+  return { list, failed, elapsedMs: Date.now() - startedAt }
+}
+
+// ===== 后台测速：页面一打开就跑，下载时直接用结果，绝不在下载时干等 =====
+let measureJob = null
+/** 下载进行中计数：边下边测会互相抢带宽，这时测出的速度不可信，不要写缓存 */
+let downloadBusy = 0
+
+export function markDownloadBusy(on) {
+  downloadBusy = Math.max(0, downloadBusy + (on ? 1 : -1))
+}
+
+export function isDownloadBusy() {
+  return downloadBusy > 0
+}
+
+function jobSnapshot() {
+  if (!measureJob) return { running: false, done: false, list: [], failed: [], elapsedMs: 0, url: '' }
+  return {
+    running: !!measureJob.running,
+    done: !!measureJob.done,
+    list: measureJob.list || [],
+    failed: measureJob.failed || [],
+    elapsedMs: measureJob.startedAt ? Date.now() - measureJob.startedAt : 0,
+    url: measureJob.url || '',
+  }
+}
+
+/** 当前后台测速状态（UI 轮询用） */
+export function measureState() {
+  return jobSnapshot()
+}
+
+/**
+ * 页面打开时调用：没有新鲜缓存就在后台测速。
+ * 幂等：同一 URL 且结果还在有效期内不会重复测。
+ * @param {string} url 任意城市的 GitHub 直链（测的是线路快慢，不是某个包）
+ * @param {(st:object)=>void} [onUpdate] 每轮结束/整体完成时回调
+ * @param {{force?:boolean}} [opts]
+ */
+export function startMeasureInBackground(url, onUpdate, opts) {
+  const o = opts || {}
+  if (!o.force) {
+    const cached = cachedMirrors()
+    if (cached && cached.list && cached.list.length) {
+      measureJob = {
+        url: url,
+        running: false,
+        done: true,
+        list: cached.list,
+        failed: [],
+        startedAt: Date.now(),
+        finishedAt: Date.now(),
+      }
+      if (onUpdate) onUpdate(jobSnapshot())
+      return Promise.resolve({ list: cached.list, failed: [], fromCache: true })
+    }
+    if (
+      measureJob &&
+      measureJob.url === url &&
+      (measureJob.running || (measureJob.finishedAt && Date.now() - measureJob.finishedAt < MIRROR_TTL))
+    ) {
+      if (onUpdate && measureJob.done) onUpdate(jobSnapshot())
+      return measureJob.promise
+    }
+  }
+  measureJob = { url: url, running: true, done: false, list: [], failed: [], startedAt: Date.now() }
+  const job = measureJob
+  job.promise = measureMirrors(url, {
+    onRound: (n, list) => {
+      job.list = list
+      if (onUpdate) onUpdate(jobSnapshot())
+    },
+  })
+    .then((r) => {
+      job.list = r.list
+      job.failed = r.failed
+      job.running = false
+      job.done = true
+      job.finishedAt = Date.now()
+      job.elapsedMs = r.elapsedMs
+      if (onUpdate) onUpdate(jobSnapshot())
+      return r
+    })
+    .catch((e) => {
+      job.running = false
+      job.done = true
+      job.finishedAt = Date.now()
+      job.failed = [{ id: 'job', err: (e && e.message) || String(e) }]
+      if (onUpdate) onUpdate(jobSnapshot())
+      return { list: [], failed: job.failed }
+    })
+  return job.promise
+}
+
+function currentJobPromise() {
+  return measureJob && measureJob.promise ? measureJob.promise : null
 }
 
 /** 读缓存的测速结果（30 分钟内有效） */
@@ -458,17 +566,37 @@ export function cachedMirrors() {
  */
 export async function resolveMirrors(url, onProgress) {
   const allPrefixes = usableMirrors().map((m) => m.prefix)
+
+  // 1) 有新鲜缓存（页面打开时后台测过了）：立刻用，零等待
   const cached = cachedMirrors()
   if (cached && cached.list && cached.list.length) {
-    return { order: buildAttemptOrder(cached.list, allPrefixes), best: cached.list[0], fromCache: true }
+    return { order: buildAttemptOrder(cached.list, allPrefixes), best: cached.list[0], fromCache: true, waitedMs: 0 }
   }
-  if (onProgress) onProgress('正在测速选线路…')
-  const r = await measureMirrors(url)
-  if (!r.list.length) {
-    // 测速全失败也要能下载：按可用线路顺序逐条试（哪条通就走哪条）
-    return { order: allPrefixes, best: null, fromCache: false, failed: r.failed }
+
+  // 2) 后台正在测：最多等 1.5 秒拿"已测出来的部分"，绝不在下载时长等
+  if (measureJob && measureJob.running) {
+    if (onProgress) onProgress('测速进行中，先按已出结果开始…')
+    const t0 = Date.now()
+    const p = currentJobPromise()
+    await Promise.race([p || Promise.resolve(), new Promise((r) => setTimeout(r, 1500))])
+    const st = measureState()
+    if (st.list && st.list.length) {
+      return {
+        order: buildAttemptOrder(st.list, allPrefixes),
+        best: st.list[0],
+        fromCache: false,
+        partial: !!st.running,
+        waitedMs: Date.now() - t0,
+      }
+    }
+    return { order: allPrefixes, best: null, fromCache: false, partial: true, waitedMs: Date.now() - t0 }
   }
-  return { order: buildAttemptOrder(r.list, allPrefixes), best: r.list[0], fromCache: false, failed: r.failed }
+
+  // 3) 从没测过：立刻开下（默认顺序 v6 优先），测速丢到后台；
+  //    途中这条线路若太慢，"掉速换线"会接手。
+  if (onProgress) onProgress('首次使用：先按默认线路下载，后台正在测速…')
+  startMeasureInBackground(url)
+  return { order: allPrefixes, best: null, fromCache: false, partial: true, startedMeasure: true, waitedMs: 0 }
 }
 
 /** 当前运行环境下探测测速用的通道名（真机排障用，会显示在 UI 上） */
