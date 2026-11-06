@@ -1,5 +1,5 @@
 <template>
-  <view class="page">
+  <view class="page" :class="themeClass">
     <!-- 首次进入：一次性把权限配齐 -->
     <permissions-gate />
 
@@ -267,7 +267,8 @@ export default {
             width: diameter + 'px',
             height: diameter + 'px',
             borderRadius: '50%',
-            background: `conic-gradient(from -90deg, ${d.color} 0deg ${deg}deg, rgba(255,255,255,0.07) ${deg}deg 360deg)`,
+            // 底色轨道也走主题变量，否则白天模式下白环看不见
+              background: `conic-gradient(from -90deg, ${d.color} 0deg ${deg}deg, var(--bg-card-3) ${deg}deg 360deg)`,
             WebkitMaskImage: maskFor,
             maskImage: maskFor,
           },
@@ -598,13 +599,13 @@ export default {
   border-radius: 50%;
 }
 .dot.steps {
-  background: #2bd45c;
+  background: var(--accent);
 }
 .dot.calorie {
-  background: #ffb347;
+  background: var(--warm);
 }
 .dot.water {
-  background: #4aa3ff;
+  background: var(--cool);
 }
 .legend-main {
   flex: 1;
@@ -673,8 +674,8 @@ export default {
   font-size: 26rpx;
 }
 .mini-btn.primary {
-  background: linear-gradient(135deg, #2bd45c, #17a348);
-  color: #06180d;
+  background: var(--accent);
+  color: var(--on-accent);
   font-weight: 700;
 }
 .mini-btn.ghost {
@@ -732,7 +733,7 @@ export default {
   color: $brand-primary;
 }
 .gap-v.over {
-  color: #ffb347;
+  color: var(--warm);
 }
 
 /* 记体重 */
@@ -759,7 +760,7 @@ export default {
   line-height: 72rpx;
   border-radius: $btn-radius;
   background: $brand-primary;
-  color: #06180d;
+  color: var(--on-accent);
   font-size: 26rpx;
   font-weight: 700;
 }
@@ -786,14 +787,14 @@ export default {
   height: 180rpx;
   margin-top: 10rpx;
   border-radius: 14rpx;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--bg-card-2);
   border: 1rpx solid $border-subtle;
   overflow: hidden;
 }
 .trend-seg {
   position: absolute;
   height: 3rpx;
-  background: #2bd45c;
+  background: var(--accent);
   opacity: 0.85;
   transform-origin: 0 50%;
   border-radius: 3rpx;
@@ -805,7 +806,7 @@ export default {
   margin-left: -6rpx;
   margin-top: -6rpx;
   border-radius: 50%;
-  background: #2bd45c;
+  background: var(--accent);
   box-shadow: 0 0 0 3rpx rgba(43, 212, 92, 0.22);
 }
 .trend-empty {
@@ -841,13 +842,13 @@ export default {
   height: 14rpx;
   margin-top: 10rpx;
   border-radius: 999rpx;
-  background: rgba(255, 255, 255, 0.07);
+  background: var(--line);
   overflow: hidden;
 }
 .goal-fill {
   height: 100%;
   border-radius: 999rpx;
-  background: linear-gradient(90deg, #17a348, #2bd45c);
+  background: var(--accent-grad);
 }
 
 /* 近 7 天缺口 */
@@ -886,10 +887,10 @@ export default {
   border-radius: 6rpx 6rpx 0 0;
 }
 .weekg-bar.neg {
-  background: #2bd45c;
+  background: var(--accent);
 }
 .weekg-bar.pos {
-  background: #ffb347;
+  background: var(--warm);
 }
 .weekg-day {
   margin-top: 8rpx;
@@ -917,5 +918,14 @@ export default {
 .cup.on {
   opacity: 1;
   border-color: rgba(74, 163, 255, 0.55);
+}
+
+/* flat-press:2026-11-06 */
+.mini-btn:active,
+.wi-btn:active,
+.ring-card:active,
+.section-more:active {
+  transform: scale(0.97);
+  opacity: 0.9;
 }
 </style>

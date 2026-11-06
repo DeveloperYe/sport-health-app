@@ -1,0 +1,130 @@
+/**
+ * 主题令牌（白天 / 黑夜双模式）
+ *
+ * 用法：页面根节点挂 `:class="themeClass"`（全局 mixin 提供，值为 t-dark / t-light），
+ * 子树里所有颜色都走 `var(--xxx)`，切换主题时变量整体替换，CSS 无需重写。
+ *
+ * 设计取向：
+ *  - 平面（flat）：按钮用实色，不堆阴影/渐变；层次靠底色分层 + 1rpx 细线；
+ *  - 运动感：品牌绿为主，暖橙 / 冷蓝做数据三环；大字号、紧字距、tabular 数字；
+ *  - 明暗两套都要保证文字对比度 ≥ 4.5:1（正文）。
+ */
+
+page {
+  /* 首帧兜底：默认按暗色渲染，避免白闪 */
+  --bg-page: #0b0d10;
+  --bg-page-2: #0f1216;
+  --bg-card: #15181d;
+  --bg-card-2: #1d2229;
+  --bg-card-3: #252b34;
+  --line: #262c35;
+  --line-strong: #333b46;
+  --text-1: #f3f5f7;
+  --text-2: #9aa3ae;
+  --text-3: #68717d;
+  --accent: #2bd45c;
+  --accent-2: #7cf29d;
+  --accent-deep: #17a348;
+  --accent-grad: linear-gradient(90deg, #17a348, #2bd45c);
+  --on-accent: #04160a;
+  --warm: #ffb347;
+  --cool: #4aa3ff;
+  --danger: #ff6b6b;
+  --accent-soft: rgba(43, 212, 92, 0.12);
+  --accent-soft-2: rgba(43, 212, 92, 0.24);
+  --shadow-card: none;
+  --shadow-pop: 0 18rpx 48rpx rgba(0, 0, 0, 0.55);
+  --mask: rgba(4, 6, 8, 0.72);
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* ===================== 黑夜 ===================== */
+.t-dark {
+  --bg-page: #0b0d10;
+  --bg-page-2: #0f1216;
+  --bg-card: #15181d;
+  --bg-card-2: #1d2229;
+  --bg-card-3: #252b34;
+  --line: #262c35;
+  --line-strong: #333b46;
+  --text-1: #f3f5f7;
+  --text-2: #9aa3ae;
+  --text-3: #68717d;
+  --accent: #2bd45c;
+  --accent-2: #7cf29d;
+  --accent-deep: #17a348;
+  --accent-grad: linear-gradient(90deg, #17a348, #2bd45c);
+  --on-accent: #04160a;
+  --warm: #ffb347;
+  --cool: #4aa3ff;
+  --danger: #ff6b6b;
+  --accent-soft: rgba(43, 212, 92, 0.12);
+  --accent-soft-2: rgba(43, 212, 92, 0.24);
+  --shadow-card: none;
+  --shadow-pop: 0 18rpx 48rpx rgba(0, 0, 0, 0.55);
+  --mask: rgba(4, 6, 8, 0.72);
+}
+
+/* ===================== 白天 ===================== */
+.t-light {
+  --bg-page: #f4f6f8;
+  --bg-page-2: #eaeff5;
+  --bg-card: #ffffff;
+  --bg-card-2: #f2f5f9;
+  --bg-card-3: #e8eef5;
+  --line: #e3e9f0;
+  --line-strong: #cfd8e3;
+  --text-1: #11161c;
+  --text-2: #5b6675;
+  --text-3: #8b96a5;
+  /* 白底上品牌绿要压深一点才够对比 */
+  --accent: #12b14a;
+  --accent-2: #2bd45c;
+  --accent-deep: #0b7c33;
+  --accent-grad: linear-gradient(90deg, #12b14a, #3fdc74);
+  --on-accent: #ffffff;
+  --warm: #ef8a1f;
+  --cool: #2a7fe0;
+  --danger: #e04b4b;
+  --accent-soft: rgba(18, 177, 74, 0.1);
+  --accent-soft-2: rgba(18, 177, 74, 0.2);
+  --shadow-card: 0 6rpx 20rpx rgba(17, 22, 28, 0.06);
+  --shadow-pop: 0 20rpx 60rpx rgba(17, 22, 28, 0.16);
+  --mask: rgba(238, 243, 249, 0.82);
+}
+
+/* ============ 通用平面组件基线（全局，非 scoped） ============ */
+
+/* 页面壳：保证整屏铺满，切主题有过渡但不过分 */
+.page-shell {
+  min-height: 100vh;
+  background-color: var(--bg-page);
+  color: var(--text-1);
+  transition: background-color 0.26s var(--ease), color 0.26s var(--ease);
+}
+
+/* 平面卡片：细线 + 底色分层，靠边距呼吸，不堆阴影 */
+.flat-card {
+  background-color: var(--bg-card);
+  border: 1rpx solid var(--line);
+  border-radius: 28rpx;
+}
+
+/* 任何带 .tap 的可点元素统一触摸反馈 */
+.tap {
+  transition: transform 0.12s var(--ease), background-color 0.18s var(--ease),
+    color 0.18s var(--ease), border-color 0.18s var(--ease), opacity 0.18s var(--ease);
+}
+.tap:active {
+  transform: scale(0.97);
+}
+.tap-slim:active {
+  transform: scale(0.99);
+  opacity: 0.86;
+}
+
+/* 数字用等宽，读数时不跳动（运动感的关键细节） */
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}

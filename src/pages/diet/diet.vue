@@ -1,5 +1,5 @@
 <template>
-  <view class="page">
+  <view class="page" :class="themeClass">
     <!-- 日期条 -->
     <view class="date-bar">
       <view
@@ -455,9 +455,9 @@ export default {
   border: 1rpx solid $border-subtle;
 }
 .date-item.active {
-  color: #06180d;
+  color: var(--on-accent);
   font-weight: 700;
-  background: linear-gradient(135deg, #2bd45c, #17a348);
+  background: var(--accent);
   border-color: transparent;
 }
 
@@ -501,7 +501,7 @@ export default {
 .hero-num {
   font-size: 76rpx;
   font-weight: 800;
-  color: #f2f3f5;
+  color: var(--text-1);
   line-height: 1;
 }
 .hero-unit {
@@ -560,7 +560,7 @@ export default {
 }
 .add-btn {
   font-size: 24rpx;
-  color: #06180d;
+  color: var(--on-accent);
   background: $brand-primary;
   padding: 8rpx 20rpx;
   border-radius: 999rpx;
@@ -638,7 +638,7 @@ export default {
 .entry-cal {
   font-size: 28rpx;
   font-weight: 700;
-  color: #ffb347;
+  color: var(--warm);
 }
 .entry-del {
   font-size: 24rpx;
@@ -652,7 +652,7 @@ export default {
   right: 0;
   top: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--mask);
   z-index: 90;
   display: flex;
   align-items: flex-end;
@@ -732,8 +732,8 @@ export default {
   font-size: 28rpx;
 }
 .btn-mini.primary {
-  background: linear-gradient(135deg, #2bd45c, #17a348);
-  color: #06180d;
+  background: var(--accent);
+  color: var(--on-accent);
   font-weight: 700;
 }
 .btn-mini.ghost {
@@ -784,5 +784,13 @@ export default {
 }
 .sheet-actions .btn-mini {
   flex: 1;
+}
+
+/* flat-press:2026-11-06 */
+.add-btn:active,
+.btn-mini:active,
+.quick-btn:active {
+  transform: scale(0.97);
+  opacity: 0.9;
 }
 </style>

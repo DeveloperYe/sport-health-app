@@ -1,47 +1,45 @@
 <template>
   <!-- 首次进入的权限闸门：一次把该要的权限要完，之后不再打断用户 -->
-  <view class="pg-mask" v-if="show">
+  <view class="pg-mask" :class="themeClass" v-if="show">
     <view class="pg-panel">
-      <template v-if="step === 'intro'">
-        <text class="pg-title">开始前，先把权限配齐</text>
-        <text class="pg-sub">一次性授权，之后跑步、计步都不会再弹窗打断你</text>
+      <!-- 头部固定，正文可滚动：内容再多也不会把面板顶出屏幕 -->
+      <view class="pg-head">
+        <text class="pg-title">{{ step === 'intro' ? '开始前，先把权限配齐' : '授权结果' }}</text>
+        <text class="pg-sub">{{
+          step === 'intro' ? '一次性授权，之后跑步、计步都不会再弹窗打断你' : resultHint
+        }}</text>
+      </view>
 
+      <scroll-view class="pg-body" scroll-y :show-scrollbar="false">
         <view class="pg-item" v-for="it in items" :key="it.key">
           <text class="pg-icon">{{ it.icon }}</text>
           <view class="pg-item-main">
             <view class="pg-item-head">
               <text class="pg-item-title">{{ it.title }}</text>
-              <text class="pg-tag" v-if="!it.required">可选</text>
+              <text class="pg-tag" v-if="step === 'intro' && !it.required">可选</text>
             </view>
-            <text class="pg-item-desc">{{ it.desc }}</text>
+            <text class="pg-item-desc" :class="step === 'result' ? 'st-' + statusOf(it.key) : ''">{{
+              step === 'intro' ? it.desc : statusText(it.key)
+            }}</text>
           </view>
         </view>
+      </scroll-view>
 
-        <view class="pg-btn primary" :class="{ disabled: asking }" @click="allowAll">
-          {{ asking ? '正在申请…' : '全部允许，开始使用' }}
-        </view>
-        <view class="pg-btn ghost" @click="skip">先跳过，稍后再说</view>
-        <text class="pg-foot">
-          随时可在系统设置里修改；只做饮食记录的话，不授权定位也能用。
-        </text>
-      </template>
-
-      <template v-else>
-        <text class="pg-title">授权结果</text>
-        <text class="pg-sub">{{ resultHint }}</text>
-
-        <view class="pg-item" v-for="it in items" :key="it.key">
-          <text class="pg-icon">{{ it.icon }}</text>
-          <view class="pg-item-main">
-            <text class="pg-item-title">{{ it.title }}</text>
-            <text class="pg-item-desc" :class="'st-' + statusOf(it.key)">{{ statusText(it.key) }}</text>
+      <!-- 底部操作固定，不随内容滚走 -->
+      <view class="pg-foot-btns">
+        <template v-if="step === 'intro'">
+          <view class="pg-btn primary" :class="{ disabled: asking }" @click="allowAll">
+            {{ asking ? '正在申请…' : '全部允许，开始使用' }}
           </view>
-        </view>
-
-        <view class="pg-btn primary" @click="close">继续使用</view>
-        <view class="pg-btn ghost" v-if="batteryDenied" @click="askBattery">去关闭电池优化</view>
-        <view class="pg-btn ghost" @click="allowAll">再申请一次</view>
-      </template>
+          <view class="pg-btn ghost" @click="skip">先跳过，稍后再说</view>
+          <text class="pg-foot">随时可在系统设置里修改；只做饮食记录的话，不授权定位也能用。</text>
+        </template>
+        <template v-else>
+          <view class="pg-btn primary" @click="close">继续使用</view>
+          <view class="pg-btn ghost" v-if="batteryDenied" @click="askBattery">去关闭电池优化</view>
+          <view class="pg-btn ghost" @click="allowAll">再申请一次</view>
+        </template>
+      </view>
     </view>
   </view>
 </template>
@@ -156,6 +154,7 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+/* 全屏遮罩：上下都留出安全区，面板永不超过可视高度 */
 .pg-mask {
   position: fixed;
   left: 0;
@@ -163,106 +162,149 @@ export default {
   top: 0;
   bottom: 0;
   z-index: 200;
-  background: rgba(6, 8, 10, 0.94);
+  background: var(--mask);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 32rpx;
+  padding: calc(env(safe-area-inset-top) + 40rpx) 32rpx calc(env(safe-area-inset-bottom) + 40rpx);
+  box-sizing: border-box;
 }
+
+/* 面板：纵向三段式（头 / 可滚动正文 / 固定按钮），高度受限于遮罩 */
 .pg-panel {
   width: 100%;
-  max-width: 640rpx;
-  padding: 36rpx 28rpx 28rpx;
-  border-radius: 28rpx;
-  background: #1a1a1f;
-  border: 1rpx solid #26262c;
+  max-width: 660rpx;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 34rpx 28rpx 26rpx;
+  border-radius: 32rpx;
+  background: var(--bg-card);
+  border: 1rpx solid var(--line);
+  box-shadow: var(--shadow-pop);
 }
+
+.pg-head {
+  flex: none;
+}
+
 .pg-title {
   display: block;
   font-size: 38rpx;
   font-weight: 800;
-  color: #f2f3f5;
+  letter-spacing: -0.4rpx;
+  color: var(--text-1);
 }
+
 .pg-sub {
   display: block;
   margin-top: 10rpx;
   font-size: 24rpx;
-  color: #8b8d94;
+  color: var(--text-2);
   line-height: 1.6;
 }
+
+/* 正文滚动区：内容再多也只在这里滚 */
+.pg-body {
+  flex: 1;
+  min-height: 0;
+  max-height: 62vh;
+  margin-top: 6rpx;
+}
+
 .pg-item {
   display: flex;
   gap: 18rpx;
-  margin-top: 24rpx;
+  margin-top: 18rpx;
   padding: 20rpx;
-  border-radius: 18rpx;
-  background: #232329;
-  border: 1rpx solid #26262c;
+  border-radius: 20rpx;
+  background: var(--bg-card-2);
+  border: 1rpx solid var(--line);
 }
+
 .pg-icon {
-  font-size: 40rpx;
+  font-size: 38rpx;
   line-height: 1.1;
 }
+
 .pg-item-main {
   flex: 1;
   display: flex;
   flex-direction: column;
 }
+
 .pg-item-head {
   display: flex;
   align-items: center;
   gap: 12rpx;
 }
+
 .pg-item-title {
   font-size: 28rpx;
   font-weight: 700;
-  color: #f2f3f5;
+  color: var(--text-1);
 }
+
 .pg-tag {
   font-size: 18rpx;
-  color: #8b8d94;
-  border: 1rpx solid #3a3a42;
+  color: var(--text-2);
+  border: 1rpx solid var(--line-strong);
   border-radius: 999rpx;
   padding: 2rpx 12rpx;
 }
+
 .pg-item-desc {
   margin-top: 8rpx;
   font-size: 22rpx;
-  color: #8b8d94;
+  color: var(--text-2);
   line-height: 1.55;
 }
+
 .st-granted {
-  color: #2bd45c;
+  color: var(--accent);
 }
 .st-denied {
-  color: #ffb347;
+  color: var(--warm);
 }
+
+/* 底部按钮：固定，平面设计 */
+.pg-foot-btns {
+  flex: none;
+  padding-top: 20rpx;
+}
+
 .pg-btn {
-  margin-top: 24rpx;
+  margin-top: 16rpx;
   text-align: center;
-  padding: 24rpx 0;
-  border-radius: 16rpx;
+  padding: 26rpx 0;
+  border-radius: 999rpx;
   font-size: 28rpx;
+  transition: transform 0.12s var(--ease), opacity 0.18s var(--ease),
+    background-color 0.18s var(--ease);
+}
+.pg-btn:active {
+  transform: scale(0.97);
+  opacity: 0.9;
 }
 .pg-btn.primary {
-  background: linear-gradient(135deg, #2bd45c, #17a348);
-  color: #06180d;
+  background: var(--accent);
+  color: var(--on-accent);
   font-weight: 700;
+  letter-spacing: 0.5rpx;
 }
 .pg-btn.primary.disabled {
   opacity: 0.6;
 }
 .pg-btn.ghost {
   background: transparent;
-  color: #8b8d94;
-  border: 1rpx solid #3a3a42;
-  margin-top: 14rpx;
+  color: var(--text-2);
+  border: 1rpx solid var(--line-strong);
 }
 .pg-foot {
   display: block;
   margin-top: 18rpx;
   font-size: 20rpx;
-  color: #5c5e66;
+  color: var(--text-3);
   line-height: 1.6;
   text-align: center;
 }

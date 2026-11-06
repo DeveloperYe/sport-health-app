@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  启动图：纯色底 + logo 居中「不缩放」。
+  之前用的是 1080x1920 的整图 splash.png，被系统拉伸填满各种长屏 → logo 变形。
+  改成 layer-list：背景铺满、logo 按自身像素尺寸居中（drawable-nodpi/splash_logo.png，480px），
+  任何屏幕比例都不会拉伸。
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 1) 底色：极深的墨绿黑，和品牌绿相衬 -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#060A08" />
+        </shape>
+    </item>
+
+    <!-- 2) 品牌绿柔光，避免纯黑死板 -->
+    <item android:gravity="center">
+        <shape android:shape="oval">
+            <size
+                android:width="360dp"
+                android:height="360dp" />
+            <gradient
+                android:type="radial"
+                android:gradientRadius="180dp"
+                android:startColor="#3A2BD45C"
+                android:centerColor="#142BD45C"
+                android:endColor="#00060A08" />
+        </shape>
+    </item>
+
+    <!-- 3) logo：按自身像素居中，绝不拉伸 -->
+    <item android:gravity="center">
+        <bitmap
+            android:gravity="center"
+            android:src="@drawable/splash_logo" />
+    </item>
+</layer-list>

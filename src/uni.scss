@@ -75,17 +75,29 @@ $uni-font-size-subtitle: 18px;
 $uni-color-paragraph: #3f536e; // 文章段落颜色
 $uni-font-size-paragraph: 15px;
 
-/* ============ 运动健康 App 主题（Keep 风格暗色系） ============ */
-$brand-primary: #2bd45c; // 主品牌绿
-$brand-primary-light: #7cf29d;
-$brand-gradient: linear-gradient(135deg, #2bd45c 0%, #a7f3c0 100%);
-$bg-page: #101014; // 页面背景
-$bg-card: #1a1a1f; // 卡片背景
-$bg-card-light: #232329; // 卡片高亮背景
-$border-subtle: #26262c; // 细分隔线
-$text-main: #f2f3f5; // 主文字
-$text-secondary: #8b8d94; // 次级文字
-$text-muted: #5c5e66; // 弱化文字
+/* ============ 运动健康 App 主题 ============
+   2026-11-06 起全部指向 CSS 变量：白天 / 黑夜双模式由 styles/theme.scss 的
+   .t-dark / .t-light 提供，页面 CSS 不用改一行就能跟着切。
+   （保留原来的变量名，历史页面无需改动即可吃到主题） */
+$brand-primary: var(--accent);
+$brand-primary-light: var(--accent-2);
+$brand-deep: var(--accent-deep);
+$brand-gradient: var(--accent-grad);
+$bg-page: var(--bg-page);
+$bg-page-2: var(--bg-page-2);
+$bg-card: var(--bg-card);
+$bg-card-light: var(--bg-card-2);
+$bg-card-deep: var(--bg-card-3);
+$border-subtle: var(--line);
+$border-strong: var(--line-strong);
+$text-main: var(--text-1);
+$text-secondary: var(--text-2);
+$text-muted: var(--text-3);
+$warm: var(--warm);
+$cool: var(--cool);
+$on-accent: var(--on-accent);
+$accent-soft: var(--accent-soft);
+$accent-soft-2: var(--accent-soft-2);
 
 // ===== 统一设计常量（2026-11-01 UI 统一）=====
 // 卡片：圆角 / 内边距 / 标题字号

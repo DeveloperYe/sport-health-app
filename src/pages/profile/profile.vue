@@ -1,5 +1,5 @@
 <template>
-  <view class="page">
+  <view class="page" :class="themeClass">
     <!-- 身体信息 -->
     <view class="card">
       <view class="card-head">
@@ -193,6 +193,27 @@
         <view class="btn ghost" @click="importData">从剪贴板导入</view>
       </view>
     </view>
+
+    <!-- 外观：白天 / 黑夜 -->
+    <view class="card">
+      <view class="card-head">
+        <text class="card-title">外观</text>
+        <text class="card-extra">白天 / 黑夜</text>
+      </view>
+      <view class="tseg">
+        <view
+          class="tseg-item"
+          :class="{ on: themeMode === opt.value }"
+          v-for="opt in themeOptions"
+          :key="opt.value"
+          @click="chooseTheme(opt.value)"
+        >
+          <text class="tseg-icon">{{ opt.icon }}</text>
+          <text class="tseg-label">{{ opt.label }}</text>
+        </view>
+      </view>
+      <text class="hint">选「跟随系统」时，会随手机的深色模式自动切换。</text>
+    </view>
   </view>
 </template>
 
@@ -208,10 +229,12 @@ import {
 import { getRecords, removeRecord } from '@/utils/storage.js'
 import { recentAverages, allExerciseHistory } from '@/utils/day-summary.js'
 import { removeActivity, formatActivityDuration } from '@/utils/activity-store.js'
+import { THEME_OPTIONS, setThemeMode } from '@/utils/theme.js'
 
 export default {
   data() {
     return {
+      themeOptions: THEME_OPTIONS,
       todayDate: today(),
       form: { sex: 'male', age: '', height: '', weight: '', bodyFat: '', activity: 1.2 },
       goals: { calorie: '', water: 8, protein: '', weight: '' },
@@ -285,6 +308,12 @@ export default {
     this.reload()
   },
   methods: {
+    // 切换白天/黑夜（mixin 提供 themeMode；setThemeMode 负责持久化 + 广播）
+    chooseTheme(v) {
+      setThemeMode(v)
+      const hit = THEME_OPTIONS.filter((o) => o.value === v)[0]
+      uni.showToast({ title: '外观：' + (hit ? hit.label : v), icon: 'none' })
+    },
     reload() {
       const body = getBody()
       this.form = {
@@ -527,7 +556,7 @@ export default {
   border: 1rpx solid $border-subtle;
 }
 .seg-item.on {
-  color: #06180d;
+  color: var(--on-accent);
   background: $brand-primary;
   font-weight: 700;
   border-color: transparent;
@@ -549,8 +578,8 @@ export default {
   text-align: center;
   padding: 22rpx 0;
   border-radius: $btn-radius;
-  background: linear-gradient(135deg, #2bd45c, #17a348);
-  color: #06180d;
+  background: var(--accent);
+  color: var(--on-accent);
   font-size: $btn-font-lg;
   font-weight: 700;
 }
@@ -575,7 +604,7 @@ export default {
 .big-num {
   font-size: 64rpx;
   font-weight: 800;
-  color: #f2f3f5;
+  color: var(--text-1);
   line-height: 1;
 }
 .big-unit {
@@ -596,7 +625,7 @@ export default {
   color: $text-main;
 }
 .kv-v.strong {
-  color: #ffb347;
+  color: var(--warm);
   font-weight: 700;
 }
 .rec-btn {
@@ -608,7 +637,7 @@ export default {
 }
 .save-mini {
   font-size: 24rpx;
-  color: #06180d;
+  color: var(--on-accent);
   background: $brand-primary;
   padding: 10rpx 22rpx;
   border-radius: 999rpx;
@@ -631,7 +660,7 @@ export default {
   color: $text-main;
 }
 .stat-num.warn {
-  color: #ffb347;
+  color: var(--warm);
 }
 .stat-label {
   margin-top: 6rpx;
@@ -670,10 +699,10 @@ export default {
   border-radius: 4rpx 4rpx 0 0;
 }
 .bar.intake {
-  background: #2bd45c;
+  background: var(--accent);
 }
 .bar.tdee {
-  background: #ffb347;
+  background: var(--warm);
   opacity: 0.75;
 }
 .bar-day {
@@ -688,10 +717,10 @@ export default {
 }
 .legend-item {
   font-size: 20rpx;
-  color: #2bd45c;
+  color: var(--accent);
 }
 .legend-item.tdee {
-  color: #ffb347;
+  color: var(--warm);
 }
 
 /* ===== 运动历史 ===== */
@@ -719,10 +748,58 @@ export default {
 .hist-cal {
   font-size: 28rpx;
   font-weight: 700;
-  color: #ffb347;
+  color: var(--warm);
 }
 .hist-del {
   font-size: 24rpx;
   color: $text-muted;
+}
+
+/* flat-press:2026-11-06 */
+.btn:active,
+.rec-btn:active,
+.row:active {
+  transform: scale(0.97);
+  opacity: 0.9;
+}
+/* theme-seg:2026-11-06 */
+.tseg {
+  display: flex;
+  gap: 6rpx;
+  margin-top: 18rpx;
+  padding: 6rpx;
+  border-radius: 999rpx;
+  background: var(--bg-card-2);
+  border: 1rpx solid var(--line);
+}
+.tseg-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4rpx;
+  padding: 16rpx 0;
+  border-radius: 999rpx;
+  transition: background-color 0.18s var(--ease), color 0.18s var(--ease),
+    transform 0.12s var(--ease);
+}
+.tseg-item:active {
+  transform: scale(0.97);
+}
+.tseg-icon {
+  font-size: 28rpx;
+  line-height: 1.1;
+}
+.tseg-label {
+  font-size: 22rpx;
+  color: var(--text-2);
+}
+.tseg-item.on {
+  background: var(--accent);
+}
+.tseg-item.on .tseg-label {
+  color: var(--on-accent);
+  font-weight: 700;
 }
 </style>

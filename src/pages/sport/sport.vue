@@ -1,5 +1,5 @@
 <template>
-  <view class="page">
+  <view class="page" :class="themeClass">
     <!-- 顶层切换：有轨迹的运动 / 其他运动（按 MET × 时长算消耗） -->
     <view class="page-tab">
       <view class="page-tab-item" :class="{ active: pageTab === 'track' }" @click="switchTab('track')">
@@ -923,8 +923,8 @@ export default {
   font-weight: 700;
 }
 .btn-primary {
-  background: linear-gradient(135deg, #2bd45c, #17a348);
-  color: #06180d;
+  background: var(--accent);
+  color: var(--on-accent);
 }
 .btn-ghost {
   background: $bg-card-light;
@@ -949,9 +949,9 @@ export default {
   border: 1rpx solid $border-subtle;
 }
 .page-tab-item.active {
-  color: #06180d;
+  color: var(--on-accent);
   font-weight: 700;
-  background: linear-gradient(135deg, #2bd45c, #17a348);
+  background: var(--accent);
   border-color: transparent;
 }
 
@@ -1033,8 +1033,8 @@ export default {
   padding: 18rpx 0;
   text-align: center;
   border-radius: $btn-radius;
-  background: linear-gradient(135deg, #2bd45c, #17a348);
-  color: #06180d;
+  background: var(--accent);
+  color: var(--on-accent);
   font-size: 26rpx;
   font-weight: 700;
 }
@@ -1064,7 +1064,7 @@ export default {
 .ot-timer-cal {
   font-size: 40rpx;
   font-weight: 700;
-  color: #ffb347;
+  color: var(--warm);
   font-variant-numeric: tabular-nums;
 }
 .ot-timer-cal-unit {
@@ -1133,7 +1133,7 @@ export default {
 .ot-cal {
   font-size: 40rpx;
   font-weight: 700;
-  color: #ffb347;
+  color: var(--warm);
 }
 .ot-hint {
   display: block;
@@ -1183,11 +1183,19 @@ export default {
 .ot-item-cal {
   font-size: 28rpx;
   font-weight: 700;
-  color: #ffb347;
+  color: var(--warm);
 }
 .ot-item-del {
   font-size: 24rpx;
   color: $text-muted;
   padding-left: 8rpx;
+}
+
+/* flat-press:2026-11-06 */
+.btn:active,
+.ot-mini-btn:active,
+.map-city-btn:active {
+  transform: scale(0.97);
+  opacity: 0.9;
 }
 </style>

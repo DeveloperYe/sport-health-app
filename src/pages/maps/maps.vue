@@ -1,5 +1,5 @@
 <template>
-  <view class="page">
+  <view class="page" :class="themeClass">
     <!-- 当前状态 -->
     <view class="card hero">
       <view class="hero-top">
@@ -575,14 +575,14 @@ export default {
 }
 .tag-on {
   background: rgba(74, 163, 255, 0.14);
-  color: #4aa3ff;
+  color: var(--cool);
 }
 .tag-dl {
   background: rgba(255, 179, 71, 0.14);
-  color: #ffb347;
+  color: var(--warm);
 }
 .tag-big {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--bg-card-2);
   color: $text-muted;
 }
 .prog {
@@ -591,13 +591,13 @@ export default {
 .prog-bar {
   height: 10rpx;
   border-radius: 999rpx;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--bg-card-3);
   overflow: hidden;
 }
 .prog-fill {
   height: 100%;
   border-radius: 999rpx;
-  background: linear-gradient(90deg, #17a348, #2bd45c);
+  background: var(--accent-grad);
   transition: width 0.3s;
 }
 .prog-meta {
@@ -620,7 +620,7 @@ export default {
   text-align: center;
   border-radius: $btn-radius;
   background: $brand-primary;
-  color: #06180d;
+  color: var(--on-accent);
   font-size: $btn-font;
   font-weight: 700;
 }
@@ -669,5 +669,13 @@ export default {
   line-height: 1.5;
   color: $text-secondary;
   word-break: break-all;
+}
+
+/* flat-press:2026-11-06 */
+.mini-btn:active,
+.city-row:active,
+.manual-btn:active {
+  transform: scale(0.97);
+  opacity: 0.9;
 }
 </style>
