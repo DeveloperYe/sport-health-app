@@ -60,3 +60,28 @@ export function buildAttemptOrder(probes, allPrefixes) {
   })
   return order
 }
+
+/** 物理上不可能的速度上限（超过就判为测量假象） */
+export const SANE_BPS = 80 * 1024 * 1024
+
+/**
+ * 把测出来的速度钳进可信范围。
+ * 背景：某条线路如果没 fire 进度事件就直接完成，耗时会被算成接近 0，
+ * 速度就成了几百 MB/s，会让它排到第一 —— 必须兜住。
+ */
+export function saneBps(bps, got, ms, maxBps) {
+  const cap = maxBps || SANE_BPS
+  const v = Number(bps) || 0
+  if (!(v > 0)) return 0
+  if (v <= cap) return v
+  const g = Number(got) || 0
+  const m = Number(ms) || 0
+  return g > 0 ? (g * 1000) / Math.max(50, m || 50) : cap
+}
+
+/** 取速度最快的前 n 名（用于第二轮复测） */
+export function pickTopN(list, n) {
+  const arr = (list || []).slice()
+  arr.sort((a, b) => (Number(b && b.bps) || 0) - (Number(a && a.bps) || 0))
+  return arr.slice(0, n || 2)
+}

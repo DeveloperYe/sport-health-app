@@ -14,6 +14,7 @@
 import citiesIndex from '@/data/cities-index.json'
 import { Sha256 } from './sha256.js'
 import { idbPut, idbGet, idbDelete, idbKeys } from './idb-tiles.js'
+import { buildAttemptOrder, saneBps, pickTopN } from './mirror-pick.js'
 
 // ===== 存储键 =====
 const K_INSTALLED = 'fh_map_installed' // { [adcode]: {adcode,name,bytes,sha256,at} }
@@ -224,18 +225,27 @@ function isApp() {
 
 // ===== 测速 =====
 //
-// 同一个探测逻辑要跑在三种环境里，能力完全不同：
-//  - H5：浏览器，有 window.XMLHttpRequest，可设 Range、可 onprogress、可 abort；
-//  - App 逻辑层（v8）：**没有 XMLHttpRequest / fetch**（那都是 DOM/浏览器 API，
-//    页面脚本在 v8 里跑，拿不到 —— 这就是当初地图必须走 renderjs 的原因）。
-//    但有 plus.net.XMLHttpRequest（5+ 原生 XHR，绕过 WebView 的 CORS），
-//    拿不到时退化到 uni.downloadFile + Range 把头一段字节拉下来再 abort。
+// 三种运行环境能力不同：
+//  - H5：window.XMLHttpRequest，可设 Range、有 onprogress、可 abort；
+//  - App 逻辑层（v8）：**没有 XMLHttpRequest/fetch**（DOM API，页面脚本在 v8 里跑不到），
+//    但既有 uni.downloadFile（原生下载器，onProgressUpdate 可靠），
+//    也有 plus.net.XMLHttpRequest（5+ 原生 XHR）。两者都要能测。
 //
-// 之前只写了 `new XMLHttpRequest()`，App 里直接 ReferenceError，被 catch 成
-// 「网络错误」→ 页面一直显示"所有线路未测通"。
+// 审下来修掉的四个问题（原实现）：
+//  ① onload 里 `Date.now() - (t0 || Date.now() - 1)`：若服务器没 fire onprogress，
+//     耗时会算成 1 ms → 速度被算成几百 MB/s，这条线路永远"最快"。现在 t0 在 send() 时记。
+//  ② App 优先用 plus.net.XMLHttpRequest：万一它不 fire onprogress，就会把整个城市包
+//     下完才回来（青岛 36 MB × 5 条线路 = 180 MB 流量）。改成优先用 uni.downloadFile，
+//     它和真实下载同一个原生引擎，进度回调可靠，收够目标字节立刻 abort。
+//  ③ 只测一轮 256/512 KB，噪声大（连 DNS/TLS 握手都算进去）。改成两轮：
+//     全部线路并行 256 KB 初测 → 取前两名串行各测 1 MB 复测定位。
+//  ④ 全失败时的兜底顺序和"排序"逻辑各写了一份，容易跑偏。统一用 mirror-pick.buildAttemptOrder。
 const PROBE_TIMEOUT_MS = 8000
-/** App 端探测字节数小一点：手机流量 + 原生下载器启动开销 */
+/** App 端初测字节数（手机流量友好） */
 const PROBE_BYTES_APP = 256 * 1024
+/** 第二轮复测字节数 */
+const PROBE_BYTES_ROUND2 = 1024 * 1024
+// 速度钳制（saneBps）与"取前 N 名"（pickTopN）都在 mirror-pick.js 里，便于单测
 
 /** 用某个 XHR 实现探测（window.XMLHttpRequest 或 plus.net.XMLHttpRequest 通用） */
 function probeViaXhr(Ctor, mirror, url, opts) {
@@ -273,16 +283,23 @@ function probeViaXhr(Ctor, mirror, url, opts) {
         if (got >= bytes) {
           const ms = Math.max(1, Date.now() - t0)
           clearTimeout(timer)
-          finish({ ok: true, bps: (got * 1000) / ms, prefix: mirror.prefix, id: mirror.id, probeBytes: got })
+          finish({ ok: true, bps: saneBps((got * 1000) / ms, got, ms), prefix: mirror.prefix, id: mirror.id, probeBytes: got, note: 'xhr-abort' })
         }
       }
       xhr.onload = () => {
         const sz = xhr.response ? xhr.response.byteLength : 0
-        // 206 分片或整包都算成功，用字节数/耗时算速率
         if (sz > 0) {
-          const ms = Math.max(1, Date.now() - (t0 || Date.now() - 1))
+          // t0 在 send() 时就记下了，这里不会出现"耗时 1ms"的假速度
+          const ms = Math.max(1, Date.now() - (t0 || Date.now()))
           clearTimeout(timer)
-          finish({ ok: true, bps: (sz * 1000) / ms, prefix: mirror.prefix, id: mirror.id, probeBytes: sz })
+          finish({
+            ok: true,
+            bps: saneBps((sz * 1000) / ms, sz, ms),
+            prefix: mirror.prefix,
+            id: mirror.id,
+            probeBytes: sz,
+            note: sz > bytes * 4 ? 'ignored-range' : 'xhr-full',
+          })
         } else {
           clearTimeout(timer)
           finish({ ok: false, err: '空响应', prefix: mirror.prefix, id: mirror.id })
@@ -292,6 +309,7 @@ function probeViaXhr(Ctor, mirror, url, opts) {
         clearTimeout(timer)
         finish({ ok: false, err: '网络错误', prefix: mirror.prefix, id: mirror.id })
       }
+      t0 = Date.now()
       xhr.send()
     } catch (e) {
       clearTimeout(timer)
@@ -300,15 +318,20 @@ function probeViaXhr(Ctor, mirror, url, opts) {
   })
 }
 
-/** App 兜底探测：原生下载器拉头一段，够了就 abort */
+/**
+ * 原生下载器探测：拉 Range 头一段，够了就 abort。
+ * 与真实下载同一个引擎，所以测出来的速度和真实下载最相关。
+ */
 function probeViaDownload(mirror, url, opts) {
   const bytes = (opts && opts.bytes) || PROBE_BYTES_APP
   const timeoutMs = (opts && opts.timeoutMs) || PROBE_TIMEOUT_MS
   const full = mirror.prefix + url
   return new Promise((resolve) => {
     let settled = false
-    let t0 = Date.now()
+    const t0 = Date.now()
     let task = null
+    let maxSeen = 0
+    let expected = 0
     const finish = (r) => {
       if (settled) return
       settled = true
@@ -319,10 +342,7 @@ function probeViaDownload(mirror, url, opts) {
       }
       resolve(r)
     }
-    const timer = setTimeout(
-      () => finish({ ok: false, err: '超时', prefix: mirror.prefix, id: mirror.id }),
-      timeoutMs
-    )
+    const timer = setTimeout(() => finish({ ok: false, err: '超时', prefix: mirror.prefix, id: mirror.id }), timeoutMs)
     try {
       task = uni.downloadFile({
         url: full,
@@ -330,8 +350,10 @@ function probeViaDownload(mirror, url, opts) {
         success: () => {
           clearTimeout(timer)
           const ms = Math.max(1, Date.now() - t0)
-          // 走到 success 说明服务器没理会 Range（给了整包），但连通性已证明
-          finish({ ok: true, bps: (bytes * 1000) / ms, prefix: mirror.prefix, id: mirror.id, probeBytes: bytes, note: 'native-full' })
+          // 走到 success 说明服务器没理会 Range（下的是整包）：
+          // 用"已知总大小或已收字节"算速率，不要拿目标字节数糊弄（会把快线路算成慢线路）
+          const used = expected || maxSeen || bytes
+          finish({ ok: true, bps: saneBps((used * 1000) / ms, used, ms), prefix: mirror.prefix, id: mirror.id, probeBytes: used, note: 'native-full' })
         },
         fail: (e) => {
           clearTimeout(timer)
@@ -341,10 +363,13 @@ function probeViaDownload(mirror, url, opts) {
       if (task && task.onProgressUpdate) {
         task.onProgressUpdate((p) => {
           const got = (p && p.totalBytesWritten) || 0
+          const exp = (p && p.totalBytesExpectedToWrite) || 0
+          if (got > maxSeen) maxSeen = got
+          if (exp > 0) expected = exp
           if (got >= bytes) {
             clearTimeout(timer)
             const ms = Math.max(1, Date.now() - t0)
-            finish({ ok: true, bps: (got * 1000) / ms, prefix: mirror.prefix, id: mirror.id, probeBytes: got, note: 'native-abort' })
+            finish({ ok: true, bps: saneBps((got * 1000) / ms, got, ms), prefix: mirror.prefix, id: mirror.id, probeBytes: got, note: 'native-abort' })
           }
         })
       }
@@ -357,7 +382,8 @@ function probeViaDownload(mirror, url, opts) {
 
 function probeOne(mirror, url, opts) {
   if (isApp()) {
-    // 1) 5+ 原生 XHR：不受 WebView CORS 限制，支持 Range/onprogress/abort
+    // App：优先原生下载器（进度回调可靠、和真实下载同引擎）
+    if (typeof uni !== 'undefined' && uni.downloadFile) return probeViaDownload(mirror, url, opts)
     const PX = (() => {
       try {
         return plus.net && plus.net.XMLHttpRequest ? plus.net.XMLHttpRequest : null
@@ -365,9 +391,8 @@ function probeOne(mirror, url, opts) {
         return null
       }
     })()
-    if (PX) return probeViaXhr(PX, mirror, url, { bytes: PROBE_BYTES_APP, timeoutMs: PROBE_TIMEOUT_MS, ...(opts || {}) })
-    // 2) 兜底：原生下载器 + Range + abort
-    return probeViaDownload(mirror, url, opts)
+    if (PX) return probeViaXhr(PX, mirror, url, opts)
+    return Promise.resolve({ ok: false, err: 'App 端没有可用的探测通道', prefix: mirror.prefix, id: mirror.id })
   }
   if (typeof XMLHttpRequest === 'undefined') {
     return Promise.resolve({ ok: false, err: '环境无 XMLHttpRequest', prefix: mirror.prefix, id: mirror.id })
@@ -376,16 +401,45 @@ function probeOne(mirror, url, opts) {
 }
 
 /**
- * 并行测所有线路，返回按速度从快到慢的列表。
- * @returns {Promise<{list: Array<{prefix:string,id:string,bps:number}>, failed: Array<{id:string,err:string}>}>}
+ * 测速（两轮）：
+ *  第一轮：所有可用线路并行各测 256 KB，筛出成功者；
+ *  第二轮：前两名串行各测 1 MB 复测，用复测速度定位（并行初测会被自己互相抢带宽）。
+ * @param {string} url 原始 GitHub 直链
+ * @param {{single?:boolean, onRound?:Function}} [opts] single=true 时只跑第一轮
  */
 export async function measureMirrors(url, opts) {
-  const results = await Promise.all(usableMirrors().map((m) => probeOne(m, url, opts)))
-  const list = results.filter((r) => r.ok).sort((a, b) => b.bps - a.bps)
-  const failed = results.filter((r) => !r.ok).map((r) => ({ id: r.id, err: r.err }))
-  const best = list.length ? list[0] : null
-  if (best) {
-    writeJson(K_MIRROR, { at: Date.now(), best: best, list: list.slice(0, 4) })
+  const o = opts || {}
+  const firstBytes = isApp() ? PROBE_BYTES_APP : PROBE_BYTES
+  const mates = usableMirrors()
+  const first = await Promise.all(mates.map((m) => probeOne(m, url, { bytes: firstBytes })))
+  let list = first.filter((r) => r.ok && r.bps > 0).sort((a, b) => b.bps - a.bps)
+  const failed = first.filter((r) => !r.ok).map((r) => ({ id: r.id, err: r.err }))
+  if (o.onRound) o.onRound(1, list)
+
+  // 第二轮：前两名复测（只对还活着的线路）
+  if (!o.single && list.length >= 1) {
+    const top = pickTopN(list, 2)
+    const byId = {}
+    mates.forEach((m) => {
+      byId[m.id] = m
+    })
+    for (let i = 0; i < top.length; i++) {
+      const m = byId[top[i].id]
+      if (!m) continue
+      const again = await probeOne(m, url, { bytes: PROBE_BYTES_ROUND2 })
+      if (again.ok && again.bps > 0) {
+        top[i].bps = again.bps
+        top[i].probeBytes = again.probeBytes
+        top[i].round2 = true
+      }
+    }
+    // 只按复测结果重排前两名，其余保持第一轮名次
+    top.sort((a, b) => b.bps - a.bps)
+    list = top.concat(list.slice(top.length))
+  }
+
+  if (list.length) {
+    writeJson(K_MIRROR, { at: Date.now(), best: list[0], list: list.slice(0, 4) })
   }
   return { list, failed }
 }
@@ -398,31 +452,23 @@ export function cachedMirrors() {
 }
 
 /**
- * 得到本次下载要用的候选线路顺序：最快在前，直连垫底。
- * 用缓存会快，但缓存过期或有新失败时重新测。
+ * 得到本次下载要用的候选线路顺序。
+ * 缓存命中就用缓存（30 分钟），否则现场测；
+ * 排序统一交给 mirror-pick.buildAttemptOrder，避免两处逻辑跑偏。
  */
 export async function resolveMirrors(url, onProgress) {
+  const allPrefixes = usableMirrors().map((m) => m.prefix)
   const cached = cachedMirrors()
   if (cached && cached.list && cached.list.length) {
-    const order = cached.list.map((x) => x.prefix)
-    usableMirrors().forEach((m) => {
-      if (order.indexOf(m.prefix) < 0) order.push(m.prefix)
-    })
-    return { order, best: cached.list[0], fromCache: true }
+    return { order: buildAttemptOrder(cached.list, allPrefixes), best: cached.list[0], fromCache: true }
   }
   if (onProgress) onProgress('正在测速选线路…')
   const r = await measureMirrors(url)
   if (!r.list.length) {
-    // 测速全失败也要能下载：按可用线路顺序逐条试（哪条通就走哪条）。
-    // 早先这里只退 [直连, v6]，手机上直连 GitHub 基本不通，等于只剩一条路。
-    const order = usableMirrors().map((m) => m.prefix)
-    return { order, best: null, fromCache: false, failed: r.failed }
+    // 测速全失败也要能下载：按可用线路顺序逐条试（哪条通就走哪条）
+    return { order: allPrefixes, best: null, fromCache: false, failed: r.failed }
   }
-  const order = r.list.map((x) => x.prefix)
-  usableMirrors().forEach((m) => {
-    if (order.indexOf(m.prefix) < 0) order.push(m.prefix)
-  })
-  return { order, best: r.list[0], fromCache: false, failed: r.failed }
+  return { order: buildAttemptOrder(r.list, allPrefixes), best: r.list[0], fromCache: false, failed: r.failed }
 }
 
 /** 当前运行环境下探测测速用的通道名（真机排障用，会显示在 UI 上） */

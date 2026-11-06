@@ -465,6 +465,7 @@ function xhrDownload(url, opts) {
 
 function uniDownload(url, opts) {
   const onProgress = (opts && opts.onProgress) || function () {}
+  const onSlow = (opts && opts.hasNextMirror) || null
   return new Promise((resolve) => {
     let task = null
     let t0 = 0
@@ -521,6 +522,24 @@ function uniDownload(url, opts) {
           }
           const overall = (written * 1000) / Math.max(1, now - t0)
           onProgress(written, p.totalBytesExpectedToWrite || 0, lastBps || overall)
+          if (
+            onSlow &&
+            shouldSwitchMirror({
+              elapsedMs: now - t0,
+              bps: lastBps || overall,
+              loadedBytes: written,
+              totalBytes: p.totalBytesExpectedToWrite || 0,
+              hasNextMirror: onSlow(),
+            })
+          ) {
+            clearTimeout(stallTimer)
+            try {
+              task.abort && task.abort()
+            } catch (e) {
+              /* ignore */
+            }
+            resolve({ ok: false, abort: true, err: '速度过低已中止，换线重下' })
+          }
         })
       }
     } catch (e) {
@@ -572,6 +591,8 @@ export async function downloadCity(adcode, opts) {
       res = await uniDownload(url, {
         onProgress: (loaded, total, bps) =>
           onProgress({ phase: 'download', loaded, total, bps, mirror: label, note: label }),
+        // 还有后备线路时，允许"掉速自动换线"（之前只有 H5 分支有）
+        hasNextMirror: () => mi < r.order.length - 1,
       })
       if (res.ok) {
         const sz = await fileSize(res.tempFilePath)
