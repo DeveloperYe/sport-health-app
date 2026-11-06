@@ -264,7 +264,7 @@ export default {
   color: var(--accent);
 }
 .st-denied {
-  color: var(--warm);
+  color: var(--warm-text);
 }
 
 /* 底部按钮：固定，平面设计 */

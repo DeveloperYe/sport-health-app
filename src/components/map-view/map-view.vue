@@ -818,7 +818,7 @@ export default {
   height: 340rpx;
   border-radius: 24rpx;
   overflow: hidden;
-  background: #15151a;
+  background: var(--bg-card);
 }
 .mv-host {
   position: relative;

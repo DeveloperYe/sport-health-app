@@ -477,7 +477,7 @@ export default {
   margin-top: 8rpx;
   font-size: 40rpx;
   font-weight: 700;
-  color: $brand-primary;
+  color: var(--accent-text);
 }
 .hero-r {
   display: flex;
@@ -571,15 +571,15 @@ export default {
 }
 .tag-cur {
   background: rgba(43, 212, 92, 0.16);
-  color: $brand-primary;
+  color: var(--accent-text);
 }
 .tag-on {
   background: rgba(74, 163, 255, 0.14);
-  color: var(--cool);
+  color: var(--cool-text);
 }
 .tag-dl {
   background: rgba(255, 179, 71, 0.14);
-  color: var(--warm);
+  color: var(--warm-text);
 }
 .tag-big {
   background: var(--bg-card-2);

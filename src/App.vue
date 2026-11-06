@@ -1,6 +1,6 @@
 <script>
 import { autoSyncSteps } from '@/utils/cloud.js'
-import { initTheme } from '@/utils/theme.js'
+import { initTheme, applyTheme, getMode } from '@/utils/theme.js'
 
 export default {
   onLaunch: function () {
@@ -8,6 +8,8 @@ export default {
     initTheme()
   },
   onShow: function () {
+    // 回到前台时如果设的是「跟随系统」，重算一次（用户可能在后台改了系统深色模式）
+    if (getMode() === 'auto') applyTheme('auto')
     // 启动/回到前台时自动同步今日步数（Android 原生计步器 / 微信运动）
     autoSyncSteps()
   },
@@ -20,7 +22,10 @@ export default {
 
 /* 全局基础样式：所有颜色都来自 CSS 变量，随主题切换 */
 page {
-  background-color: var(--bg-page);
+  /* 用透明而不是具体颜色：page 是 .t-dark/.t-light 的父节点，拿不到主题变量，
+     写死任何一种颜色都会在另一种主题下露出色差。
+     真正的底色由 .page（铺满整屏）+ 原生窗口底色（uni.setBackgroundColor）保证。 */
+  background-color: transparent;
   color: var(--text-1);
   font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', 'PingFang SC',
     'Microsoft YaHei', sans-serif;

@@ -21,15 +21,20 @@ page {
   --line-strong: #333b46;
   --text-1: #f3f5f7;
   --text-2: #9aa3ae;
-  --text-3: #68717d;
+  --text-3: #8b95a2;
   --accent: #2bd45c;
   --accent-2: #7cf29d;
   --accent-deep: #17a348;
+  --accent-text: #2bd45c;
   --accent-grad: linear-gradient(90deg, #17a348, #2bd45c);
   --on-accent: #04160a;
   --warm: #ffb347;
   --cool: #4aa3ff;
   --danger: #ff6b6b;
+  /* 这些是"同一色系作文字"时用的更深/更亮版本，保证 WCAG 4.5:1 */
+  --warm-text: #ffb347;
+  --cool-text: #6fb6ff;
+  --danger-text: #ff8a8a;
   --accent-soft: rgba(43, 212, 92, 0.12);
   --accent-soft-2: rgba(43, 212, 92, 0.24);
   --shadow-card: none;
@@ -49,10 +54,11 @@ page {
   --line-strong: #333b46;
   --text-1: #f3f5f7;
   --text-2: #9aa3ae;
-  --text-3: #68717d;
+  --text-3: #8b95a2;
   --accent: #2bd45c;
   --accent-2: #7cf29d;
   --accent-deep: #17a348;
+  --accent-text: #2bd45c;
   --accent-grad: linear-gradient(90deg, #17a348, #2bd45c);
   --on-accent: #04160a;
   --warm: #ffb347;
@@ -76,16 +82,22 @@ page {
   --line-strong: #cfd8e3;
   --text-1: #11161c;
   --text-2: #5b6675;
-  --text-3: #8b96a5;
+  --text-3: #5f6b7a;
   /* 白底上品牌绿要压深一点才够对比 */
   --accent: #12b14a;
   --accent-2: #2bd45c;
   --accent-deep: #0b7c33;
+  /* 绿色作文字色时用这个（白底 4.6:1）；--accent 只用于色块填充 */
+  --accent-text: #0b7c33;
   --accent-grad: linear-gradient(90deg, #12b14a, #3fdc74);
-  --on-accent: #ffffff;
+  /* 绿色块上的文字用深墨绿而不是白色：白字在 #12b14a 上只有 2.6:1 */
+  --on-accent: #06210f;
   --warm: #ef8a1f;
   --cool: #2a7fe0;
   --danger: #e04b4b;
+  --warm-text: #a85c07;
+  --cool-text: #1663bd;
+  --danger-text: #c62828;
   --accent-soft: rgba(18, 177, 74, 0.1);
   --accent-soft-2: rgba(18, 177, 74, 0.2);
   --shadow-card: 0 6rpx 20rpx rgba(17, 22, 28, 0.06);

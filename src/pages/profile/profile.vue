@@ -625,12 +625,12 @@ export default {
   color: $text-main;
 }
 .kv-v.strong {
-  color: var(--warm);
+  color: var(--warm-text);
   font-weight: 700;
 }
 .rec-btn {
   font-size: 24rpx;
-  color: $brand-primary;
+  color: var(--accent-text);
   border: 1rpx solid rgba(43, 212, 92, 0.5);
   padding: 8rpx 20rpx;
   border-radius: 999rpx;
@@ -660,7 +660,7 @@ export default {
   color: $text-main;
 }
 .stat-num.warn {
-  color: var(--warm);
+  color: var(--warm-text);
 }
 .stat-label {
   margin-top: 6rpx;
@@ -717,10 +717,10 @@ export default {
 }
 .legend-item {
   font-size: 20rpx;
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .legend-item.tdee {
-  color: var(--warm);
+  color: var(--warm-text);
 }
 
 /* ===== 运动历史 ===== */
@@ -748,7 +748,7 @@ export default {
 .hist-cal {
   font-size: 28rpx;
   font-weight: 700;
-  color: var(--warm);
+  color: var(--warm-text);
 }
 .hist-del {
   font-size: 24rpx;

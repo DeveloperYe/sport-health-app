@@ -24,6 +24,7 @@
 
 <script>
 import { project } from '@/utils/geo.js'
+import { palette } from '@/utils/theme.js'
 
 // 自绘轨迹图（无底图）：
 // 等距圆柱投影 + 网格 + 比例尺 + 起终点标记。零依赖、零网络，
@@ -85,7 +86,7 @@ export default {
 
       ctx.clearRect(0, 0, w, h)
       // 卡片底色
-      ctx.setFillStyle('#15151a')
+      ctx.setFillStyle(palette().card)
       ctx.fillRect(0, 0, w, h)
       this.drawGrid(ctx, w, h)
 
@@ -134,7 +135,7 @@ export default {
 
       // 起点（绿，空心）
       const s = xy[0]
-      ctx.setFillStyle('#15151a')
+      ctx.setFillStyle(palette().card)
       ctx.beginPath()
       ctx.arc(s.x, s.y, 6, 0, Math.PI * 2)
       ctx.fill()
@@ -191,7 +192,7 @@ export default {
   height: 340rpx;
   border-radius: 24rpx;
   overflow: hidden;
-  background: #15151a;
+  background: var(--bg-card);
 }
 .tm-canvas {
   display: block;

@@ -470,7 +470,7 @@ export default {
 }
 .quick-btn {
   font-size: 24rpx;
-  color: $brand-primary;
+  color: var(--accent-text);
   border: 1rpx solid rgba(43, 212, 92, 0.45);
   padding: 8rpx 20rpx;
   border-radius: 999rpx;
@@ -490,7 +490,7 @@ export default {
 }
 .hero-label {
   font-size: 24rpx;
-  color: $brand-primary-light;
+  color: var(--accent-text)-light;
 }
 .hero-num-row {
   display: flex;
@@ -638,7 +638,7 @@ export default {
 .entry-cal {
   font-size: 28rpx;
   font-weight: 700;
-  color: var(--warm);
+  color: var(--warm-text);
 }
 .entry-del {
   font-size: 24rpx;
@@ -679,7 +679,7 @@ export default {
   font-size: 26rpx;
 }
 .sheet-tab.active {
-  color: $brand-primary;
+  color: var(--accent-text);
   border: 1rpx solid rgba(43, 212, 92, 0.5);
 }
 .inp {

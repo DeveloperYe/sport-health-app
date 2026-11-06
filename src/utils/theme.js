@@ -36,8 +36,19 @@ function callApi(fn) {
 
 /** 系统当前主题（拿不到就当白天，白底更常见也更安全） */
 export function systemTheme() {
+  // #ifdef H5
+  // 实测：uni.getSystemInfoSync().theme 在 H5 恒为空 → 「跟随系统」永远不生效。
+  // 浏览器环境用 prefers-color-scheme 才是准的。
+  const mm = safe(() => window.matchMedia('(prefers-color-scheme: dark)'), null)
+  if (mm && typeof mm.matches === 'boolean') return mm.matches ? 'dark' : 'light'
+  // #endif
   const t = safe(() => uni.getSystemInfoSync().theme, '')
-  return t === 'dark' ? 'dark' : 'light'
+  if (t === 'dark') return 'dark'
+  if (t === 'light') return 'light'
+  // App 端部分 ROM 也不给 theme：退回 5+ 的系统信息
+  const darkMode = safe(() => plus.navigator.isDarkMode && plus.navigator.isDarkMode(), null)
+  if (darkMode === true) return 'dark'
+  return 'light'
 }
 
 export function getMode() {
@@ -65,6 +76,8 @@ export function palette() {
     text2: dark ? '#9aa3ae' : '#5b6675',
     text3: dark ? '#68717d' : '#8b96a5',
     accent: dark ? '#2bd45c' : '#12b14a',
+    accentText: dark ? '#2bd45c' : '#0b7c33',
+    onAccent: dark ? '#04160a' : '#06210f',
     accent2: dark ? '#7cf29d' : '#2bd45c',
     warm: dark ? '#ffb347' : '#ef8a1f',
     cool: dark ? '#4aa3ff' : '#2a7fe0',
@@ -89,6 +102,14 @@ function applyNative(theme) {
       selectedColor: dark ? '#2bd45c' : '#12b14a',
     })
   )
+  // App：page 元素是透明的，WebView 自身底色也要跟着改，
+  // 否则深色主题下可能闪白（原生窗口底色 + WebView 底色双保险）
+  safe(() => {
+    if (typeof plus !== 'undefined' && plus.webview && plus.webview.currentWebview) {
+      const wv = plus.webview.currentWebview()
+      if (wv && wv.setStyle) wv.setStyle({ background: bg })
+    }
+  }, null)
   // H5：把页面底色同步给 body，避免切主题后边缘露旧色
   // #ifdef H5
   safe(() => {
@@ -148,6 +169,16 @@ export function initTheme() {
       })
     }
   }, null)
+  // #ifdef H5
+  safe(() => {
+    const mm = window.matchMedia('(prefers-color-scheme: dark)')
+    const onChange = () => {
+      if (mode === 'auto') applyTheme('auto')
+    }
+    if (mm && mm.addEventListener) mm.addEventListener('change', onChange)
+    else if (mm && mm.addListener) mm.addListener(onChange)
+  }, null)
+  // #endif
   return applyTheme(mode)
 }
 

@@ -702,7 +702,7 @@ export default {
   color: $text-main;
 }
 .fat-num.goal {
-  color: $brand-primary;
+  color: var(--accent-text);
 }
 .fat-label {
   margin-top: 6rpx;
@@ -730,10 +730,10 @@ export default {
 .gap-v {
   font-size: 30rpx;
   font-weight: 700;
-  color: $brand-primary;
+  color: var(--accent-text);
 }
 .gap-v.over {
-  color: var(--warm);
+  color: var(--warm-text);
 }
 
 /* 记体重 */
@@ -836,7 +836,7 @@ export default {
 .goal-bar-v {
   font-size: 26rpx;
   font-weight: 700;
-  color: $brand-primary;
+  color: var(--accent-text);
 }
 .goal-track {
   height: 14rpx;

@@ -806,7 +806,7 @@ export default {
 }
 .mode-item.active {
   background: rgba(43, 212, 92, 0.16);
-  color: $brand-primary;
+  color: var(--accent-text);
   font-weight: 700;
 }
 
@@ -834,7 +834,7 @@ export default {
 }
 .map-city-arrow {
   font-size: 20rpx;
-  color: $brand-primary;
+  color: var(--accent-text);
 }
 .gps-err {
   display: block;
@@ -1021,7 +1021,7 @@ export default {
   padding: 16rpx 0;
   text-align: center;
   font-size: 24rpx;
-  color: $brand-primary;
+  color: var(--accent-text);
   border: 1rpx dashed rgba(43, 212, 92, 0.45);
   border-radius: 14rpx;
 }
@@ -1064,7 +1064,7 @@ export default {
 .ot-timer-cal {
   font-size: 40rpx;
   font-weight: 700;
-  color: var(--warm);
+  color: var(--warm-text);
   font-variant-numeric: tabular-nums;
 }
 .ot-timer-cal-unit {
@@ -1100,7 +1100,7 @@ export default {
 .ot-picked-name {
   font-size: 32rpx;
   font-weight: 700;
-  color: $brand-primary;
+  color: var(--accent-text);
 }
 .ot-picked-met {
   font-size: 24rpx;
@@ -1133,7 +1133,7 @@ export default {
 .ot-cal {
   font-size: 40rpx;
   font-weight: 700;
-  color: var(--warm);
+  color: var(--warm-text);
 }
 .ot-hint {
   display: block;
@@ -1183,7 +1183,7 @@ export default {
 .ot-item-cal {
   font-size: 28rpx;
   font-weight: 700;
-  color: var(--warm);
+  color: var(--warm-text);
 }
 .ot-item-del {
   font-size: 24rpx;
