@@ -343,6 +343,15 @@ export function createTrackMap(opts) {
   // 为什么不用 merge 合成一个：pmtiles merge 要求输入严格不相交，而相邻区域在低缩放级
   // 必然共享同一批整瓦片（z0 一块瓦片就是整个地球），实测直接报
   // "2768 overlapping tiles, starting with 0 0 0. Inputs must be disjoint"。
+  // 初始视野：优先用城市索引给的中心点。
+  // 为什么不信包自带的 centerLon/centerLat：内置青岛包的中心落在胶州湾水面上，
+  // 一进地图满屏是水，观感极差（实测截图确认）。索引里的 c 是人工挑的城区坐标。
+  const fixedCenter =
+    Array.isArray(opts.center) && Number.isFinite(opts.center[0]) && Number.isFinite(opts.center[1])
+      ? [Number(opts.center[0]), Number(opts.center[1])]
+      : null
+  const fixedZoom = Number.isFinite(opts.zoom) ? Number(opts.zoom) : null
+
   const archives = (opts.archives || []).filter((a) => a && a.key && a.bytes)
   if (!archives.length) throw new Error('没有可用的瓦片档案')
 
@@ -473,8 +482,8 @@ export function createTrackMap(opts) {
   const map = new maplibregl.Map({
     container: container,
     style: style,
-    center: DEFAULT_CENTER,
-    zoom: DEFAULT_ZOOM,
+    center: fixedCenter || DEFAULT_CENTER,
+    zoom: fixedZoom || DEFAULT_ZOOM,
     attributionControl: false, // 署名由组件右下角自己画（ODbL 要求必须显示）
     dragRotate: false,
     pitchWithRotate: false,
@@ -532,7 +541,9 @@ export function createTrackMap(opts) {
         { minLon: Infinity, minLat: Infinity, maxLon: -Infinity, maxLat: -Infinity }
       )
       const h0 = valid[0]
-      if (!collectCoords(lastPoints).length) {
+      // 有外部指定中心（城市索引）就不跳到包自带中心：
+      // 内置青岛包的中心落在胶州湾水面，跳过去满屏是水。
+      if (!fixedCenter && !collectCoords(lastPoints).length) {
         map.jumpTo({
           center: [h0.centerLon || DEFAULT_CENTER[0], h0.centerLat || DEFAULT_CENTER[1]],
           zoom: Math.min(h0.centerZoom || DEFAULT_ZOOM, 13),

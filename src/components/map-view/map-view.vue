@@ -252,11 +252,12 @@ export default {
       if (cur && isInstalled(cur)) {
         const c = getCity(cur)
         if (c) {
-          this.archives = [{ file: c.adcode + '.pmtiles', where: 'user', adcode: c.adcode, name: c.name, path: getInstalledPath(c.adcode) || '' }]
+          this.archives = [{ file: c.adcode + '.pmtiles', where: 'user', adcode: c.adcode, name: c.name, path: getInstalledPath(c.adcode) || '', center: Array.isArray(c.center) ? c.center : null }]
           return this.archives
         }
       }
-      this.archives = (TILE_FILES || []).map((f) => ({ file: f, where: 'bundled' }))
+      // 内置青岛包：包自带中心落在胶州湾水面，这里改用市南区坐标
+      this.archives = (TILE_FILES || []).map((f) => ({ file: f, where: 'bundled', center: [120.3845, 36.0605] }))
       return this.archives
     },
     // 切换城市后重建地图（档案换了，中心点/bbox 也要重新从包头发起）
@@ -329,6 +330,7 @@ export default {
       try {
         this.core = createTrackMap({
           container: el,
+        center: (this.archives[0] && this.archives[0].center) || null,
           archives: archives,
           status: this.status,
           theme: this.mapTheme,
@@ -974,6 +976,7 @@ export default {
         this.core = createTrackMap({
           container: found.el,
           archives: archives,
+        center: (this.archiveList[0] && this.archiveList[0].center) || null,
           status: this.status,
           theme: this.mapTheme,
           points: this.lastPoints,
