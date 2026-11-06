@@ -237,15 +237,17 @@ export function readTilesViaPlusIo(file, onBase64, onError, absPath) {
     return false
   }
 
+  // base64("PMTiles") = "UE1UaWxlcw=="，取前 8 字符做廉价魔数校验。
+  // 必须校验：真机上 Native 分块读取会返回"长度正确、内容全 0"的数据，
+  // 不校验就会把一堆 0 喂给 PMTiles 解析器，最后报个看不懂的错。
+  const MAGIC_B64 = 'UE1UaWxl'
+  const looksPmtilesB64 = (b64) => typeof b64 === 'string' && b64.length >= 12 && b64.slice(0, 8) === MAGIC_B64
+
+  // Native 兜底：整文件 → 分块（每块 3 MB，3 的倍数保证 base64 可拼接）
   const viaNative = (abs, size) => {
-    if (!abs) return false
-    // 1) 整文件
+    if (!abs) return ''
     const whole = nativeReadBase64(abs)
-    if (whole && whole.length) {
-      onBase64 && onBase64(whole, size)
-      return true
-    }
-    // 2) 分块（每块 3 MB：3 的倍数，拼出来的 base64 仍然合法）
+    if (looksPmtilesB64(whole)) return whole
     if (size > 0) {
       const CH = 3 * 1024 * 1024
       const parts = []
@@ -261,11 +263,11 @@ export function readTilesViaPlusIo(file, onBase64, onError, absPath) {
         off = end
       }
       if (parts.length) {
-        onBase64 && onBase64(parts.join(''), size)
-        return true
+        const joined = parts.join('')
+        if (looksPmtilesB64(joined)) return joined
       }
     }
-    return false
+    return ''
   }
 
   try {
@@ -276,34 +278,51 @@ export function readTilesViaPlusIo(file, onBase64, onError, absPath) {
           (f) => {
             const size = (f && f.size) || 0
             const abs = plusLocalPath(www) || ''
-            // 先试 Native（同步、快）
-            if (viaNative(abs, size)) return
-            // 再试 FileReader
-            const fr = new plus.io.FileReader()
             let done = false
-            const timer = setTimeout(() => {
+            const fallbackNative = (msg) => {
               if (done) return
               done = true
-              fail('FileReader 超时且 Native 读取不可用')
-            }, 15000)
+              const nb = viaNative(abs, size)
+              if (nb) {
+                onBase64 && onBase64(nb, size)
+                return
+              }
+              fail(msg)
+            }
+            // ① FileReader.readAsDataURL —— 真机实测唯一稳定可用的通道；
+            //    大文件要等久一点（按 1.5 秒/MB 给，36 MB ≈ 54 秒）
+            const waitMs = Math.max(15000, Math.ceil((size / (1024 * 1024)) * 1500))
+            const timer = setTimeout(() => fallbackNative('FileReader 读取超时（' + Math.round(waitMs / 1000) + ' 秒）'), waitMs)
+            const fr = new plus.io.FileReader()
             fr.onloadend = () => {
               if (done) return
-              done = true
-              clearTimeout(timer)
               const raw = (fr.result && (fr.result.data || fr.result)) || ''
               const s = typeof raw === 'string' ? raw : String(raw)
               const i = s.indexOf(',')
               const b64 = i >= 0 ? s.slice(i + 1) : s
-              if (!b64) return fail('FileReader 读到空内容（本机不支持读取，且 Native 通道不可用）')
+              if (!b64) {
+                clearTimeout(timer)
+                return fallbackNative('FileReader 读到空内容')
+              }
+              if (!looksPmtilesB64(b64)) {
+                clearTimeout(timer)
+                done = true
+                return fail('读到的内容不是 PMTiles（base64 前 8 字符="' + b64.slice(0, 8) + '"）')
+              }
+              done = true
+              clearTimeout(timer)
               onBase64 && onBase64(b64, size)
             }
             fr.onerror = (e) => {
-              if (done) return
-              done = true
               clearTimeout(timer)
-              fail('FileReader: ' + ((e && e.message) || '未知错误'))
+              fallbackNative('FileReader: ' + ((e && e.message) || '未知错误'))
             }
-            fr.readAsDataURL(f)
+            try {
+              fr.readAsDataURL(f)
+            } catch (e) {
+              clearTimeout(timer)
+              fallbackNative('readAsDataURL 异常: ' + ((e && e.message) || String(e)))
+            }
           },
           (e) => fail('file(): ' + ((e && e.message) || '未知错误'))
         )
@@ -315,6 +334,15 @@ export function readTilesViaPlusIo(file, onBase64, onError, absPath) {
     fail('plus.io 异常: ' + ((e && e.message) || String(e)))
     return false
   }
+}
+
+/**
+ * base64 内容的前 8 字符是否是 PMTiles 魔数。
+ * 用在"从桥那边收到 base64 之后"的廉价校验上：
+ * 真机 Native 分块读取会返回长度正确但内容全 0 的数据，不校验就会把 0 喂给解析器。
+ */
+export function isPmtilesBase64(b64) {
+  return typeof b64 === 'string' && b64.length >= 12 && b64.slice(0, 8) === 'UE1UaWxl'
 }
 
 /** 视图层用：base64 -> Uint8Array（webview 里一定有 atob） */

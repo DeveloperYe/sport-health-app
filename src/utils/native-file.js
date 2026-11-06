@@ -83,7 +83,8 @@ export function fileReaderRead(file, opt) {
   const o = opt || {}
   const asArray = !!o.asArrayBuffer
   const useSlice = o.start !== undefined && o.end !== undefined
-  const timeoutMs = o.timeoutMs || 6000
+  // readAsArrayBuffer 在部分机型上永不回调，给它更短的等待
+  const timeoutMs = o.timeoutMs || (asArray ? 1200 : 6000)
   return new Promise((resolve) => {
     let done = false
     const fin = (v) => {
@@ -199,17 +200,20 @@ export async function readAny(file, opt) {
   const sliced = o.start !== undefined && o.end !== undefined
   const order = []
 
-  // **Native 优先**：它是同步调用，成功就立刻返回、失败也立刻返回；
-  // 而 FileReader 在部分机型上既不回调也不报错，只能靠超时兜 —— 放前面等于白等。
-  // 实测教训：用户机上 FileReader 读空，结构校验因此在 6s×2 的空等上白耗。
+  // 真机实测（2026-11-06）：
+  //   FileReader.readAsDataURL  ✅ 可用（整文件、分块都行）
+  //   FileReader.readAsArrayBuffer ✖ 从不回调（只能靠超时，纯等待）
+  //   Native 分块 RandomAccessFile ✖ 返回正确长度但**内容全 0**（看着成功、数据是错的）
+  //   Native 整文件 Files.readAllBytes ✖ 不可用
+  // ⇒ 顺序：dataURL 优先；arraybuffer 只作短超时兜底；Native 放最后且必须过内容校验。
+  if (file) {
+    // 分块读时不回退"整文件读"：那会让每个分块都读一遍整包（哈希场景是灾难）
+    if (sliced) order.push('slice-dataurl', 'slice-arraybuffer')
+    else order.push('file-dataurl', 'file-arraybuffer')
+  }
   if (o.absPath) {
     if (sliced) order.push('native-chunk')
     else order.push('native-whole', 'native-chunk')
-  }
-  if (file) {
-    // 分块读时不回退"整文件读"：那会让每个分块都读一遍整包（哈希场景是灾难）
-    if (sliced) order.push('slice-arraybuffer', 'slice-dataurl')
-    else order.push('file-arraybuffer', 'file-dataurl')
   }
   // 已经知道哪条能用，就把它提到最前面
   if (goodStrategy) {

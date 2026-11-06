@@ -907,9 +907,15 @@ export async function storageSelfTest() {
       const u8 = toBytes(nb)
       ntxt = u8 && u8.length ? String.fromCharCode.apply(null, Array.from(u8)) : ''
     }
-    lines.push((nb ? '✅' : '❌') + ' Native 分块 Base64' + (nb ? ' → ' + JSON.stringify(ntxt) : '（不可用）'))
+    // 注意：真机上 Native 分块会返回"正确长度但内容全 0"，所以必须比对内容，
+    // 只看"有没有返回"会误判成可用。
+    if (!nb) lines.push('❌ Native 分块 Base64（不可用）')
+    else if (ntxt === body) lines.push('✅ Native 分块 Base64 → ' + JSON.stringify(ntxt))
+    else lines.push('❌ Native 分块 Base64（返回了数据但内容不符，疑似全 0：' + JSON.stringify(ntxt.slice(0, 8)) + '…）')
     const nw = nativeReadBase64(absRel)
-    lines.push((nw ? '✅' : '❌') + ' Native 整文件 Base64' + (nw ? '（' + nw.length + ' 字符）' : '（不可用）'))
+    const nwTxt = nw ? String.fromCharCode.apply(null, Array.from(toBytes(nw) || [])) : ''
+    if (!nw) lines.push('❌ Native 整文件 Base64（不可用）')
+    else lines.push((nwTxt === body ? '✅' : '❌') + ' Native 整文件 Base64' + (nwTxt === body ? '' : '（内容不符）'))
     lines.push('当前选用读取方式: ' + (getReadStrategy() || '尚未确定'))
   }
   // 3) 删掉
