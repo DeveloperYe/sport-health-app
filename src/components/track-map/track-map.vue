@@ -93,7 +93,7 @@ export default {
       const pts = this.points || []
       if (pts.length > 1) {
         const pr = project(pts, w, h, 22)
-        this.drawTrack(ctx, pr.points)
+        this.drawTrack(ctx, pr.points, pts)
         this.drawScale(pr.pxPerMeter)
       } else if (pts.length === 1) {
         // 只有一个点：中心画个位置点
@@ -122,15 +122,26 @@ export default {
         ctx.stroke()
       }
     },
-    drawTrack(ctx, xy) {
-      // 轨迹线
+    drawTrack(ctx, xy, src) {
+      // 轨迹线：按 seg 分段画 —— 跨段用 moveTo 断开。
+      // 否则 GPS 中断（切页面/切后台/进隧道）后，图上会连出一条根本没走过的直线。
       ctx.setStrokeStyle('#2bd45c')
       ctx.setLineWidth(3.5)
       ctx.setLineCap('round')
       ctx.setLineJoin('round')
       ctx.beginPath()
-      ctx.moveTo(xy[0].x, xy[0].y)
-      for (let i = 1; i < xy.length; i++) ctx.lineTo(xy[i].x, xy[i].y)
+      let prevSeg = null
+      let started = false
+      for (let i = 0; i < xy.length; i++) {
+        const seg = src && src[i] && src[i].seg !== undefined ? src[i].seg : 0
+        if (!started || seg !== prevSeg) {
+          ctx.moveTo(xy[i].x, xy[i].y)
+          started = true
+        } else {
+          ctx.lineTo(xy[i].x, xy[i].y)
+        }
+        prevSeg = seg
+      }
       ctx.stroke()
 
       // 起点（绿，空心）

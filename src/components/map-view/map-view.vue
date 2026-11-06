@@ -97,6 +97,9 @@ export default {
       tileB64: '',
       tileChunkCount: 0,
       currentFile: 0, // 当前正在传的档案下标（多档案逐个过桥）
+      mapTheme: 'dark', // 地图色标：dark / light（跟随全局主题）
+      pendingTheme: '', // 不可见期间攒下的主题，可见时一次性应用
+      syncTick: 0, // 切回本页时自增，强制把主题对齐一次
     }
   },
   computed: {
@@ -122,10 +125,15 @@ export default {
         // H5 走的是逻辑层建图（没有 renderjs），所以要在这里也切一次；
         // App 端由 renderjs 的 onTheme 负责，这条对它是重复调用但有幂等保护。
         if (this.core && this.core.setTheme) {
-          try {
-            this.core.setTheme(next)
-          } catch (e) {
-            /* ignore */
+          // 不可见时不重建样式（看不见的画面重绘纯浪费），攒到可见时再一次性应用
+          if (this.visible === false) {
+            this.pendingTheme = next
+          } else {
+            try {
+              this.core.setTheme(next)
+            } catch (e) {
+              /* ignore */
+            }
           }
         }
       },
@@ -145,6 +153,15 @@ export default {
       if (this.core && this.core.setVisible) this.core.setVisible(v)
       // 切走就停轮询，切回立刻刷新并恢复
       if (v) {
+        // 页面刚可见：先把攒下的主题应用掉，再恢复轮询（用户此时才看得见画面）
+        if (this.pendingTheme && this.core && this.core.setTheme) {
+          try {
+            this.core.setTheme(this.pendingTheme)
+          } catch (e) {
+            /* ignore */
+          }
+          this.pendingTheme = ''
+        }
         this.startStatusTimer()
         this.pushStatus()
       } else {
@@ -498,6 +515,8 @@ export default {
       status: null,
       booting: false,
       lastPoints: [],
+      mapTheme: 'dark', // 地图色标：dark / light
+      pendingTheme: '', // 不可见期间攒下的主题，可见时一次性应用
       hostId: '',
       el: null,
       hostSize: null, // 逻辑层推下来的容器像素尺寸（首选，视图层自己量不到）
@@ -538,6 +557,7 @@ export default {
     /** 逻辑层要求强制对齐（切回页面时）：以 DOM 为准再切一次 */
     onSync() {
       this.syncThemeFromDom()
+      if (this.pendingTheme) this.pendingTheme = ''
       if (this.core && this.core.setTheme) {
         try {
           this.core.setTheme(this.mapTheme)
@@ -585,10 +605,15 @@ export default {
           if (t && t !== this.mapTheme) {
             this.mapTheme = t
             if (this.core && this.core.setTheme) {
-              try {
-                this.core.setTheme(t)
-              } catch (e) {
-                /* ignore */
+              // 不可见时只记账：地图看不见，没必要在后台重建样式/重绘
+              if (this.isVisibleNow()) {
+                try {
+                  this.core.setTheme(t)
+                } catch (e) {
+                  /* ignore */
+                }
+              } else {
+                this.pendingTheme = t
               }
             }
           }
@@ -635,6 +660,15 @@ export default {
     onVisible(v) {
       if (this.core && this.core.setVisible) this.core.setVisible(!!v)
       if (v) {
+        // 可见了：把不可见期间攒下的主题一次应用（这样"切回来时已经是正确颜色"）
+        if (this.pendingTheme && this.core && this.core.setTheme) {
+          try {
+            this.core.setTheme(this.pendingTheme)
+          } catch (e) {
+            /* ignore */
+          }
+          this.pendingTheme = ''
+        }
         this.startStatusTimer()
         this.pushStatus()
       } else {

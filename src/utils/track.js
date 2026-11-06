@@ -17,12 +17,10 @@
 
 import { haversine, simplify } from './geo.js'
 import { startKeepAlive, stopKeepAlive } from './keepalive.js'
+import { classifyPoint, accuracyOk } from './track-filter.js'
 
 // 采样过滤阈值（GPS 原始点噪声很大，必须过滤，否则距离会虚高几十个百分点）
-const MAX_ACCURACY = 50 // 精度（米）差于此的点直接丢弃：飘移主要来源
-const MIN_MOVE = 3 // 与上一点距离小于此（米）视为静止抖动
-const MAX_SPEED = 12 // 瞬时速度上限（m/s ≈ 43km/h）：跑步不可能，视为跳点
-const FORCE_KEEP_GAP = 30000 // 与上一点间隔超过此（ms）视为中断，跳过 MIN_MOVE 检查
+// 过滤阈值与分段判定已迁到 track-filter.js（纯函数 + 单测），此处不再重复定义
 
 let track = null // 当前会话状态；null = 未在采集
 let watcher = null // 平台监听句柄标记
@@ -38,6 +36,8 @@ function newTrack() {
     segStart: now(), // 本段（未暂停）起点时刻
     accumMs: 0, // 之前各段累计时长
     paused: false,
+    seg: 0, // 当前轨迹段号：GPS 中断后 +1；渲染按段画，跨段不连线
+    breaks: 0, // 中断次数（段数 - 1）
     rejected: 0, // 被过滤掉的点数（诊断用）
     lastError: '', // 最近一次定位错误（含瞬时错误，只做诊断）
     error: '', // 面向用户的失败提示：只有「一个点都没拿到」时才有值
@@ -129,7 +129,7 @@ function accept(c) {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return
 
   const accuracy = Number(c.accuracy) || 0
-  if (accuracy > MAX_ACCURACY) {
+  if (!accuracyOk(accuracy)) {
     track.rejected++
     return
   }
@@ -142,21 +142,26 @@ function accept(c) {
   if (Number.isFinite(spd) && spd >= 0) pt.speed = spd
 
   const last = track.points[track.points.length - 1]
-  if (last) {
-    const gap = ts - last.ts
-    const d = haversine(last, pt)
-    if (gap < FORCE_KEEP_GAP) {
-      if (d < MIN_MOVE) {
-        track.rejected++ // 原地抖动：GPS 静止时也会持续吐点
-        return
-      }
-      if (gap > 0 && d / (gap / 1000) > MAX_SPEED) {
-        track.rejected++ // 跳点
-        return
-      }
-    }
-    track.distance += d
+  // 判定统一走 track-filter.js（纯函数、有单测）：
+  //   · 抖动 / 跳点 → 丢弃
+  //   · 间隔 ≥ BREAK_GAP → 接受但**开新段**，且跨段距离不计入
+  //     （否则切页面回来会连出一条没走过的直线，总距离还虚增几百米）
+  const verdict = classifyPoint(last, pt)
+  if (!verdict.accept) {
+    track.rejected++
+    return
   }
+  // 暂停→恢复后的第一个有效点：即使间隔不长也开新段（暂停期间的位置变化不能连成直线）
+  if (track.segStartNext) {
+    track.segStartNext = false
+    verdict.breakSeg = true
+  }
+  if (verdict.breakSeg) {
+    track.seg = (track.seg || 0) + 1
+    track.breaks = (track.breaks || 0) + 1
+  }
+  pt.seg = track.seg || 0
+  track.distance += verdict.distance
 
   track.points.push(pt)
   // 已经拿到有效点 = 定位是通的，清掉之前的失败提示
@@ -238,6 +243,8 @@ export function pauseTrack() {
 }
 
 export function resumeTrack() {
+  // 暂停期间可能有位移：恢复时强制开新段，避免一段直线跨过暂停期
+  if (track) track.segStartNext = true
   if (!track || !track.paused) return
   track.segStart = now()
   track.paused = false

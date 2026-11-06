@@ -26,6 +26,7 @@ import * as maplibregl from 'maplibre-gl'
 import { PMTiles, Protocol } from 'pmtiles'
 import { layers as basemapLayers, namedFlavor } from '@protomaps/basemaps'
 import { paletteFor } from './theme.js'
+import { trackGeoJSON } from '../../utils/track-geo.js'
 import { containerOk, describeValue } from './dom.js'
 // worker 源码以原始字符串内联：?raw 不经过 esbuild，worker 里的 BigInt 与
 // 打包 target 无关；运行时再由 ensureWorker() 转成 blob URL 交给 setWorkerUrl。
@@ -262,31 +263,6 @@ function collectCoords(points) {
     }
   }
   return out
-}
-
-export function trackGeoJSON(points) {
-  const coords = collectCoords(points)
-  const features = []
-  if (coords.length > 1) {
-    features.push({
-      type: 'Feature',
-      properties: { kind: 'line' },
-      geometry: { type: 'LineString', coordinates: coords },
-    })
-  }
-  if (coords.length >= 1) {
-    features.push({
-      type: 'Feature',
-      properties: { kind: 'start' },
-      geometry: { type: 'Point', coordinates: coords[0] },
-    })
-    features.push({
-      type: 'Feature',
-      properties: { kind: 'end' },
-      geometry: { type: 'Point', coordinates: coords[coords.length - 1] },
-    })
-  }
-  return { type: 'FeatureCollection', features }
 }
 
 /** 轨迹是否有点落在离线包 bbox 之外（超出就回退自绘层） */
