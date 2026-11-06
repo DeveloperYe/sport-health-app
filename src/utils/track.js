@@ -38,6 +38,7 @@ function newTrack() {
     paused: false,
     seg: 0, // 当前轨迹段号：GPS 中断后 +1；渲染按段画，跨段不连线
     breaks: 0, // 中断次数（段数 - 1）
+    estimatedDistance: 0, // 其中"信号中断期间按直线估算"的距离（米）
     rejected: 0, // 被过滤掉的点数（诊断用）
     lastError: '', // 最近一次定位错误（含瞬时错误，只做诊断）
     error: '', // 面向用户的失败提示：只有「一个点都没拿到」时才有值
@@ -62,6 +63,9 @@ export function getTrack() {
     distance: track.distance,
     elapsedMs: elapsedMs(),
     pointCount: track.points.length,
+    seg: track.seg || 0, // 轨迹段数（1 + 中断次数）
+    breaks: track.breaks || 0,
+    estimatedDistance: track.estimatedDistance || 0, // 其中按直线估算的部分，UI 需如实显示
     rejected: track.rejected,
     error: track.error,
   }
@@ -134,7 +138,16 @@ function accept(c) {
     return
   }
 
-  const ts = now()
+  // 优先用 GPS 自带时间戳：切后台时系统可能把回调攒着批量投递，
+  // 用"到达时间"会让几十个点挤在同一毫秒 → 被当成跳点全丢（用户看到的就是"白跑"）。
+  const tNow = now()
+  let ts = tNow
+  const tGps = Number(c && c.timestamp)
+  if (Number.isFinite(tGps) && tGps > 0) {
+    // 兼容秒/毫秒；只接受 10 分钟内、不超过现在的值
+    let cand = tGps < 1e12 ? tGps * 1000 : tGps
+    if (cand <= tNow + 5000 && cand >= tNow - 600000) ts = cand
+  }
   const pt = { lat, lng, accuracy, ts }
   const alt = Number(c.altitude)
   if (Number.isFinite(alt)) pt.altitude = alt
@@ -159,6 +172,7 @@ function accept(c) {
   if (verdict.breakSeg) {
     track.seg = (track.seg || 0) + 1
     track.breaks = (track.breaks || 0) + 1
+    if (verdict.estimated) track.estimatedDistance = (track.estimatedDistance || 0) + verdict.distance
   }
   pt.seg = track.seg || 0
   track.distance += verdict.distance

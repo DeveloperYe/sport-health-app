@@ -412,6 +412,20 @@ export function createTrackMap(opts) {
         paint: { 'line-color': TRACK_COLOR, 'line-width': TRACK_WIDTH },
       },
       {
+          id: 'track-gap',
+          type: 'line',
+          source: 'track',
+          filter: ['==', ['get', 'kind'], 'gap'],
+          layout: { 'line-join': 'round', 'line-cap': 'butt' },
+          paint: {
+            // 断档用虚线：明确表示"这段是信号中断的直线估算，不是走过的路"
+            'line-color': themeName === 'light' ? '#8a95a5' : '#8b95a2',
+            'line-width': 2,
+            'line-dasharray': [2, 2],
+            'line-opacity': 0.85,
+          },
+        },
+        {
         id: 'track-start',
         type: 'circle',
         source: 'track',

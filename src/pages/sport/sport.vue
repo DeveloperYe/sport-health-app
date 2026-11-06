@@ -57,6 +57,7 @@
           <view class="timer-sub-item">
             <text class="timer-sub-num">{{ distanceText }}</text>
             <text class="timer-sub-label">距离</text>
+          <text class="timer-sub-note" v-if="estimatedNote">{{ estimatedNote }}</text>
           </view>
           <view class="timer-sub-item">
             <text class="timer-sub-num">{{ paceText }}</text>
@@ -275,6 +276,7 @@ export default {
       // ===== GPS 轨迹 =====
       trackPoints: [], // 与 UI 绑定的已过滤轨迹点（每来一个点换一次引用，触发子组件重绘）
       gpsDistance: 0, // 米
+      estimatedDistance: 0, // 其中信号中断期间按直线估算的米数（如实告知用户）
       gpsError: '', // 权限 / 定位失败原因，直接显示给用户
       offTrack: null, // track.js 的退订函数
       // ===== 轨迹图模式：离线底图 或 自绘兜底（二选一）=====
@@ -323,6 +325,12 @@ export default {
     },
     distanceText() {
       return formatDistance(this.gpsDistance)
+    },
+    // 只在中途真的丢过信号时才提一句，平时不打扰
+    estimatedNote() {
+      const m = this.estimatedDistance || 0
+      if (m < 30) return ''
+      return '含估算 ' + formatDistance(m)
     },
     paceText() {
       // 配速用与显示时间同一个口径（暂停时两者都停）
@@ -642,6 +650,7 @@ export default {
       // 运行时透传 plus.geolocation 走系统定位，不需要任何地图厂商 key
       this.trackPoints = []
       this.gpsDistance = 0
+      this.estimatedDistance = 0
       this.gpsError = ''
       // 新一轮回到底图（上一轮可能因越界降级了）；底图彻底坏了才继续用自绘层
       if (!this.mapBroken) {
@@ -656,6 +665,7 @@ export default {
         // 换引用以触发子组件重绘
         this.trackPoints = snap.points.slice()
         this.gpsDistance = snap.distance
+        this.estimatedDistance = snap.estimatedDistance || 0
         if (snap.error) this.gpsError = snap.error
       })
 
@@ -1204,6 +1214,14 @@ export default {
   font-size: 24rpx;
   color: $text-muted;
   padding-left: 8rpx;
+}
+
+/* 估算距离提示：只在信号中断后出现，说明这几十米是直线估算的 */
+.timer-sub-note {
+  display: block;
+  margin-top: 2rpx;
+  font-size: 18rpx;
+  color: var(--text-3);
 }
 
 /* flat-press:2026-11-06 */

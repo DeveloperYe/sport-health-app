@@ -13,8 +13,8 @@
  *   2. 静止抖动（位移 < MIN_MOVE 且间隔不长）→ 丢；
  *   3. 跳点（隐含速度 > MAX_SPEED）→ 丢（对任意间隔都判，间隔大时用真实间隔算速度，
  *      所以正常走路不会被误杀）；
- *   4. 真中断（间隔 ≥ BREAK_GAP）→ 接受，但**开新段**、且跨段距离不计入总距离。
- *      页面上因此不会连出直线，数字也不会虚增。
+ *   4. 真中断（间隔 ≥ BREAK_GAP）→ 接受，开新段（画面断开、不连直线），
+ *      距离按两点直线**估算计入**并打 estimated 标记 —— 不能因为信号中断就让用户白跑。
  */
 
 export const MAX_ACCURACY = 50 // 精度（米）差于此的点直接丢弃：飘移主要来源
@@ -68,9 +68,11 @@ export function classifyPoint(last, pt, opt) {
     return { accept: false, breakSeg: false, distance: 0, reason: 'teleport' }
   }
 
-  // 真中断（切页面/切后台/隧道丢星）：接受该点但开新段，且跨段距离不计入
+  // 真中断（切页面/切后台/隧道丢星）：接受该点、开新段（画面不连线），
+  // 但**距离照算**（标记为估算）——用户确实跑了那一段，不能白跑。
+  // 只有隐含速度离谱（飞过去）才在前面被判掉。
   if (gap >= breakGap) {
-    return { accept: true, breakSeg: true, distance: 0, reason: 'resume' }
+    return { accept: true, breakSeg: true, distance: d, estimated: true, reason: 'resume' }
   }
 
   return { accept: true, breakSeg: false, distance: d, reason: 'accept' }

@@ -144,6 +144,24 @@ export default {
       }
       ctx.stroke()
 
+      // 断档连接线（虚线）：跨 seg 的那一段用虚线，别让人以为走过直线
+      if (ctx.setLineDash) {
+        ctx.setLineDash([6, 6])
+        ctx.setStrokeStyle('#8b95a2')
+        ctx.setLineWidth(2)
+        ctx.beginPath()
+        for (let i = 1; i < xy.length; i++) {
+          const seg = src && src[i] && src[i].seg !== undefined ? src[i].seg : 0
+          const prev = src && src[i - 1] && src[i - 1].seg !== undefined ? src[i - 1].seg : 0
+          if (seg !== prev) {
+            ctx.moveTo(xy[i - 1].x, xy[i - 1].y)
+            ctx.lineTo(xy[i].x, xy[i].y)
+          }
+        }
+        ctx.stroke()
+        ctx.setLineDash([])
+      }
+
       // 起点（绿，空心）
       const s = xy[0]
       ctx.setFillStyle(palette().card)

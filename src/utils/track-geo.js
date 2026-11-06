@@ -56,7 +56,8 @@ export function collectCoords(points) {
  */
 export function trackGeoJSON(points) {
   const coords = collectCoords(points)
-  const segments = splitSegments(points).filter((s) => s.length >= 2)
+  const all = splitSegments(points) // 含只有 1 个点的段（用来接断档虚线）
+  const segments = all.filter((s) => s.length >= 2)
   const features = []
 
   if (segments.length === 1) {
@@ -70,6 +71,22 @@ export function trackGeoJSON(points) {
       type: 'Feature',
       properties: { kind: 'line' },
       geometry: { type: 'MultiLineString', coordinates: segments },
+    })
+  }
+
+  // 断档连接线：上一段末点 → 下一段首点。
+  // 单独标 kind:'gap'，由地图用**虚线**渲染 —— 用户一眼能看出"这段是信号中断，不是走过的路"。
+  for (let i = 1; i < all.length; i++) {
+    const prev = all[i - 1]
+    const cur = all[i]
+    if (!prev.length || !cur.length) continue
+    features.push({
+      type: 'Feature',
+      properties: { kind: 'gap' },
+      geometry: {
+        type: 'LineString',
+        coordinates: [prev[prev.length - 1], cur[0]],
+      },
     })
   }
 
