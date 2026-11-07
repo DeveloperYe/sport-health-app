@@ -150,30 +150,88 @@
       </view>
     </view>
 
-    <!-- ===== 板块二：喝水打卡 ===== -->
+    <!-- ===== 板块二：喝水打卡（科学饮水：容量 / 时段 / 间隔 / 冷却） ===== -->
     <view class="card">
       <view class="card-head">
         <text class="card-title">喝水打卡</text>
-        <text class="card-tag">{{ water }} / {{ waterGoal }} 杯 · {{ waterMl }} ml</text>
-      </view>
-
-      <view class="cups">
-        <view
-          v-for="i in 8"
-          :key="i"
-          class="cup"
-          :class="{ on: i <= water }"
-          @click="setCups(i)"
-        >
-          💧
+        <view class="wt-gear" @click="openWaterSet">
+          <text class="wt-gear-ico">⚙</text>
+          <text class="wt-gear-txt">设置</text>
         </view>
       </view>
-      <text class="card-hint">每杯约 250ml，点杯子直接设定杯数；点同一杯可取消。</text>
 
-      <view class="card-actions">
-        <view class="mini-btn ghost" @click="addCup(1)">+1 杯</view>
-        <view class="mini-btn ghost" @click="addCup(-1)">−1 杯</view>
-        <view class="mini-btn primary" @click="setCups(waterGoal)">喝满</view>
+      <view class="wt-nums">
+        <text class="wt-big">{{ water }}</text>
+        <text class="wt-of">/ {{ waterGoal }} 杯</text>
+        <text class="wt-ml">{{ waterMl }} / {{ waterGoalMl }} ml</text>
+      </view>
+      <view class="wt-bar">
+        <view class="wt-bar-in" :style="{ width: waterPct + '%' }"></view>
+      </view>
+
+      <view class="wt-actions">
+        <view class="wt-btn" :class="{ cooling: cooling }" @click="drinkWater">
+          <text class="wt-btn-main">{{ cooling ? cdText : '喝水' }}</text>
+          <text class="wt-btn-sub">{{ cooling ? '冷却中' : '+' + plan.cupMl + ' ml' }}</text>
+        </view>
+        <view class="wt-side">
+          <text class="wt-side-main">{{ nextCupText }}</text>
+          <text class="wt-side-sub">{{ planText }}</text>
+        </view>
+      </view>
+
+      <text class="card-hint">{{ waterHint }}</text>
+    </view>
+
+    <!-- 喝水设置浮层 -->
+    <view class="mask" v-if="showWaterSet" @click="closeWaterSet">
+      <view class="wt-sheet" @click.stop>
+        <text class="wt-sheet-title">喝水设置</text>
+
+        <text class="wt-label">杯子容量</text>
+        <view class="wt-chips">
+          <view
+            v-for="v in cupOptions"
+            :key="v"
+            class="wt-chip"
+            :class="{ on: Number(cupSel) === v && !cupCustomOn }"
+            @click="pickCup(v)"
+          >{{ v }} ml</view>
+          <view class="wt-chip" :class="{ on: cupCustomOn }" @click="cupCustomOn = true">自定义</view>
+        </view>
+        <input
+          v-if="cupCustomOn"
+          class="wt-inp"
+          type="number"
+          v-model="cupCustom"
+          placeholder="150 – 500 ml"
+          placeholder-class="ph"
+        />
+
+        <text class="wt-label">喝水时段</text>
+        <view class="wt-times">
+          <picker mode="time" :value="setStart" @change="onStartPick">
+            <view class="wt-time">{{ setStart }}</view>
+          </picker>
+          <text class="wt-dash">—</text>
+          <picker mode="time" :value="setEnd" @change="onEndPick">
+            <view class="wt-time">{{ setEnd }}</view>
+          </picker>
+        </view>
+
+        <view class="wt-calc">
+          <text class="wt-calc-line">体重 {{ bodyForPlan.weight || 60 }} kg × 30 ml = {{ preview.byWeight }} ml</text>
+          <text class="wt-calc-line">指南基准（{{ bodyForPlan.sex === 'female' ? '女 1500' : '男 1700' }} ml）取较大者 → {{ preview.base }} ml</text>
+          <text class="wt-calc-line" v-if="preview.bonus > 0">今日运动 {{ exerciseMin }} 分钟，额外 +{{ preview.bonus }} ml</text>
+          <text class="wt-calc-line strong">每日目标 {{ previewPlan.goalMl }} ml ÷ 每杯 {{ previewPlan.cupMl }} ml = {{ previewPlan.cups }} 杯</text>
+          <text class="wt-calc-line">喝完一杯要等 {{ previewPlan.intervalMin }} 分钟才能喝下一杯</text>
+          <text class="wt-calc-line sub" v-if="preview.capped">已按单日 4000 ml 封顶（过量饮水有低钠风险）</text>
+        </view>
+
+        <view class="wt-sheet-actions">
+          <view class="mini-btn ghost" @click="closeWaterSet">取消</view>
+          <view class="mini-btn primary" @click="saveWaterSet">保存</view>
+        </view>
       </view>
     </view>
   </view>
@@ -184,9 +242,25 @@ import PermissionsGate from '@/components/permissions-gate.vue'
 import { getTodayData, getTargets } from '@/utils/storage.js'
 import { getTodaySteps } from '@/utils/health.js'
 import { getWater, setWater } from '@/utils/diet-store.js'
-import { getBody, getGoals, today, getWeightLog, upsertWeight, saveBody } from '@/utils/body-store.js'
+import { getBody, getGoals, saveGoals, today, getWeightLog, upsertWeight, saveBody } from '@/utils/body-store.js'
 import { dayCalories, recentAverages } from '@/utils/day-summary.js'
 import { calcBMI, bmiLabel } from '@/utils/body-calc.js'
+import {
+  getWaterPrefs,
+  saveWaterPrefs,
+  drinkOneCup,
+  getLastCupAt,
+  setCupsOf,
+} from '@/utils/water-store.js'
+import {
+  waterPlan,
+  waterTargetMl,
+  cooldownLeftMs,
+  formatLeft,
+  nextCupAt,
+  inDrinkWindow,
+  hhmm,
+} from '@/utils/water-plan.js'
 
 export default {
   components: { PermissionsGate },
@@ -203,6 +277,20 @@ export default {
       calorieGoal: 300,
       water: 0,
       waterGoal: 8,
+      // ===== 科学饮水 =====
+      plan: { cupMl: 250, cups: 8, goalMl: 2000, intervalMin: 105, startHour: 8, endHour: 22 },
+      exerciseMin: 0,
+      cdLeft: 0, // 冷却剩余毫秒
+      cdTimer: null,
+      // 设置浮层
+      showWaterSet: false,
+      cupOptions: [200, 250, 300, 350, 400],
+      cupSel: 250,
+      cupCustom: '',
+      cupCustomOn: false,
+      setStart: '08:00',
+      setEnd: '22:00',
+      bodyForPlan: { weight: '', sex: 'male' }, // 设置面板算目标用
       // 中心数字
       burned: 0,
       // 减脂板块
@@ -225,7 +313,64 @@ export default {
   },
   computed: {
     waterMl() {
-      return this.water * 250
+      return Math.round(this.water * this.plan.cupMl)
+    },
+    /** 目标 ml：按 杯数 × 每杯容量 显示，和左边「N / M 杯」自洽 */
+    waterGoalMl() {
+      return Math.round((Number(this.plan.cups) || 0) * (Number(this.plan.cupMl) || 250))
+    },
+    /** 今日完成度（封顶 100%，喝超了进度条也不溢出） */
+    waterPct() {
+      const goal = Number(this.plan.cups) || 0
+      if (!goal) return 0
+      return Math.min(100, Math.round((this.water / goal) * 100))
+    },
+    /** 冷却中 = 还没到下一杯的时间 */
+    cooling() {
+      return this.cdLeft > 0
+    },
+    cdText() {
+      return formatLeft(this.cdLeft)
+    },
+    nextCupText() {
+      if (this.water >= this.waterGoal) return '今天已喝满 🎉'
+      if (this.cooling) {
+        const at = nextCupAt(getLastCupAt(today()), this.plan.intervalMin)
+        return '下一杯 ' + hhmm(at) + ' 开启'
+      }
+      return '现在可以喝一杯'
+    },
+    planText() {
+      const p = this.plan
+      return p.startHour + ':00–' + p.endHour + ':00 · 每 ' + p.intervalMin + ' 分钟一杯 · 共 ' + p.cups + ' 杯'
+    },
+    waterHint() {
+      if (this.water >= this.waterGoal) return '今天的目标完成了，别硬撑着多喝。'
+      const inWin = inDrinkWindow(new Date(), this.plan.startHour, this.plan.endHour)
+      if (!inWin) {
+        return '当前不在饮水时段（' + this.plan.startHour + ':00–' + this.plan.endHour + ':00），想补一杯也可以。'
+      }
+      return '按体重 ' + (this.bodyForPlan.weight || 60) + ' kg 算出需 ' + this.plan.goalMl + ' ml，凑整为 ' + this.plan.cups + ' 杯 × ' + this.plan.cupMl + ' ml。'
+    },
+    /** 设置浮层实时预览：目标水量 */
+    preview() {
+      return waterTargetMl({
+        weightKg: Number(this.bodyForPlan.weight) || 60,
+        sex: this.bodyForPlan.sex,
+        exerciseMin: this.exerciseMin,
+      })
+    },
+    /** 设置浮层实时预览：杯数与间隔 */
+    previewPlan() {
+      return waterPlan({
+        cupMl: this.cupCustomOn ? Number(this.cupCustom) || this.cupSel : this.cupSel,
+        startHour: this.hmToHour(this.setStart),
+        endHour: this.hmToHour(this.setEnd),
+        goalMlOverride: 0,
+        weightKg: Number(this.bodyForPlan.weight) || 60,
+        sex: this.bodyForPlan.sex,
+        exerciseMin: this.exerciseMin,
+      })
     },
     todayGapText() {
       if (!this.hasIntake) return '还没记录饮食'
@@ -366,12 +511,15 @@ export default {
   onShow() {
     this.refresh()
     this.startTimer()
+    this.recomputePlan()
   },
   onHide() {
     this.stopTimer()
+    this.stopCdLoop()
   },
   onUnload() {
     this.stopTimer()
+    this.stopCdLoop()
   },
   mounted() {
     this.buildDateText()
@@ -441,7 +589,7 @@ export default {
 
       this.stepGoal = Number(targets.steps) || 8000
       this.calorieGoal = Number(targets.calorie) || 300
-      this.waterGoal = Number(goals.water) || 8
+      this.bodyForPlan = { weight: body.weight || '', sex: body.sex || 'male' }
 
       // 步数：优先系统计步真值，取不到退回当日统计
       let steps = 0
@@ -458,6 +606,9 @@ export default {
       this.exercise = sum.exercise.total
       this.burned = sum.tdee
       this.water = getWater(todayStr)
+      // 运动分钟数参与补水计算（运动越多目标越高）
+      this.exerciseMin = Math.round(Number((sum.exercise && sum.exercise.minutes) || 0))
+      this.recomputePlan()
       this.todayGap = sum.gap
       this.hasIntake = sum.intake > 0
 
@@ -492,15 +643,100 @@ export default {
       if (!g) return 0
       return Math.min(999, Math.round(((Number(value) || 0) / g) * 100))
     },
-    // ===== 饮水 =====
-    setCups(n) {
-      const next = this.water === n ? n - 1 : n
-      setWater(today(), next)
-      this.refresh()
+    // ===== 科学饮水 =====
+    /** 根据设置 + 身体信息重算计划（目标杯数、间隔），并同步 cooling 状态 */
+    recomputePlan() {
+      const prefs = getWaterPrefs()
+      const p = waterPlan({
+        cupMl: prefs.cupMl,
+        startHour: prefs.startHour,
+        endHour: prefs.endHour,
+        goalMlOverride: prefs.goalMlOverride,
+        weightKg: Number(this.bodyForPlan.weight) || 0,
+        sex: this.bodyForPlan.sex,
+        exerciseMin: this.exerciseMin,
+      })
+      this.plan = p
+      // 目标杯数就是首页三环的饮水环口径，保持单一真值
+      this.waterGoal = p.cups
+      this.cdLeft = cooldownLeftMs(getLastCupAt(today()), p.intervalMin, Date.now())
+      if (this.cdLeft > 0) this.startCdLoop()
+      else this.stopCdLoop()
+      return p
     },
-    addCup(delta) {
-      setWater(today(), this.water + delta)
-      this.refresh()
+    /** 点「喝水」：冷却中拒绝并说明原因；否则记一杯并开始冷却 */
+    drinkWater() {
+      if (this.cdLeft > 0) {
+        uni.showToast({ title: '还差 ' + formatLeft(this.cdLeft) + '，别急', icon: 'none' })
+        return
+      }
+      const r = drinkOneCup(today(), Date.now())
+      this.water = r.cups
+      this.cdLeft = Math.max(0, cooldownLeftMs(r.lastAt, this.plan.intervalMin, Date.now()))
+      this.startCdLoop()
+      uni.showToast({ title: '已记录 +' + this.plan.cupMl + ' ml', icon: 'none' })
+    },
+    /** 冷却倒计时：每秒刷新一次，到 0 自动停 */
+    startCdLoop() {
+      if (this.cdTimer) return
+      this.cdTimer = setInterval(() => {
+        this.cdLeft = Math.max(0, this.cdLeft - 1000)
+        if (this.cdLeft <= 0) this.stopCdLoop()
+      }, 1000)
+    },
+    stopCdLoop() {
+      if (this.cdTimer) {
+        clearInterval(this.cdTimer)
+        this.cdTimer = null
+      }
+    },
+    // ===== 喝水设置 =====
+    hmToHour(hm) {
+      const m = String(hm || '').match(/^(\d{1,2}):(\d{2})$/)
+      if (!m) return 8
+      return Math.max(0, Math.min(24, Number(m[1]) + (Number(m[2]) > 0 ? 0 : 0)))
+    },
+    hourToHm(h) {
+      const v = Math.max(0, Math.min(24, Math.round(Number(h) || 0)))
+      return (v < 10 ? '0' + v : String(v)) + ':00'
+    },
+    openWaterSet() {
+      const prefs = getWaterPrefs()
+      this.cupSel = prefs.cupMl
+      this.cupCustomOn = ![200, 250, 300, 350, 400].includes(Number(prefs.cupMl))
+      this.cupCustom = this.cupCustomOn ? String(prefs.cupMl) : ''
+      this.setStart = this.hourToHm(prefs.startHour)
+      this.setEnd = this.hourToHm(prefs.endHour)
+      this.showWaterSet = true
+    },
+    closeWaterSet() {
+      this.showWaterSet = false
+    },
+    pickCup(v) {
+      this.cupSel = v
+      this.cupCustomOn = false
+    },
+    onStartPick(e) {
+      this.setStart = e.detail.value
+    },
+    onEndPick(e) {
+      this.setEnd = e.detail.value
+    },
+    saveWaterSet() {
+      const cupMl = this.cupCustomOn ? Number(this.cupCustom) || this.cupSel : this.cupSel
+      if (!(cupMl >= 150 && cupMl <= 500)) {
+        uni.showToast({ title: '杯容量请填 150–500 ml', icon: 'none' })
+        return
+      }
+      const startHour = this.hmToHour(this.setStart)
+      let endHour = this.hmToHour(this.setEnd)
+      if (endHour <= startHour) endHour = startHour + 1
+      saveWaterPrefs({ cupMl, startHour, endHour })
+      // 目标杯数变了，同步进 goals.water（首页三环 / 饮食页都以它为准）
+      const p = this.recomputePlan()
+      saveGoals({ water: p.cups })
+      this.showWaterSet = false
+      uni.showToast({ title: '已保存：每 ' + p.intervalMin + ' 分钟一杯', icon: 'none' })
     },
     // ===== 跳转 =====
     goDiet() {
@@ -928,4 +1164,165 @@ export default {
   transform: scale(0.97);
   opacity: 0.9;
 }
+
+/* ===== 喝水打卡（科学饮水）===== */
+.wt-gear {
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+  padding: 8rpx 18rpx;
+  border-radius: $pill-radius;
+  background: $bg-card-deep;
+}
+.wt-gear-ico { font-size: 24rpx; color: $text-secondary; }
+.wt-gear-txt { font-size: 22rpx; color: $text-secondary; }
+
+.wt-nums {
+  display: flex;
+  align-items: baseline;
+  gap: 10rpx;
+  margin-top: 20rpx;
+}
+.wt-big {
+  font-size: 66rpx;
+  font-weight: 700;
+  line-height: 1;
+  color: $text-main;
+  font-variant-numeric: tabular-nums;
+}
+.wt-of { font-size: 26rpx; color: $text-secondary; }
+.wt-ml {
+  margin-left: auto;
+  font-size: 24rpx;
+  color: $text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+.wt-bar {
+  height: 12rpx;
+  margin-top: 16rpx;
+  border-radius: $pill-radius;
+  background: $bg-card-deep;
+  overflow: hidden;
+}
+.wt-bar-in {
+  height: 100%;
+  border-radius: $pill-radius;
+  background: $cool;
+  transition: width 0.35s ease;
+}
+
+.wt-actions {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+  margin-top: 26rpx;
+}
+.wt-btn {
+  flex: 0 0 240rpx;
+  height: 132rpx;
+  border-radius: $btn-radius;
+  background: $brand-primary;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6rpx;
+  transition: transform 0.12s ease, background 0.2s ease;
+}
+.wt-btn:active { transform: scale(0.97); }
+.wt-btn.cooling { background: $bg-card-deep; }
+.wt-btn-main {
+  font-size: 34rpx;
+  font-weight: 700;
+  color: $on-accent;
+  font-variant-numeric: tabular-nums;
+}
+.wt-btn.cooling .wt-btn-main { color: $text-muted; }
+.wt-btn-sub { font-size: 20rpx; color: $on-accent; opacity: 0.75; }
+.wt-btn.cooling .wt-btn-sub { color: $text-muted; opacity: 1; }
+
+.wt-side { flex: 1; display: flex; flex-direction: column; gap: 6rpx; }
+.wt-side-main { font-size: 26rpx; font-weight: 600; color: $text-main; }
+.wt-side-sub { font-size: 21rpx; color: $text-muted; line-height: 1.4; }
+
+/* ===== 喝水设置浮层 ===== */
+/* mask 必须自己定义：diet.vue 里的 .mask 是 scoped，健康页取不到 */
+.mask {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--mask);
+  z-index: 999; /* tabBar 是 998，必须盖过它，否则底部按钮点不到 */
+  display: flex;
+  align-items: flex-end;
+}
+.wt-sheet {
+  position: relative;
+  width: 100%;
+  padding: 32rpx 28rpx calc(32rpx + env(safe-area-inset-bottom));
+  border-radius: 32rpx 32rpx 0 0;
+  background: $bg-card;
+  max-height: 84vh;
+  overflow-y: auto;
+}
+.wt-sheet-title {
+  display: block;
+  font-size: 32rpx;
+  font-weight: 700;
+  color: $text-main;
+  margin-bottom: 22rpx;
+}
+.wt-label {
+  display: block;
+  font-size: 24rpx;
+  color: $text-muted;
+  margin: 20rpx 0 12rpx;
+}
+.wt-chips { display: flex; flex-wrap: wrap; gap: 14rpx; }
+.wt-chip {
+  padding: 14rpx 26rpx;
+  border-radius: $pill-radius;
+  background: $bg-card-deep;
+  color: $text-secondary;
+  font-size: 24rpx;
+  font-variant-numeric: tabular-nums;
+}
+.wt-chip.on { background: $brand-primary; color: $on-accent; font-weight: 600; }
+.wt-inp {
+  margin-top: 14rpx;
+  height: 80rpx;
+  padding: 0 22rpx;
+  border-radius: $btn-radius;
+  background: $bg-card-deep;
+  color: $text-main;
+  font-size: 26rpx;
+}
+.wt-times { display: flex; align-items: center; gap: 18rpx; }
+.wt-time {
+  padding: 16rpx 30rpx;
+  border-radius: $btn-radius;
+  background: $bg-card-deep;
+  color: $text-main;
+  font-size: 28rpx;
+  font-variant-numeric: tabular-nums;
+}
+.wt-dash { color: $text-muted; font-size: 24rpx; }
+.wt-calc {
+  margin-top: 24rpx;
+  padding: 22rpx;
+  border-radius: $btn-radius;
+  background: $bg-card-deep;
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+}
+.wt-calc-line { font-size: 22rpx; color: $text-muted; line-height: 1.5; }
+.wt-calc-line.strong { font-size: 26rpx; font-weight: 700; color: $accent-text; }
+.wt-calc-line.sub { color: $warm-text; }
+.wt-sheet-actions { display: flex; gap: 20rpx; margin-top: 30rpx; }
+.wt-sheet-actions .mini-btn { flex: 1; text-align: center; }
+
 </style>

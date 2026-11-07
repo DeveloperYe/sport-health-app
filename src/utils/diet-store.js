@@ -144,7 +144,8 @@ export function getWater(date) {
 
 export function setWater(date, cups) {
   const all = readAll(KEY_WATER)
-  all[date] = Math.max(0, Math.min(20, Math.round(Number(cups) || 0)))
+  // 上限放到 40：杯子容量可小到 150 ml，4000 ml 目标对应 27 杯
+    all[date] = Math.max(0, Math.min(40, Math.round(Number(cups) || 0)))
   writeAll(KEY_WATER, all)
   return all[date]
 }

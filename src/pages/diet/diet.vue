@@ -73,11 +73,11 @@
     <view class="card">
       <view class="card-head">
         <text class="card-title">饮水</text>
-        <text class="card-extra">{{ summary.water }} / {{ summary.waterGoal }} 杯</text>
+        <text class="card-extra">{{ summary.water }} / {{ summary.waterGoal }} 杯 · {{ waterMl }} / {{ waterGoalMl }} ml</text>
       </view>
       <view class="cups">
         <view
-          v-for="i in 8"
+          v-for="i in (summary.waterGoal || 8)"
           :key="i"
           class="cup"
           :class="{ on: i <= summary.water }"
@@ -192,6 +192,7 @@
 import { MEALS, MEAL_MAP, getDayEntries, addEntry, updateEntry, removeEntry, summarizeByMeal, copyDay, setWater as saveWater } from '@/utils/diet-store.js'
 import { searchFoods, estimateDish, COMMON_FOODS } from '@/utils/nutrition.js'
 import { macroToCalorie } from '@/utils/body-calc.js'
+import { getWaterPrefs } from '@/utils/water-store.js'
 import { dayCalories } from '@/utils/day-summary.js'
 import { today, dateOffset } from '@/utils/body-store.js'
 
@@ -224,6 +225,17 @@ export default {
     }
   },
   computed: {
+    /** 杯子容量：与首页喝水卡共用同一份设置 */
+    cupMl() {
+      const p = getWaterPrefs()
+      return Math.max(150, Math.min(500, Number(p.cupMl) || 250))
+    },
+    waterMl() {
+      return Math.round((Number(this.summary && this.summary.water) || 0) * this.cupMl)
+    },
+    waterGoalMl() {
+      return Math.round((Number(this.summary && this.summary.waterGoal) || 0) * this.cupMl)
+    },
     dateTabs() {
       return [
         { date: today(), label: '今天' },
@@ -605,12 +617,13 @@ export default {
 /* 饮水 */
 .cups {
   display: flex;
+  flex-wrap: wrap;
   gap: 12rpx;
   margin-top: 18rpx;
 }
 .cup {
-  flex: 1;
-  height: 64rpx;
+  flex: 0 0 calc((100% - 72rpx) / 7);
+  height: 60rpx;
   border-radius: 12rpx;
   background: $bg-card-light;
   text-align: center;
