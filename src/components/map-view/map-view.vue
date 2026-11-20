@@ -855,7 +855,8 @@ export default {
       this.bridgeSize = 0
       this.r1Text = ''
       this.tileAbs = ''
-      this.ready = false
+      // 视图层没有 `ready` 字段（那是逻辑层的）：原来这里写 this.ready = false
+      // 属于「给未声明字段赋值」，真机可能被静默丢弃 —— 删掉，避免同类隐患。
       // 新城市建图前不该显示上一个城市的瓦片数与错误（P2-13/P2-14）
       this.resetDiag()
       this.syncThemeFromDom()
@@ -910,11 +911,12 @@ export default {
      */
     watchThemeClass() {
       try {
-        if (this.__themeMo || typeof MutationObserver === 'undefined') return
+        const id = this.instId || 'mvi-0'
+        if (THEME_MO_MAP.get(id) || typeof MutationObserver === 'undefined') return
         const el = this.el || document.querySelector('.mv-root')
         const host = (el && el.closest && el.closest('.t-light, .t-dark')) || document.querySelector('.page')
         if (!host) return
-        this.__themeMo = new MutationObserver(() => {
+        const mo = new MutationObserver(() => {
           const t = this.readThemeFromDom()
           if (t && t !== this.mapTheme) {
             this.mapTheme = t
@@ -928,10 +930,22 @@ export default {
             }
           }
         })
-        this.__themeMo.observe(host, { attributes: true, attributeFilter: ['class'] })
+        mo.observe(host, { attributes: true, attributeFilter: ['class'] })
+        THEME_MO_MAP.set(id, mo)
       } catch (e) {
         /* ignore */
       }
+    },
+    destroyThemeObserver() {
+      const id = this.instId || 'mvi-0'
+      const mo = THEME_MO_MAP.get(id)
+      if (!mo) return
+      try {
+        mo.disconnect()
+      } catch (e) {
+        /* ignore */
+      }
+      THEME_MO_MAP.delete(id)
     },
     /** 逻辑层主题变化：先记住，建图时用；已有地图则原地换色标 */
     onTheme(v) {
@@ -1057,12 +1071,12 @@ export default {
     pushStatus() {
       try {
         this.$ownerInstance.callMethod('mwStatus', formatMapStatus(this.status))
-        this._pushRetry = 0
+        this.pushRetry = 0
       } catch (e) {
         // $ownerInstance 还没就绪时（mounted 刚跑完那一刻很常见）别把状态丢掉：
         // 短延迟重试，最多约 4 秒。否则真机只会显示「视图层无回调」。
-        if ((this._pushRetry || 0) < 13) {
-          this._pushRetry = (this._pushRetry || 0) + 1
+        if ((this.pushRetry || 0) < 13) {
+          this.pushRetry = (this.pushRetry || 0) + 1
           setTimeout(() => this.pushStatus(), 300)
         }
       }
@@ -1096,6 +1110,8 @@ export default {
       }
       // R2 桥接在途请求一律 reject，别让视图层销毁后还有请求挂着
       this.destroyBridges('视图层销毁')
+      // 主题观察器也要断开，否则旧实例的观察器会一直盯着 DOM
+      this.destroyThemeObserver()
     },
 
     // 按可靠性顺序找容器：id（最稳）-> 选择器 -> 模块缓存 -> data.el -> $el
