@@ -56,7 +56,7 @@
     <view class="card">
       <text class="card-title">计算成果</text>
       <view class="big-num-row">
-        <text class="big-num">{{ bmr }}</text>
+        <text class="big-num num">{{ bmr }}</text>
         <text class="big-unit">kcal / 天（基础代谢 BMR）</text>
       </view>
       <view class="kv"><text class="kv-k">瘦体重</text><text class="kv-v">{{ leanMass || '—' }} kg</text></view>
@@ -136,15 +136,15 @@
       </view>
       <view class="stat-row">
         <view class="stat-cell">
-          <text class="stat-num">{{ week.avgIntake }}</text>
+          <text class="stat-num num">{{ week.avgIntake }}</text>
           <text class="stat-label">平均摄入</text>
         </view>
         <view class="stat-cell">
-          <text class="stat-num">{{ week.avgTdee }}</text>
+          <text class="stat-num num">{{ week.avgTdee }}</text>
           <text class="stat-label">平均消耗</text>
         </view>
         <view class="stat-cell">
-          <text class="stat-num" :class="{ warn: weekAvgGap > 0 }">{{ weekAvgGap }}</text>
+          <text class="stat-num num" :class="{ warn: weekAvgGap > 0 }">{{ weekAvgGap }}</text>
           <text class="stat-label">日均缺口</text>
         </view>
       </view>
@@ -179,7 +179,7 @@
           <text class="hist-title">{{ r.title }}</text>
           <text class="hist-sub">{{ durText(r.duration) }} · {{ r.sub }}</text>
         </view>
-        <text class="hist-cal">{{ r.calorie }}</text>
+        <text class="hist-cal num">{{ r.calorie }}</text>
         <text class="hist-del" @click="delRecord(r)">删</text>
       </view>
     </view>
@@ -229,7 +229,8 @@ import {
 import { getRecords, removeRecord } from '@/utils/storage.js'
 import { recentAverages, allExerciseHistory } from '@/utils/day-summary.js'
 import { removeActivity, formatActivityDuration } from '@/utils/activity-store.js'
-import { THEME_OPTIONS, setThemeMode } from '@/utils/theme.js'
+import { getWaterPrefs } from '@/utils/water-store.js'
+import { THEME_OPTIONS, setThemeMode, getMode } from '@/utils/theme.js'
 
 export default {
   data() {
@@ -436,13 +437,18 @@ export default {
         version: 1,
         exportedAt: new Date().toISOString(),
         body: getBody(),
-        goals: getGoals(),
+        goals: getGoals(), // 每日目标（热量/步数/饮水/蛋白/目标体重）；fh_targets 已废弃，不再导出
         weightLog: getWeightLog(),
         records: getRecords(),
-        // 直接读原始键，保证导出是全量而不是只导出今天
+        waterPrefs: getWaterPrefs(), // 杯容量 / 饮水时段 / 目标覆盖，换机后不用重设
+        themeMode: getMode(), // 跟随系统 / 白天 / 黑夜
+        // 按天存的表直接读原始键，保证导出是全量而不是只导出今天
         dietDays: uni.getStorageSync('fh_diet_days') || {},
         waterDays: uni.getStorageSync('fh_water_days') || {},
         activityDays: uni.getStorageSync('fh_activity_days') || {},
+        // 冷却起点：water-store 只有按天读的 getLastCupAt(date)，没有"全部"接口，
+        // 这里与上面三处同样按原始键全量导出；store 补 getWaterLastMap() 后可换成它
+        waterLast: uni.getStorageSync('fh_water_last') || {},
       }
       uni.setClipboardData({
         data: JSON.stringify(payload),
@@ -632,7 +638,7 @@ export default {
 .rec-btn {
   font-size: 24rpx;
   color: var(--accent-text);
-  border: 1rpx solid rgba(43, 212, 92, 0.5);
+  border: 1rpx solid var(--accent-soft-2);
   padding: 8rpx 20rpx;
   border-radius: 999rpx;
 }
