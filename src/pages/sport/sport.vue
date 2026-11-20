@@ -1,30 +1,29 @@
 <template>
   <view class="page" :class="themeClass">
-    <!-- 顶部类别：横向滚动、多类别。选中项靠「字号加大 + 字重 700 + 强调色」区分（不填色块）。
-         轨迹类（跑步 / 健走）走 GPS + 计步；MET 类（骑行 / 游泳 / 篮球…）按 MET×体重×时长算消耗。
-         原来这里是 3 个等宽页签：类别一多就挤成一团，第 3 项之后也没法再加。
-         清单与选中态都由 utils/sport-categories.js 的数据算出来 —— 模板里不再有硬编码文案。 -->
-    <scroll-view
-      class="cat-bar"
-      scroll-x
-      :scroll-into-view="'cat-' + catBar.activeIndex"
-      scroll-with-animation
-    >
-      <view
-        v-for="(c, i) in catBar.items"
-        :key="c.key"
-        :id="'cat-' + i"
-        class="cat-item"
-        :class="{ active: i === catBar.activeIndex, transient: c.transient }"
-        @click="pickCategory(c)"
-      >
-        {{ c.label }}<text class="cat-mark" v-if="c.transient">•</text>
+    <!-- 顶层切换：有轨迹的运动 / 其他运动（按 MET × 时长算消耗） -->
+    <view class="page-tab">
+      <view class="page-tab-item" :class="{ active: pageTab === 'track' }" @click="switchTab('track')">
+        跑步 / 走路
       </view>
-    </scroll-view>
+      <view class="page-tab-item" :class="{ active: pageTab === 'other' }" @click="switchTab('other')">
+        其他运动
+      </view>
+    </view>
 
-    <!-- ===== A. 跑步 / 健走：离线底图 + 实时轨迹 ===== -->
+    <!-- ===== A. 跑步 / 走路：离线底图 + 实时轨迹 ===== -->
     <template v-if="pageTab === 'track'">
-      <!-- 二级模式条已删除：跑步 / 健走变成顶层同级页签，不再有第二层选择 -->
+      <!-- 模式切换 -->
+      <view class="mode-switch">
+        <view
+          v-for="(m, key) in MODES"
+          :key="key"
+          class="mode-item"
+          :class="{ active: mode === key }"
+          @click="switchMode(key)"
+        >
+          {{ m.label }}
+        </view>
+      </view>
 
       <!-- 轨迹图：优先离线底图（内置青岛包或已下载的城市包）+ 轨迹叠加；底图起不来或
            轨迹越出离线包范围时，整体切回 track-map 自绘层（二选一，绝不同时显示两套）。 -->
@@ -82,11 +81,6 @@
         <!-- #ifdef APP-PLUS -->
         <text v-if="diag" class="timer-diag">{{ diag }}</text>
         <!-- #endif -->
-        <!-- 计步自检：用户报「步数算不出来」时一键摊开真值 + 判定。
-             一直显示（不加 #ifdef、不限运动中）—— 出问题时用户往往还没开始运动，
-             而 H5 上判定为 no-app 本身也是有用信息（说明步数要真机才有）。
-             自检是一次性快照 + 判定；上面那行 diag 是实时值，两者互补。 -->
-        <view class="timer-check-btn" @click="stepSelfCheck">计步自检</view>
       </view>
 
       <!-- 操作按钮 -->
@@ -107,16 +101,16 @@
         </template>
       </view>
 
-      <!-- 今日跑步 / 健走记录 -->
+      <!-- 今日跑步 / 走路记录 -->
       <view class="ot-card">
         <view class="ot-list-head">
           <text class="ot-title">今日记录</text>
           <text class="ot-sum" v-if="todayRuns.length">{{ todayRuns.length }} 次</text>
         </view>
-        <view v-if="!todayRuns.length" class="ot-empty">今天还没有跑步 / 健走记录</view>
+        <view v-if="!todayRuns.length" class="ot-empty">今天还没有跑步 / 走路记录</view>
         <view class="ot-item" v-for="r in todayRuns" :key="r.id">
           <view class="ot-item-main">
-            <text class="ot-item-name">{{ r.type === 'walk' ? '健走' : '跑步' }} · {{ r.duration || 0 }} 分钟</text>
+            <text class="ot-item-name">{{ r.type === 'walk' ? '走路' : '跑步' }} · {{ r.duration || 0 }} 分钟</text>
             <text class="ot-item-sub">{{ r.steps || 0 }} 步 · {{ distanceBrief(r.distance) }}</text>
           </view>
           <text class="ot-item-cal">{{ r.calories || 0 }} kcal</text>
@@ -125,10 +119,40 @@
       </view>
     </template>
 
-    <!-- ===== B. MET 类运动：选动作 + 计时/补录 → 按 MET×体重×时长 算消耗 ===== -->
+    <!-- ===== B. 其他运动：选动作 + 填时长 → 按体重算消耗 ===== -->
     <template v-else>
-      <!-- 计时卡放在最上面：类别条已经承担了「选动作」这一步，
-           用户点「游泳」进来应该立刻看到「开始计时」，而不是先滚过搜索框。 -->
+      <view class="ot-card">
+        <text class="ot-title">选一个动作</text>
+        <input
+          class="ot-input"
+          v-model="otherQuery"
+          placeholder="搜动作，如 游泳 / 深蹲 / 篮球"
+          placeholder-class="ot-ph"
+          @input="searchOther"
+        />
+        <view class="ot-chips">
+          <view class="ot-chip" v-for="q in quick" :key="q.name" @click="pickOther(q)">
+            + {{ q.name }}
+          </view>
+        </view>
+        <view class="ot-results" v-if="otherResults.length">
+          <view class="ot-result" v-for="r in otherResults" :key="r.name + r.met" @click="pickOther(r)">
+            <text class="ot-result-name">{{ r.name }}</text>
+            <text class="ot-result-met">MET {{ r.met }}</text>
+          </view>
+        </view>
+
+        <!-- 库里没有的动作：自己填名称 + MET -->
+        <view class="ot-toggle" @click="showCustom = !showCustom">
+          {{ showCustom ? '收起自定义动作' : '+ 自定义动作（自己填名称和 MET）' }}
+        </view>
+        <view class="ot-custom" v-if="showCustom">
+          <input class="ot-input" v-model="custom.name" placeholder="动作名称，如 波比跳" placeholder-class="ot-ph" />
+          <input class="ot-input" type="digit" v-model="custom.met" placeholder="MET 值，如 8" placeholder-class="ot-ph" />
+          <view class="ot-mini-btn" @click="useCustom">用这个动作</view>
+        </view>
+      </view>
+
       <view class="ot-card" v-if="other.met > 0">
         <view class="ot-picked">
           <text class="ot-picked-name">{{ other.name }}</text>
@@ -150,14 +174,10 @@
           <template v-else-if="otState === 'running'">
             <view class="ot-mini-btn ghost" @click="otPause">暂停</view>
             <view class="ot-mini-btn" @click="otFinish">结束并记录</view>
-            <!-- 放弃：误触开始、或开着计时去忙别的事之后，需要一条「不记账」的出口。
-                 没有它的话会话永远停在 running，切类别/running 守卫会一直拦着。 -->
-            <view class="ot-mini-btn ghost" @click="otCancel">放弃</view>
           </template>
           <template v-else>
             <view class="ot-mini-btn ghost" @click="otResume">继续</view>
             <view class="ot-mini-btn" @click="otFinish">结束并记录</view>
-            <view class="ot-mini-btn ghost" @click="otCancel">放弃</view>
           </template>
         </view>
 
@@ -176,35 +196,6 @@
             <text class="ot-cal">{{ otherCalorie }} kcal</text>
           </view>
           <view class="ot-mini-btn" @click="addOther">记下来</view>
-        </view>
-      </view>
-
-      <!-- 类别条里没有的动作：搜索 + 自定义（长尾兜底，永远留着）。
-           原来的 9 个快捷 chip 已删：类别条里一模一样地都有，留着就是同一批数据的第二份界面。 -->
-      <view class="ot-card">
-        <text class="ot-title">没找到？搜动作或自定义</text>
-        <input
-          class="ot-input"
-          v-model="otherQuery"
-          placeholder="搜动作，如 波比跳 / 爬山 / 广场舞"
-          placeholder-class="ot-ph"
-          @input="searchOther"
-        />
-        <view class="ot-results" v-if="otherResults.length">
-          <view class="ot-result" v-for="r in otherResults" :key="r.name + r.met" @click="pickOther(r)">
-            <text class="ot-result-name">{{ r.name }}</text>
-            <text class="ot-result-met">MET {{ r.met }}</text>
-          </view>
-        </view>
-
-        <!-- 库里没有的动作：自己填名称 + MET -->
-        <view class="ot-toggle" @click="showCustom = !showCustom">
-          {{ showCustom ? '收起自定义动作' : '+ 自定义动作（自己填名称和 MET）' }}
-        </view>
-        <view class="ot-custom" v-if="showCustom">
-          <input class="ot-input" v-model="custom.name" placeholder="动作名称，如 波比跳" placeholder-class="ot-ph" />
-          <input class="ot-input" type="digit" v-model="custom.met" placeholder="MET 值，如 8" placeholder-class="ot-ph" />
-          <view class="ot-mini-btn" @click="useCustom">用这个动作</view>
         </view>
       </view>
 
@@ -228,32 +219,6 @@
         </view>
       </view>
     </template>
-
-    <!-- ===== 运动历史（跨天，从「我的」页搬来） =====
-         放在两个类别面板**之外**：历史是跨口径的（跑步/健走 + 其他运动），
-         挂在任一面板下都会出现"切到另一类别就看不到历史"；页面级只实现一份。
-         今日的记录仍在各自面板的「今日记录 / 今日其他运动」里，下面这张卡是完整时间线。
-         总数取真实全量（不是当前渲染条数）；默认 10 条，按「展开更多」每次 +20。 -->
-    <view class="ot-card">
-      <view class="ot-list-head">
-        <text class="ot-title">运动历史</text>
-        <text class="ot-sum" v-if="historyView.total">共 {{ historyView.total }} 条</text>
-      </view>
-      <view v-if="!historyView.rows.length" class="ot-empty">
-        还没有记录，完成一次运动就会出现在这里
-      </view>
-      <view class="ot-item" v-for="r in historyView.rows" :key="r.key">
-        <view class="ot-item-main">
-          <text class="ot-item-name">{{ r.name }}</text>
-          <text class="ot-item-sub">{{ r.dateLabel }} · {{ formatDurationText(r.durationSeconds) }} · {{ r.sub }}</text>
-        </view>
-        <text class="ot-item-cal">{{ r.calorie }} kcal</text>
-        <text class="ot-item-del" @click="delHistory(r)">删除</text>
-      </view>
-      <view class="ot-more" v-if="historyView.remaining > 0" @click="moreHistory">
-        展开更多（还有 {{ historyView.remaining }} 条）
-      </view>
-    </view>
   </view>
 </template>
 
@@ -263,12 +228,6 @@ import { sessionSteps, branchDelta, baseUsable } from '@/utils/steps-math.js'
 // #ifdef APP-PLUS
 import { getStepDiag } from '@/utils/health.js'
 // #endif
-// 计步自检：静态引入而非动态 import —— App 端 file:// webview 加载独立 chunk 有失败风险，
-// 真机上会表现成"点了没反应"；本模块只有 ~160 行、依赖的 health/storage 本就在主包，
-// 静态引入只多约 2 KB，换来真机必可用。
-// ⚠️ 必须放在 #ifdef APP-PLUS 之外：自检按钮在 H5 上也要能点（判定 no-app 本身是有用信息），
-// 放进 App 专属块会让 H5 构建把 import 整行删掉，方法运行到 collectStepFacts 就报未定义。
-import { collectStepFacts, buildStepReport } from '@/utils/step-selftest.js'
 import { getTodayData, saveTodayData, addRecord, getWeight, removeRecord } from '@/utils/storage.js'
 import { syncDaily } from '@/utils/cloud.js'
 // 其他运动：MET 库检索 + 按 MET×体重×时长 算消耗 + 当日记录存储
@@ -282,26 +241,9 @@ import {
   formatActivityDuration,
 } from '@/utils/activity-store.js'
 import { today as todayStr } from '@/utils/body-store.js'
-// 运动历史（跨天）：跑步/健走与其他运动混排的记录由 allExerciseHistory 统一成同一种形状，
-// 展示层（真实总数 / 日期只出现一次 / 分批渲染）在 history-view.js，配了单测。
-import { allWorkoutRecords, allExerciseHistory } from '@/utils/day-summary.js'
-import { buildHistoryRows, moreHistoryLimit, HISTORY_INITIAL } from '@/utils/history-view.js'
-// 顶部类别条（横向滚动）：类别清单数据驱动 + 选中态纯函数解析，配 tests/sport-categories.test.mjs
-import { buildSportCategories, resolveCategoryBar } from '@/utils/sport-categories.js'
+import { allWorkoutRecords } from '@/utils/day-summary.js'
 // GPS 轨迹：采集/滤波/距离在 track.js，格式化在 geo.js
 import { startTrack, stopTrack, pauseTrack, resumeTrack, onTrackUpdate, getTrack, elapsedMs } from '@/utils/track.js'
-// 会话状态机（纯函数，配 tests/sport-session.test.mjs）：
-// 修「双击结束写两条记录」与「start 的 await 窗口里点结束 → state 归位但 GPS 还在跑」。
-// 那两个 bug 会让切类别（pickCategory）/ 切地图（goMaps）的守卫失真，详见该文件头注释。
-import {
-  guardStart,
-  tapFinish,
-  afterAwait,
-  isCurrentSession,
-  shouldDiscardSession,
-  sessionMinutes,
-  mergeSessionReset,
-} from '@/utils/sport-session.js'
 import { formatDistance, formatPace } from '@/utils/geo.js'
 import { getCurrent, getCity } from '@/utils/city-maps.js'
 
@@ -311,8 +253,6 @@ export default {
       MODES,
       mode: 'run',
       state: 'idle', // idle / running / paused
-      finishing: false, // 结束重入锁：一次会话只允许走一次落库（P0-1）
-      sessionToken: 0, // 会话代号：每个 await 之后用它判断这一轮是否还作数（P0-2）
       seconds: 0,
       timer: null,
       /**
@@ -346,13 +286,9 @@ export default {
       mapCityName: '青岛（内置）',
       mapBroken: false, // 底图彻底不可用（整轮会话都不再试）
       mapFallbackText: '',
-      // ===== 顶部类别条（横向滚动）：轨迹类 + MET 类 =====
-      // 清单数据驱动：轨迹类取 MODES（跑步 / 健走，MET 与计步口径都在 health.js 里只写一次），
-      // MET 类取 nutrition.js 的快捷清单（自动剔除与轨迹类撞名的「跑步」），末尾固定兜底「其他运动」。
-      // 模板里不再有硬编码的类别文案，加一个动作 = 改 nutrition.js 的数据。
-      // pageTab 与 mode 仍保留为内部状态：前者决定渲染哪个面板，后者决定计步口径与记录 type。
-      categories: buildSportCategories(MODES, QUICK_EXERCISES),
+      // ===== 顶层页签：跑步/走路（有轨迹） vs 其他运动（按 MET 时长） =====
       pageTab: 'track',
+      quick: QUICK_EXERCISES,
       otherQuery: '',
       otherResults: [],
       other: { name: '', met: 0, minutes: '' },
@@ -370,11 +306,7 @@ export default {
       otNow: 0, // 刷新用（定时器每 250ms 更新）
       otTimer: null,
       showManual: false, // 手动补录面板
-      todayRuns: [], // 今天的跑步/健走记录
-      // ===== 运动历史（跨天，从「我的」页搬来）=====
-      historyItems: [], // allExerciseHistory() 原始项：跑步/健走与其他运动混排
-      historyToday: '', // 算「今天/昨天」用的当天日期串（进页面时取一次）
-      historyLimit: HISTORY_INITIAL, // 当前渲染条数上限，「展开更多」每次 +HISTORY_PAGE_STEP
+      todayRuns: [], // 今天的跑步/走路记录
     }
   },
   computed: {
@@ -445,34 +377,12 @@ export default {
       if (this.otState === 'running') return `计时中 · MET ${this.other.met} × 体重 ${this.weight}kg`
       return '已暂停，可继续或结束'
     },
-    // 类别条要渲染的项 + 当前选中下标（选中项据此自动滚入视野）。
-    // 判定逻辑全在纯函数里：轨迹面板看 mode；MET 面板按 name+met 精确匹配预设项，
-    // 匹配不到就追加一个「临时项」（搜索/自定义选的动作），保证条上永远有一项是选中的。
-    catBar() {
-      return resolveCategoryBar(this.categories, {
-        pageTab: this.pageTab,
-        mode: this.mode,
-        otherName: this.other.name,
-        otherMet: this.other.met,
-      })
-    },
-    // 运动历史要渲染的行 + 真实总数 + 还剩多少条没展开。
-    // total 取全量长度（源实现拿 slice 之后的 length 当「共 N 条」，是假总数）；
-    // name 已摘掉标题里的日期尾巴，日期只在 dateLabel 出现一次。
-    historyView() {
-      return buildHistoryRows(this.historyItems, {
-        todayStr: this.historyToday,
-        limit: this.historyLimit,
-      })
-    },
   },
   onShow() {
     this.pageVisible = true
     this.weight = getWeight()
     this.loadTodayOther()
     this.loadTodayRuns()
-    // 历史可能在「我的」/别的会话里被删过，进页面一律重读
-    this.loadHistory()
     // 底图城市可能刚在地图页换掉：刷新一下，city-key 一变 map-view 就重建
     this.refreshMapCity()
     // 主题可能在别的页切过：回来的这一刻地图必须已经是对的颜色
@@ -528,36 +438,15 @@ export default {
       uni.navigateTo({ url: '/pages/maps/maps' })
     },
 
-    // ===== 顶部类别条（横向滚动） =====
-    /**
-     * 点一个类别：
-     *   track（跑步 / 健走）→ 轨迹面板，并设定计步口径 mode
-     *   met（骑行 / 游泳 / 篮球…）→ MET 计时面板，并**自动带上该动作的名称与 MET**（不用再选一次）
-     *   兜底「其他运动」（无 MET）→ 只切面板、不动已选动作，搜索框与自定义动作就在那下面
-     * 任一运动进行中都不允许切走：地图视图会被重建、计时状态会错乱。
-     */
-    pickCategory(c) {
-      if (!c) return
+    // ===== 顶层页签 =====
+    switchTab(tab) {
+      // 任一运动进行中都不允许切走，避免地图/计时状态错乱
       if (this.state !== 'idle' || this.otState !== 'idle') {
         uni.showToast({ title: '先结束当前运动', icon: 'none' })
         return
       }
-      if (c.kind === 'track') {
-        this.pageTab = 'track'
-        this.mode = c.key
-        return
-      }
-      this.pageTab = 'other'
-      this.loadTodayOther()
-      // 兜底类别没有 MET：保留用户已选的动作，只是把面板露出来（搜索/自定义的入口）
-      if (!(Number(c.met) > 0)) return
-      this.other.name = c.label
-      this.other.met = Number(c.met)
-      this.other.minutes = ''
-      this.otherQuery = ''
-      this.otherResults = []
-      this.showCustom = false
-      this.showManual = false
+      this.pageTab = tab
+      if (tab === 'other') this.loadTodayOther()
     },
 
     // ===== 其他运动的计时会话 =====
@@ -588,11 +477,7 @@ export default {
     otFinish() {
       const ms = this.otElapsedMs
       if (ms < 5000) {
-        // 误触保护：不记账，但**必须复位会话**。原来只弹一句 toast 就 return，
-        // otState 还停在 running → 切类别时会被「先结束当前运动」一直拦住，
-        // 而结束又记不了账，用户被卡在这条死胡同里。
-        this.otReset()
-        uni.showToast({ title: '不到 5 秒，已放弃', icon: 'none' })
+        uni.showToast({ title: '不到 5 秒，未记录', icon: 'none' })
         return
       }
       // 秒是唯一真值：分钟是换算出来的，别让 5 秒被四舍五入成 1 分钟
@@ -609,21 +494,7 @@ export default {
       this.otReset()
       this.other = { name: '', met: 0, minutes: '' }
       this.loadTodayOther()
-      this.loadHistory() // 跨天历史里也要立刻出现这条
       uni.showToast({ title: `${label} ${this.formatDurationText(seconds)}已记录`, icon: 'success' })
-    },
-    // 放弃本场计时（不记账）。保留已选动作，用户可以立刻重新开始计时。
-    otCancel() {
-      if (this.otState === 'idle') return
-      uni.showModal({
-        title: '放弃本场计时',
-        content: '本场计时不会记录，确定放弃吗？',
-        success: (m) => {
-          if (!m.confirm) return
-          this.otReset()
-          uni.showToast({ title: '已放弃本场计时', icon: 'none' })
-        },
-      })
     },
     otReset() {
       this.stopOtTimer()
@@ -684,13 +555,11 @@ export default {
       })
       this.other = { name: '', met: 0, minutes: '' }
       this.loadTodayOther()
-      this.loadHistory() // 手动补录也要进跨天历史
       uni.showToast({ title: '已记录', icon: 'success' })
     },
     removeOther(id) {
       removeActivity(todayStr(), id)
       this.loadTodayOther()
-      this.loadHistory()
     },
     // 时长文案：条目用 formatActivityDuration（秒为真值），汇总用 sumDuration
     durText(item) {
@@ -731,7 +600,7 @@ export default {
       this.custom = { name: '', met: '' }
     },
 
-    // ===== 今日跑步 / 健走记录 =====
+    // ===== 今日跑步 / 走路记录 =====
     loadTodayRuns() {
       const d = todayStr()
       this.todayRuns = allWorkoutRecords().filter((r) => r.date === d)
@@ -744,7 +613,6 @@ export default {
           if (!m.confirm) return
           removeRecord(r.id)
           this.loadTodayRuns()
-          this.loadHistory() // 同一份数据也在跨天历史里，一起刷
           uni.showToast({ title: '已删除', icon: 'success' })
         },
       })
@@ -753,38 +621,10 @@ export default {
       return formatDistance(meters)
     },
 
-    // ===== 运动历史（跨天）=====
-    loadHistory() {
-      this.historyToday = todayStr()
-      this.historyItems = allExerciseHistory()
+    switchMode(key) {
+      if (this.state !== 'idle') return
+      this.mode = key
     },
-    moreHistory() {
-      this.historyLimit = moreHistoryLimit(this.historyLimit, this.historyItems.length)
-    },
-    /**
-     * 删除一条历史记录。两类记录存在**不同的表**里，必须按类型分流：
-     *   跑步 / 健走 → storage.records，按 id 删（removeRecord）
-     *   其他运动   → activity-store 按天存的表，要 date + id 删（removeActivity）
-     * 必须二次确认：删掉就没了，没有撤销。
-     */
-    delHistory(r) {
-      if (!r) return
-      uni.showModal({
-        title: '删除这条记录',
-        content: `${r.date} 的${r.name}（${r.calorie} kcal），删除后当日运动消耗会同步减少。确定吗？`,
-        success: (m) => {
-          if (!m.confirm) return
-          if (r.kind === 'activity') removeActivity(r.date, r.id)
-          else removeRecord(r.id)
-          // 同一份数据被三处展示（历史 / 今日记录 / 今日其他运动），一起刷新
-          this.loadHistory()
-          this.loadTodayRuns()
-          this.loadTodayOther()
-          uni.showToast({ title: '已删除', icon: 'success' })
-        },
-      })
-    },
-
     // 底图彻底不可用（WebGL/瓦片读取失败）：本轮不再尝试，直接自绘层兜底
     onMapFail(reason) {
       this.mapBroken = true
@@ -797,19 +637,10 @@ export default {
       this.mapMode = 'fallback'
     },
     async start() {
-      // 只有 idle 才允许开新会话。模板虽然只在 idle 渲染「开始运动」，
-      // 但连点 / 程序化调用仍会进到这里（见 utils/sport-session.js 的 P0-2 说明）
-      if (!guardStart(this.state)) return
-      const token = ++this.sessionToken
       this.state = 'running'
       this.clearTimer()
       // 基线 = 会话开始时两路各自的读数（-1 表示该路尚未就绪，由首个有效读数兜底）
       const base0 = await getStepBranches()
-      // ⚠️ await 窗口（非原生计步最长 3 s）里用户可能已经点了结束/暂停：
-      // 那时 state 已归位，这里绝不能再往下建会话，否则会出现
-      // 「state=idle 但 GPS 在采集、计时在自增」的幽灵会话，把切页签的守卫全废掉。
-      if (!isCurrentSession(token, this.sessionToken)) return
-      if (!afterAwait(this.state)) return this.abortSession(token)
       this.stepBase = base0.ok
         ? { counter: base0.counter, det: base0.det }
         : { counter: -1, det: -1 }
@@ -826,19 +657,7 @@ export default {
         this.mapMode = 'basemap'
         this.mapFallbackText = ''
       }
-      await startTrack() // ⚠️ 首次运行会弹系统定位授权框，是更长的 await 窗口
-      if (!isCurrentSession(token, this.sessionToken)) {
-        // 结束流程已经把本场作废了：刚建起来的采集必须撤掉，别留幽灵轨迹
-        stopTrack()
-        return
-      }
-      if (!afterAwait(this.state)) return this.abortSession(token)
-
-      // 上一轮的订阅先退掉再挂新的：否则旧回调会继续写进已被复位的实例
-      if (this.offTrack) {
-        this.offTrack()
-        this.offTrack = null
-      }
+      await startTrack()
       const first = getTrack()
       if (first && first.error) this.gpsError = first.error
       this.offTrack = onTrackUpdate((snap) => {
@@ -850,39 +669,19 @@ export default {
         if (snap.error) this.gpsError = snap.error
       })
 
-      // 建计时器之前先清：两套 setInterval 会让秒数跑成两倍
-      this.clearTimer()
       this.timer = setInterval(() => {
         this.seconds++
       }, 1000)
       // 实时刷新真实步数（读一次计步器较廉价；微信运动不走实时，结束时取差值）
       this.startStepSync()
     },
-    // await 期间被暂停/结束：撤掉刚建的采集，整场回到 idle
-    // （不留「state=paused 但采集/计时不在」的幽灵会话，用户可重新开始）
-    abortSession(token) {
-      if (!isCurrentSession(token, this.sessionToken)) return
-      if (this.offTrack) {
-        this.offTrack()
-        this.offTrack = null
-      }
-      this.clearTimer()
-      this.clearStepTimer()
-      stopTrack()
-      this.resetSession()
-      // 用户是在「已显示暂停」之后才发现回到 idle 的，得给一句话解释，
-      // 否则会以为点了暂停却丢了整场（这里只可能是窗口期点暂停这一条路径进来）
-      uni.showToast({ title: '本场运动已取消', icon: 'none' })
-    },
     pause() {
-      if (this.state !== 'running') return
       this.state = 'paused'
       this.clearTimer()
       this.clearStepTimer()
       pauseTrack()
     },
     resume() {
-      if (this.state !== 'paused') return
       this.state = 'running'
       this.clearTimer()
       resumeTrack()
@@ -927,39 +726,7 @@ export default {
         this.stepTimer = null
       }
     },
-    /**
-     * 计步自检：一次性快照 + 判定，解释「步数为什么算不出来」。
-     * 判定逻辑与采集都在 utils/step-selftest.js（纯函数那半有 13 条单测），这里只负责弹窗。
-     * 结论**同时写进剪贴板**：用户截不到屏也能直接粘给开发者。
-     * 自检本身绝不能把页面搞崩 —— 任何异常都降级成一句 toast。
-     */
-    async stepSelfCheck() {
-      try {
-        // 静态 import（不用动态 import）：App 端 file:// webview 加载独立 chunk 有失败风险，
-        // 真机上会表现成"点了没反应"；模块只有 ~160 行、依赖的 health/storage 本就在主包，
-        // 静态引入只多约 2 KB，换来真机必成功。
-        const r = buildStepReport(await collectStepFacts())
-        uni.setClipboardData({ data: r.line + '\n' + r.verdictText, showToast: false })
-        uni.showModal({
-          title: '计步自检',
-          content: r.line + '\n\n' + r.verdictText,
-          showCancel: false,
-          confirmText: '知道了',
-        })
-      } catch (e) {
-        uni.showToast({ title: '自检失败：' + ((e && e.message) || e), icon: 'none' })
-      }
-    },
     async finish() {
-      // 🔒 重入锁（P0-1）：结束流程里有两处 await（读计步、读当日步数），
-      // 这期间「结束」按钮仍然在（state 还没归 idle），双击会 addRecord 两条、
-      // daily.duration 加两次、syncDaily 推两次。锁必须在这里**同步**上。
-      const gate = tapFinish({ state: this.state, finishing: this.finishing })
-      if (!gate.proceed) return
-      this.finishing = true
-      // 作废在途的 start()：它在 await 之后还会把计时器/采集建起来（P0-2）
-      this.sessionToken++
-
       this.clearTimer()
       this.clearStepTimer()
 
@@ -972,15 +739,12 @@ export default {
       const gpsDistance = gps ? gps.distance : this.gpsDistance
       const track = gps ? gps.track : []
 
-      // 阈值按秒真值判（P2-8）：原来先 Math.round 成分钟再比 <1，
-      // 31 秒会被四舍五入成 1 分钟照样入库，与「不足 1 分钟丢弃」不符。
-      const seconds = this.seconds
-      if (shouldDiscardSession(seconds)) {
+      const minutes = Math.round(this.seconds / 60)
+      if (minutes < 1) {
         uni.showToast({ title: '运动时间太短', icon: 'none' })
         this.resetSession()
         return
       }
-      const minutes = sessionMinutes(seconds)
 
       // 结束读取一次两路读数，按各自增量取 max（不伪造）
       const cur = await getStepBranches()
@@ -1021,16 +785,17 @@ export default {
 
       this.resetSession()
       uni.showToast({ title: '运动已保存', icon: 'success' })
-      // 保存后刷新今日记录与跨天历史，否则要切页回来才看到
+      // 保存后刷新今日记录列表，否则要切页回来才看到
       this.loadTodayRuns()
-      this.loadHistory()
     },
     resetSession() {
-      // 一次清干净：字段清单在 utils/sport-session.js 的 mergeSessionReset（配了单测）。
-      // 除了会话本字段，还包括**重入锁 finishing**、estimatedDistance（否则 idle 下
-      // 仍显示「含估算 X 米」）、gpsError、mapMode/mapFallbackText（上一轮越界降级
-      // 不该让用户下次还在自绘层）、pointsAtHide/bgGained（下次首屏的后台增点）。
-      Object.assign(this, mergeSessionReset(this))
+      this.state = 'idle'
+      this.seconds = 0
+      this.liveSteps = 0
+      this.stepBase = { counter: -1, det: -1 }
+      this.trackPoints = []
+      this.gpsDistance = 0
+      this.diag = ''
     },
   },
 }
@@ -1046,6 +811,28 @@ export default {
   flex-direction: column;
 }
 
+/* 模式切换 */
+.mode-switch {
+  display: flex;
+  background: $bg-card;
+  border-radius: 24rpx;
+  padding: 8rpx;
+}
+.mode-item {
+  flex: 1;
+  height: 76rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30rpx;
+  color: $text-secondary;
+  border-radius: 18rpx;
+}
+.mode-item.active {
+  background: rgba(43, 212, 92, 0.16);
+  color: var(--accent-text);
+  font-weight: 700;
+}
 
 /* 轨迹图 */
 .map-wrap {
@@ -1142,17 +929,6 @@ export default {
   color: $text-muted;
   word-break: break-all;
 }
-/* 计步自检按钮：单行小按钮 → 胶囊（卡片 28rpx / 方块 16rpx / 胶囊 999rpx 的设计语言），
-   ghost 观感与卡片里的次要按钮一致，平面无渐变、颜色全走变量 */
-.timer-check-btn {
-  margin-top: 20rpx;
-  padding: 14rpx 36rpx;
-  border-radius: 999rpx;
-  background: $bg-card-light;
-  color: $text-main;
-  font-size: 24rpx;
-  border: 1rpx solid $border-subtle;
-}
 
 /* 操作按钮 */
 .actions {
@@ -1181,58 +957,27 @@ export default {
   border: 1rpx solid $border-subtle;
 }
 
-/* ===== 顶部类别条：横向滚动、多类别 =====
-   结构用 uni 官方横向滚动写法：scroll-view 上 white-space:nowrap，子项是 inline-flex
-   （不再套一层 flex 容器 —— uni 的 scroll-view 内层包裹层布局随版本变，
-   套 flex 容器有被压成容器宽、滚不动的风险）。
-   选中态用「字号加大 + 字重 700 + 强调色」三重表达，**不填色块**（设计语言：平面无渐变）；
-   强调色必须保留 —— 灰度/低饱和下它是唯一还能分辨选中项的维度。
-   项高固定 88rpx（触摸目标 ≥88rpx），宽度随字号变化的过渡交给 transition 平滑，
-   避免选中瞬间整条 bar 的后续项一起跳动。 */
-.cat-bar {
-  width: auto;
-  /* 抵消 .page 的左右 padding：横向滑动时可以一路滑到屏幕边缘，不留死白边 */
-  margin: 8rpx -32rpx 0;
-  white-space: nowrap;
+/* ===== 顶层页签：跑步/走路 · 其他运动 ===== */
+.page-tab {
+  display: flex;
+  gap: 12rpx;
+  padding: 16rpx 24rpx 0;
 }
-/* H5 / 桌面端藏掉横向滚动条，免得和卡片圆角打架 */
-.cat-bar::-webkit-scrollbar {
-  width: 0;
-  height: 0;
-  display: none;
-}
-.cat-item {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  /* 万一下层被包成 flex 容器也不会被压扁 */
-  flex: 0 0 auto;
-  height: 88rpx;
-  min-width: 88rpx;
-  margin-right: 6rpx;
-  padding: 0 18rpx;
-  font-size: 28rpx;
-  font-weight: 400;
+.page-tab-item {
+  flex: 1;
+  text-align: center;
+  padding: 18rpx 0;
+  border-radius: 16rpx;
+  background: $bg-card;
   color: $text-secondary;
-  transition: font-size 0.18s ease, color 0.18s ease;
+  font-size: 28rpx;
+  border: 1rpx solid $border-subtle;
 }
-.cat-item:first-child {
-  margin-left: 32rpx;
-}
-.cat-item:last-child {
-  margin-right: 32rpx;
-}
-.cat-item.active {
-  font-size: 34rpx;
+.page-tab-item.active {
+  color: var(--on-accent);
   font-weight: 700;
-  color: var(--accent-text);
-}
-/* 临时项标记（搜索/自定义选的动作）：一个极轻的点，不上底色 */
-.cat-mark {
-  margin-left: 2rpx;
-  font-size: 20rpx;
-  color: $text-muted;
-  transform: translateY(-10rpx);
+  background: var(--accent);
+  border-color: transparent;
 }
 
 /* ===== 其他运动面板 ===== */
@@ -1260,6 +1005,20 @@ export default {
 }
 .ot-ph {
   color: $text-muted;
+}
+.ot-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14rpx;
+  margin-top: 18rpx;
+}
+.ot-chip {
+  padding: 12rpx 22rpx;
+  border-radius: 999rpx;
+  background: $bg-card-light;
+  color: $text-main;
+  font-size: 26rpx;
+  border: 1rpx solid $border-subtle;
 }
 .ot-results {
   margin-top: 16rpx;
@@ -1456,14 +1215,6 @@ export default {
   color: $text-muted;
   padding-left: 8rpx;
 }
-/* 运动历史「展开更多」：整行可点的文字按钮，不描边不填色（与列表同层，不抢视觉） */
-.ot-more {
-  margin-top: 20rpx;
-  padding: 16rpx 0;
-  text-align: center;
-  font-size: 24rpx;
-  color: var(--accent-text);
-}
 
 /* 估算距离提示：只在信号中断后出现，说明这几十米是直线估算的 */
 .timer-sub-note {
@@ -1476,8 +1227,7 @@ export default {
 /* flat-press:2026-11-06 */
 .btn:active,
 .ot-mini-btn:active,
-.map-city-btn:active,
-.timer-check-btn:active {
+.map-city-btn:active {
   transform: scale(0.97);
   opacity: 0.9;
 }
