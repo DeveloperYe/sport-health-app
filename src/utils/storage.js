@@ -82,6 +82,44 @@ export function saveTodayData(d) {
   uni.setStorageSync(KEYS.daily + '_' + today(), d)
 }
 
+/**
+ * 读**指定日期**的当日统计（`fh_daily_<date>`）。
+ *
+ * 与 getTodayData 的区别：那个只认"今天"（key 里写死 today()），做近 7 天看板时
+ * 拿不到历史日期，7 天步数只能是 0 —— 这是从「我的」页搬看板时暴露的存储缺口。
+ *
+ * 约定：**没有记录返回 null，不要伪造一个全 0 对象**。
+ * 伪造 0 会让"没走路的那些天"被当成真实数据，把日均拉低（看板里最难解释的一类假数据）。
+ *
+ * @param {string} date 'YYYY-MM-DD'
+ * @returns {{date:string, steps:number, calories:number, duration:number}|null}
+ */
+export function getDailyByDate(date) {
+  if (!date) return null
+  let raw
+  try {
+    raw = uni.getStorageSync(KEYS.daily + '_' + date)
+  } catch (e) {
+    return null
+  }
+  if (!raw) return null
+  let o = raw
+  if (typeof raw === 'string') {
+    try {
+      o = JSON.parse(raw)
+    } catch (e) {
+      return null
+    }
+  }
+  if (!o || typeof o !== 'object') return null
+  return {
+    date: o.date || date,
+    steps: Number(o.steps) || 0,
+    calories: Number(o.calories) || 0,
+    duration: Number(o.duration) || 0,
+  }
+}
+
 export function getRecords() {
   return uni.getStorageSync(KEYS.records) || []
 }

@@ -119,6 +119,30 @@
         </view>
       </view>
 
+      <!-- 体重管理：最近一次 / 趋势 / 按趋势预测 / 空态（原「我的」页那四项搬过来，录入与折线上面已有） -->
+      <view class="wm-row" v-if="weightMeta.last">
+        <text class="wm-k">最近一次</text>
+        <text class="wm-v">{{ weightMeta.last }} kg · {{ weightMeta.lastDateLabel }}</text>
+      </view>
+      <view class="wm-row" v-if="weightMeta.slopeText">
+        <text class="wm-k">趋势</text>
+        <text class="wm-v">{{ weightMeta.slopeText }}</text>
+      </view>
+      <view class="wm-row" v-if="weightMeta.forecastText">
+        <text class="wm-k">按当前趋势</text>
+        <text class="wm-v">{{ weightMeta.forecastText }}</text>
+      </view>
+      <text class="card-hint" v-if="!weightMeta.count">还没有体重记录；建议每周固定时间称一次，趋势才准。</text>
+
+      <!-- 删除某个历史记录：removeWeight 之前是死接口，这里接上 -->
+      <view class="wl-list" v-if="weightRecent.length">
+        <view class="wl-item" v-for="w in weightRecent" :key="w.date">
+          <text class="wl-date">{{ w.label }}</text>
+          <text class="wl-kg">{{ w.kg }} kg</text>
+          <text class="wl-del" @click="delWeight(w.date)">删除</text>
+        </view>
+      </view>
+
       <!-- 目标进度 -->
       <view class="goal-bar" v-if="goalProgress !== null">
         <view class="goal-bar-head">
@@ -150,6 +174,45 @@
         <view class="mini-btn primary" @click="goDiet">记录饮食</view>
         <view class="mini-btn ghost" @click="goProfile">完善身体信息</view>
       </view>
+    </view>
+
+    <!-- ===== 板块：近 7 天数据看板（三环口径：步数 / 消耗 / 饮水） ===== -->
+    <view class="card">
+      <view class="card-head">
+        <text class="card-title">近 7 天数据</text>
+        <text class="card-tag">{{ weekBoard ? weekBoard.recordedDays : 0 }} / 7 天有记录</text>
+      </view>
+
+      <template v-if="weekBoard && !weekBoard.allEmpty">
+        <!-- 三序列共用一张图：横轴 7 天，每天 3 根细柱；高度 = 占各自目标的百分比（单位不同不能直接比高度） -->
+        <view class="wb-legend">
+          <view class="wb-lg" v-for="s in weekBoard.series" :key="s.key" :class="'wb-' + s.key">
+            <view class="wb-dot"></view>
+            <text class="wb-lg-k">{{ s.label }}</text>
+            <text class="wb-lg-v">{{ s.avgText }}</text>
+          </view>
+        </view>
+
+        <view class="wb-chart">
+          <view class="wb-group" v-for="(grp, i) in weekBoard.groups" :key="i">
+            <view class="wb-bwrap">
+              <view
+                class="wb-b"
+                v-for="bar in grp.bars"
+                :key="bar.key"
+                :class="['wb-b-' + bar.key, { empty: bar.empty }]"
+                :style="{ height: bar.pct + '%' }"
+              ></view>
+            </view>
+            <text class="wb-x">{{ grp.label }}</text>
+          </view>
+        </view>
+        <view class="wb-legend-note">
+          <text class="wb-note">虚线 = 目标线（100%），对三根柱都成立</text>
+        </view>
+        <text class="card-hint">柱高是「占各自目标的百分比」；没记录的那天不画柱、也不计入日均。</text>
+      </template>
+      <text class="card-hint" v-else>最近 7 天还没有记录：走几步、记一次运动或喝一杯水就会出现在这里。</text>
     </view>
 
     <!-- ===== 板块二：喝水打卡（科学饮水：容量 / 时段 / 间隔 / 冷却） ===== -->
@@ -247,6 +310,10 @@ import { getTodaySteps } from '@/utils/health.js'
 import { getWater, setWater } from '@/utils/diet-store.js'
 import { getBody, getGoals, saveGoals, today, getWeightLog, upsertWeight, saveBody } from '@/utils/body-store.js'
 import { dayCalories, recentAverages } from '@/utils/day-summary.js'
+import { buildWeekBoard } from '@/utils/week-board.js'
+import { getDailyByDate } from '@/utils/storage.js'
+import { calcWeightSlope, forecastDaysToGoal } from '@/utils/body-calc.js'
+import { removeWeight } from '@/utils/body-store.js'
 import { calcBMI, bmiLabel } from '@/utils/body-calc.js'
 import {
   getWaterPrefs,
@@ -308,6 +375,8 @@ export default {
       gap7: null,
       // 减脂板块：体重趋势 / 目标进度 / 近 7 天缺口
       weightLog: [],
+      // 近 7 天看板（三环口径）与体重历史（可删）
+      weekBoard: null,
       goalsWeight: 0,
       weightInput: '',
       weekDays: [],
@@ -549,6 +618,37 @@ export default {
       return d > 0 ? `还需减 ${d} kg` : `还可增 ${Math.abs(d)} kg`
     },
     // 近 7 天缺口柱：高度按本周最大绝对值归一
+    /** 体重管理的四项：最近一次 / 趋势 / 预测（录入与折线本页已有，不重复实现） */
+    weightMeta() {
+      const log = this.weightLog || []
+      const withKg = log.filter((p) => p && Number(p.w) > 0 && (p.d || p.date))
+      // 体重日志的字段是 {d, w}（body-store.js:15）；早期版本用过 date，这里两个都认
+      const count = withKg.length
+      if (!count) return { count: 0, last: '', lastDateLabel: '', slopeText: '', forecastText: '' }
+      const last = withKg[withKg.length - 1]
+      const lastKg = Number(last.w)
+      const target = Number(this.goalWeight) || 0
+      const slope = count >= 2 ? calcWeightSlope(withKg) : 0
+      let slopeText = ''
+      if (count < 2) slopeText = '再记一次就能算出趋势'
+      else if (Math.abs(slope) < 0.005) slopeText = '基本持平'
+      else {
+        const perWeek = Math.abs(slope * 7)
+        slopeText = (slope > 0 ? '每周约 +' : '每周约 −') + perWeek.toFixed(2) + ' kg'
+      }
+      let forecastText = ''
+      if (target > 0 && count >= 2 && Math.abs(slope) > 0.005) {
+        const days = forecastDaysToGoal(lastKg, slope, target)
+        if (days !== null && days > 0 && days < 3650) forecastText = '约 ' + days + ' 天到 ' + target + ' kg'
+        else if (days !== null && days <= 0) forecastText = '当前趋势偏离目标'
+      }
+      return { count, last: String(lastKg), lastDateLabel: this.dateWord(last.d || last.date), slopeText, forecastText }
+    },
+    /** 最近几条体重日志（带可删的日期），最新的在前 */
+    weightRecent() {
+      const log = (this.weightLog || []).filter((p) => p && Number(p.w) > 0).slice(-6).reverse()
+      return log.map((p) => ({ date: p.d || p.date, kg: Math.round(Number(p.w) * 10) / 10, label: this.dateWord(p.d || p.date) }))
+    },
     weekBars() {
       const days = this.weekDays || []
       if (!days.length) return []
@@ -641,6 +741,55 @@ export default {
       uni.showToast({ title: '已记录', icon: 'success' })
     },
     /** 一次性刷新全部指标 */
+    /** 日期 → 今天/昨天/11月19日/2025年12月31日 */
+    dateWord(date) {
+      const d = String(date || '')
+      const t = today()
+      if (d === t) return '今天'
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d)
+      if (!m) return d
+      const dt = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+      const now = new Date(Number(t.slice(0, 4)), Number(t.slice(5, 7)) - 1, Number(t.slice(8, 10)))
+      const diff = Math.round((now - dt) / 86400000)
+      if (diff === 1) return '昨天'
+      if (dt.getFullYear() === now.getFullYear()) return Number(m[2]) + '月' + Number(m[3]) + '日'
+      return m[1] + '年' + Number(m[2]) + '月' + Number(m[3]) + '日'
+    },
+    /** 读最近 7 天：步数/消耗取当日统计，饮水取 diet-store；没记录的日子带 hasAny=false */
+    loadWeek() {
+      const n = 7
+      const base = new Date()
+      const days = []
+      for (let i = n - 1; i >= 0; i--) {
+        const d = new Date(base.getFullYear(), base.getMonth(), base.getDate() - i)
+        const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
+        const daily = getDailyByDate(key)
+        const cups = Number(getWater(key)) || 0
+        const steps = daily ? Number(daily.steps) || 0 : null
+        const calories = daily ? Number(daily.calories) || 0 : null
+        const hasAny = !!daily || cups > 0
+        days.push({ date: key, steps, calories, water: cups, hasAny })
+      }
+      this.weekBoard = buildWeekBoard(days, {
+        steps: Number(this.stepGoal) || 0,
+        calorie: Number(this.calorieGoal) || 0,
+        water: Number(this.waterGoal) || 0,
+      })
+    },
+    /** 删除某天的体重记录（removeWeight 之前是从没被调用的死接口） */
+    delWeight(date) {
+      uni.showModal({
+        title: '删除体重记录',
+        content: '确定删除 ' + this.dateWord(date) + ' 的记录？',
+        success: (r) => {
+          if (!r.confirm) return
+          removeWeight(date)
+          this.weightLog = getWeightLog()
+          this.loadWeek()
+          uni.showToast({ title: '已删除', icon: 'none' })
+        },
+      })
+    },
     async refresh() {
       const todayStr = today()
       const targets = getTargets() || {}
@@ -660,6 +809,8 @@ export default {
       }
       if (!steps) steps = Number((getTodayData() || {}).steps) || 0
       this.steps = steps
+      // 近 7 天看板：与三环同源但按天读（getDailyByDate），目标值取上面刚读到的 targets
+      this.loadWeek()
 
       // 热量 / 饮水
       const sum = dayCalories(todayStr)
@@ -1122,6 +1273,39 @@ export default {
      alpha 从 .22 变 .2/.24，肉眼无差别；与 diet/profile 里用的也是同一个令牌，语义统一。 */
   box-shadow: 0 0 0 3rpx var(--accent-soft-2);
 }
+/* ===== 近 7 天数据：一张图，7 组 × 3 根细柱 ===== */
+.wb-legend { display: flex; align-items: center; margin-bottom: 14rpx; }
+.wb-lg { display: flex; align-items: center; margin-right: 26rpx; }
+.wb-dot { width: 12rpx; height: 12rpx; border-radius: 6rpx; margin-right: 8rpx; }
+.wb-lg-k { font-size: 22rpx; color: $text-secondary; margin-right: 8rpx; }
+.wb-lg-v { font-size: 22rpx; color: $text-main; font-variant-numeric: tabular-nums; }
+
+.wb-steps .wb-dot, .wb-b-steps { background: var(--accent-text); }
+.wb-calorie .wb-dot, .wb-b-calorie { background: var(--warm-graphic); }
+.wb-water .wb-dot, .wb-b-water { background: var(--cool-graphic); }
+
+/* 顶部虚线 = 100% 目标线：柱高按百分比，所以顶边就是所有序列的 100% */
+.wb-chart { display: flex; align-items: flex-end; border-top: 2rpx dashed $border-subtle; }
+.wb-group { flex: 1; display: flex; flex-direction: column; align-items: center; }
+.wb-bwrap { display: flex; align-items: flex-end; justify-content: center; height: 190rpx; }
+.wb-b { width: 10rpx; margin: 0 2rpx; border-radius: 6rpx 6rpx 0 0; min-height: 2rpx; }
+.wb-b.empty { background: $border-subtle; height: 2rpx !important; opacity: 0.6; }
+.wb-x { font-size: 20rpx; color: $text-muted; margin-top: 8rpx; }
+.wb-legend-note { margin-top: 4rpx; }
+.wb-note { font-size: 20rpx; color: $text-muted; }
+
+/* 体重管理三行（health.vue 没有通用的 .kv，这里自带一套） */
+.wm-row { display: flex; align-items: baseline; justify-content: space-between; padding: 12rpx 0; border-bottom: 1rpx solid $border-subtle; }
+.wm-k { font-size: 25rpx; color: $text-secondary; }
+.wm-v { font-size: 25rpx; color: $text-main; font-variant-numeric: tabular-nums; }
+
+/* ===== 体重历史（可删） ===== */
+.wl-list { margin-top: 12rpx; }
+.wl-item { display: flex; align-items: center; padding: 10rpx 0; border-bottom: 1rpx solid $border-subtle; }
+.wl-date { flex: 1; font-size: 24rpx; color: $text-secondary; }
+.wl-kg { font-size: 26rpx; color: $text-main; font-variant-numeric: tabular-nums; margin-right: 20rpx; }
+.wl-del { font-size: 22rpx; color: $text-muted; }
+
 .trend-empty {
   position: absolute;
   left: 0;
