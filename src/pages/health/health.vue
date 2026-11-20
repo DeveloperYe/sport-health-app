@@ -391,10 +391,13 @@ export default {
       const rMid = rOuter - band - gap
       const rInner = rMid - band - gap
 
+      // 三环颜色必须走令牌：原来写死的 '#2bd45c/#ffb347/#4aa3ff' 是「暗色主题」的取值，
+      // 白天模式下既与图例不同色，作为图形对比度也只有 1.5–2.5:1（WCAG 1.4.11 要求 3:1）。
+      // var() 在 conic-gradient 里合法：字符串最终落进元素 inline style，由浏览器在元素作用域解析。
       const defs = [
-        { key: 'steps', r: rOuter, color: '#2bd45c', p: this.pct(this.steps, this.stepGoal) },
-        { key: 'calorie', r: rMid, color: '#ffb347', p: this.pct(this.exercise, this.calorieGoal) },
-        { key: 'water', r: rInner, color: '#4aa3ff', p: this.pct(this.water, this.waterGoal) },
+        { key: 'steps', r: rOuter, color: 'var(--accent-text)', p: this.pct(this.steps, this.stepGoal) },
+        { key: 'calorie', r: rMid, color: 'var(--warm-graphic)', p: this.pct(this.exercise, this.calorieGoal) },
+        { key: 'water', r: rInner, color: 'var(--cool-graphic)', p: this.pct(this.water, this.waterGoal) },
       ]
 
       return defs.map((d) => {
@@ -834,14 +837,17 @@ export default {
   height: 18rpx;
   border-radius: 50%;
 }
+/* 图例小圆点必须与同心环的弧用同一组令牌，否则「弧 vs 点」在某个主题下不同色。
+   这三个是图形（18rpx 色块），走图形令牌：白底上 ≥3:1（WCAG 1.4.11）。
+   --accent/--warm/--cool 是"色块填充"用的亮值，白天对白卡只有 2.83/2.52/4.03，不够。 */
 .dot.steps {
-  background: var(--accent);
+  background: var(--accent-text);
 }
 .dot.calorie {
-  background: var(--warm);
+  background: var(--warm-graphic);
 }
 .dot.water {
-  background: var(--cool);
+  background: var(--cool-graphic);
 }
 .legend-main {
   flex: 1;
@@ -1030,7 +1036,9 @@ export default {
 .trend-seg {
   position: absolute;
   height: 3rpx;
-  background: var(--accent);
+  /* 数据图形走「图形令牌」：白天对 trend-box 底 #f2f5f9，旧值 --accent 只有 2.27:1（含 0.85 透明度），
+     改后 3.76:1；暗色下 6.24:1。WCAG 1.4.11 要求 3:1。 */
+  background: var(--accent-text);
   opacity: 0.85;
   transform-origin: 0 50%;
   border-radius: 3rpx;
@@ -1042,8 +1050,12 @@ export default {
   margin-left: -6rpx;
   margin-top: -6rpx;
   border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 0 3rpx rgba(43, 212, 92, 0.22);
+  /* 白天对 #f2f5f9：旧 --accent 2.59:1 → 4.87:1；暗色 8.13:1 */
+  background: var(--accent-text);
+  /* 光晕原来写死 rgba(43,212,92,.22)（暗色主题的绿），白天会跟深绿的点本体打架；
+     改用 --accent-soft-2 后随主题走（亮 rgba(18,177,74,.2) / 暗 rgba(43,212,92,.24)），
+     alpha 从 .22 变 .2/.24，肉眼无差别；与 diet/profile 里用的也是同一个令牌，语义统一。 */
+  box-shadow: 0 0 0 3rpx var(--accent-soft-2);
 }
 .trend-empty {
   position: absolute;
@@ -1084,7 +1096,9 @@ export default {
 .goal-fill {
   height: 100%;
   border-radius: 999rpx;
-  background: var(--accent-grad);
+  /* 原来用 --accent-grad 渐变：白天左端 2.32:1、右端仅 1.47:1（对轨道 --line #e3e9f0）。
+     改单色图形令牌后 4.35:1，暗色 7.14:1；同时也符合「平面、不堆渐变」的取向。 */
+  background: var(--accent-text);
 }
 
 /* 近 7 天缺口 */
@@ -1122,11 +1136,13 @@ export default {
   width: 26rpx;
   border-radius: 6rpx 6rpx 0 0;
 }
+/* 近 7 天缺口柱：负=缺口 绿、正=盈余 橙。柱体是数据图形，走图形令牌。
+   白天对白卡：neg 旧 2.83 → 5.32:1，pos 旧 2.52 → 4.16:1（WCAG 1.4.11 需 3:1）。 */
 .weekg-bar.neg {
-  background: var(--accent);
+  background: var(--accent-text);
 }
 .weekg-bar.pos {
-  background: var(--warm);
+  background: var(--warm-graphic);
 }
 .weekg-day {
   margin-top: 8rpx;
