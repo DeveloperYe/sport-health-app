@@ -16,8 +16,6 @@
              uni.createCanvasContext 在 H5 上会静默失败（实测画布像素为 0，环画不出来），
              而 conic-gradient 在 Chromium 内核 WebView 里稳定可用。 -->
         <view class="ring-layer" v-for="ring in rings" :key="ring.key" :style="ring.style"></view>
-        <!-- 弧两端的圆头：几何由 ringCaps 算，样式只给圆角兜底 -->
-        <view class="ring-cap" v-for="cap in ringCaps" :key="cap.key" :style="cap.style"></view>
         <view class="ring-center">
           <text class="ring-center-num">{{ burned }}</text>
           <text class="ring-center-unit">kcal</text>
@@ -240,7 +238,6 @@
 </template>
 
 <script>
-import { ringGeometryOf, capCenters } from '@/utils/ring-geometry.js'
 import PermissionsGate from '@/components/permissions-gate.vue'
 import { getTodayData, getTargets } from '@/utils/storage.js'
 import { getTodaySteps } from '@/utils/health.js'
@@ -270,8 +267,6 @@ export default {
   data() {
     return {
       ringSize: 0, // px，量到容器宽度后计算环尺寸
-      // 端帽直径 = 环带宽度 + 本值（px）。0 = 与环带齐平（390px 屏上 17px）；2 = 更饱满（19px）
-      ringCapBoost: 0,
       retry: 0,
       dateText: '',
       greeting: '你好',
@@ -388,17 +383,18 @@ export default {
      * conic-gradient 的 from -90deg 让进度从 12 点方向开始。
      */
     rings() {
-      const g = ringGeometryOf(this.ringSize)
-      if (!g) return []
-      const { size, band, rOuter, rMid, rInner } = g
+      const size = this.ringSize
+      if (!size) return []
+      const band = Math.max(9, Math.round(size * 0.062))
+      const gap = Math.round(band * 0.85)
+      const rOuter = size / 2 - 2
+      const rMid = rOuter - band - gap
+      const rInner = rMid - band - gap
 
-      // 三环颜色必须走令牌：原来写死的 '#2bd45c/#ffb347/#4aa3ff' 是「暗色主题」的取值，
-      // 白天模式下既与图例不同色，作为图形对比度也只有 1.5–2.5:1（WCAG 1.4.11 要求 3:1）。
-      // var() 在 conic-gradient 里合法：字符串最终落进元素 inline style，由浏览器在元素作用域解析。
       const defs = [
-        { key: 'steps', r: rOuter, color: 'var(--accent-text)', color2: 'var(--accent-ring-2)', p: this.pct(this.steps, this.stepGoal) },
-        { key: 'calorie', r: rMid, color: 'var(--warm-graphic)', color2: 'var(--warm-ring-2)', p: this.pct(this.exercise, this.calorieGoal) },
-        { key: 'water', r: rInner, color: 'var(--cool-graphic)', color2: 'var(--cool-ring-2)', p: this.pct(this.water, this.waterGoal) },
+        { key: 'steps', r: rOuter, color: '#2bd45c', p: this.pct(this.steps, this.stepGoal) },
+        { key: 'calorie', r: rMid, color: '#ffb347', p: this.pct(this.exercise, this.calorieGoal) },
+        { key: 'water', r: rInner, color: '#4aa3ff', p: this.pct(this.water, this.waterGoal) },
       ]
 
       return defs.map((d) => {
@@ -417,69 +413,13 @@ export default {
             height: diameter + 'px',
             borderRadius: '50%',
             // 底色轨道也走主题变量，否则白天模式下白环看不见
-              // ⚠️ 必须 from 0deg：CSS conic-gradient 的 0deg 就是 12 点方向。
-              // 老代码写的 from -90deg 会把起点转到「9 点方向」，于是进度弧整段偏了 90°
-              // （像素采样实测：0%..130% 之外 275°..360° 也是彩色），0% 时看不出来、
-              // 加了端帽后表现为「起点端帽落在弧中间像疙瘩、终点端帽落在轨道上像孤立圆点」。
-              // 满环（>=99.9%）必须用单色：渐变从起点色到终点色，闭合处要浅色直接接回深色，
-              // 12 点位置会留下一个明显的色阶断口（实测截图可见）。中间态没有这个问题，
-              // 因为弧末端接的是轨道色、起点前也是轨道色，只有两端"内部过渡"。
-              background:
-                ratio >= 0.999
-                  ? d.color
-                  : `conic-gradient(from 0deg, ${d.color} 0deg, ${d.color2} ${deg}deg, var(--bg-card-3) ${deg}deg 360deg)`,
+              background: `conic-gradient(from -90deg, ${d.color} 0deg ${deg}deg, var(--bg-card-3) ${deg}deg 360deg)`,
             WebkitMaskImage: maskFor,
             maskImage: maskFor,
           },
         }
       })
     },
-    /**
-     * 弧端圆头：每条弧两端各一个直径 = band + ringCapBoost 的圆，圆心落在环带中线上。
-     * 平切的端头是"塑料感"的主要来源（成熟健身环都是圆头），这一步是观感收益的主体。
-     *
-     * 三态边界（缺一个都是视觉 bug）：
-     *   ratio <= 0     → 不画，否则"今天还没动却有个绿点"
-     *   ratio >= 0.999 → 不画，满环时两端重合在 12 点会多出一个疙瘩
-     *   0 < ratio < 1  → 两端都画；ratio 极小时两端自然重叠，形成圆润的起点，观感正确
-     *
-     * 副作用（可接受）：端帽沿弧向外延伸 band/2，视觉进度多读约 2–3%，不值得为此修正角度。
-     */
-    ringCaps() {
-      const g = ringGeometryOf(this.ringSize)
-      if (!g) return []
-      const { band, rOuter, rMid, rInner, cx } = g
-      const capD = band + this.ringCapBoost
-      const defs = [
-        { key: 'steps', r: rOuter, color: 'var(--accent-text)', color2: 'var(--accent-ring-2)', p: this.pct(this.steps, this.stepGoal) },
-        { key: 'calorie', r: rMid, color: 'var(--warm-graphic)', color2: 'var(--warm-ring-2)', p: this.pct(this.exercise, this.calorieGoal) },
-        { key: 'water', r: rInner, color: 'var(--cool-graphic)', color2: 'var(--cool-ring-2)', p: this.pct(this.water, this.waterGoal) },
-      ]
-      const caps = []
-      defs.forEach((d) => {
-        const pts = capCenters({ r: d.r, ratio: d.p / 100, key: d.key, band, cx, capD }).map((p) => ({
-          ...p,
-          bg: p.key.endsWith('-start') ? d.color : d.color2, // 起点用起点色、终点用终点色（有渐变时接缝才自然）
-        }))
-        if (!pts.length) return
-        pts.forEach((pt) => {
-          caps.push({
-            key: pt.key,
-            style: {
-              left: pt.x + 'px',
-              top: pt.y + 'px',
-              width: capD + 'px',
-              height: capD + 'px',
-              marginLeft: -capD / 2 + 'px',
-              marginTop: -capD / 2 + 'px',
-              background: pt.bg,
-            },
-          })
-        })
-      })
-      return caps
-    },
-
     minWeight() {
       const ws = this.weightLog.map((p) => Number(p.w) || 0).filter((w) => w > 0)
       return ws.length ? Math.min.apply(null, ws) : 0
@@ -850,14 +790,6 @@ export default {
   /* 尺寸/位置/颜色由行内样式算出，这里只做兜底 */
   box-sizing: border-box;
 }
-.ring-cap {
-  /* 弧两端的圆头：尺寸/位置/颜色全部由行内样式给出（.ring-cap 只是载体），
-     这里只补「定位 + 圆角」，不要再加别的属性，否则会和行内值打架。
-     端帽是独立元素、不在 .ring-layer 的 mask 子树里，所以不会被环形遮罩裁掉。 */
-  position: absolute;
-  border-radius: 50%;
-  pointer-events: none;
-}
 .ring-center {
   position: absolute;
   left: 0;
@@ -902,17 +834,14 @@ export default {
   height: 18rpx;
   border-radius: 50%;
 }
-/* 图例小圆点必须与同心环的弧用同一组令牌，否则「弧 vs 点」在某个主题下不同色。
-   这三个是图形（18rpx 色块），走图形令牌：白底上 ≥3:1（WCAG 1.4.11）。
-   --accent/--warm/--cool 是"色块填充"用的亮值，白天对白卡只有 2.83/2.52/4.03，不够。 */
 .dot.steps {
-  background: var(--accent-text);
+  background: var(--accent);
 }
 .dot.calorie {
-  background: var(--warm-graphic);
+  background: var(--warm);
 }
 .dot.water {
-  background: var(--cool-graphic);
+  background: var(--cool);
 }
 .legend-main {
   flex: 1;
@@ -1101,9 +1030,7 @@ export default {
 .trend-seg {
   position: absolute;
   height: 3rpx;
-  /* 数据图形走「图形令牌」：白天对 trend-box 底 #f2f5f9，旧值 --accent 只有 2.27:1（含 0.85 透明度），
-     改后 3.76:1；暗色下 6.24:1。WCAG 1.4.11 要求 3:1。 */
-  background: var(--accent-text);
+  background: var(--accent);
   opacity: 0.85;
   transform-origin: 0 50%;
   border-radius: 3rpx;
@@ -1115,12 +1042,8 @@ export default {
   margin-left: -6rpx;
   margin-top: -6rpx;
   border-radius: 50%;
-  /* 白天对 #f2f5f9：旧 --accent 2.59:1 → 4.87:1；暗色 8.13:1 */
-  background: var(--accent-text);
-  /* 光晕原来写死 rgba(43,212,92,.22)（暗色主题的绿），白天会跟深绿的点本体打架；
-     改用 --accent-soft-2 后随主题走（亮 rgba(18,177,74,.2) / 暗 rgba(43,212,92,.24)），
-     alpha 从 .22 变 .2/.24，肉眼无差别；与 diet/profile 里用的也是同一个令牌，语义统一。 */
-  box-shadow: 0 0 0 3rpx var(--accent-soft-2);
+  background: var(--accent);
+  box-shadow: 0 0 0 3rpx rgba(43, 212, 92, 0.22);
 }
 .trend-empty {
   position: absolute;
@@ -1161,9 +1084,7 @@ export default {
 .goal-fill {
   height: 100%;
   border-radius: 999rpx;
-  /* 原来用 --accent-grad 渐变：白天左端 2.32:1、右端仅 1.47:1（对轨道 --line #e3e9f0）。
-     改单色图形令牌后 4.35:1，暗色 7.14:1；同时也符合「平面、不堆渐变」的取向。 */
-  background: var(--accent-text);
+  background: var(--accent-grad);
 }
 
 /* 近 7 天缺口 */
@@ -1201,13 +1122,11 @@ export default {
   width: 26rpx;
   border-radius: 6rpx 6rpx 0 0;
 }
-/* 近 7 天缺口柱：负=缺口 绿、正=盈余 橙。柱体是数据图形，走图形令牌。
-   白天对白卡：neg 旧 2.83 → 5.32:1，pos 旧 2.52 → 4.16:1（WCAG 1.4.11 需 3:1）。 */
 .weekg-bar.neg {
-  background: var(--accent-text);
+  background: var(--accent);
 }
 .weekg-bar.pos {
-  background: var(--warm-graphic);
+  background: var(--warm);
 }
 .weekg-day {
   margin-top: 8rpx;
