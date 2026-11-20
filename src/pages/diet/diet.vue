@@ -22,38 +22,66 @@
       </view>
     </view>
 
-    <!-- 快捷操作：把昨天的记录整套复制到今天（大多数人吃得差不多） -->
+    <!-- 快捷操作：把选中日期的前一天整套复制过来（大多数人吃得差不多） -->
     <view class="quick-row">
-      <text class="quick-btn" @click="copyYesterday">复制昨天的记录</text>
+      <text class="quick-btn" @click="copyPrevDay">复制{{ prevWord }}的记录</text>
       <text class="quick-info" v-if="summary.count">{{ summary.count }} 条 · 碳水 {{ summary.carb }}g · 蛋白 {{ summary.protein }}g</text>
     </view>
 
-    <!-- 热量总览：缺口是这一页最想让你看见的数字 -->
+    <!-- 热量总览：主数字 = 离目标还差多少（与「目标」同一基准），缺口降为辅助行 -->
     <view class="hero">
-      <text class="hero-label">{{ gapLabel }}</text>
+      <view class="hero-head">
+        <text class="hero-date">{{ headline }}</text>
+        <text class="hero-goal" :class="{ muted: !goalSet }">{{ goalText }}</text>
+      </view>
+
       <view class="hero-num-row">
-        <text class="hero-num num">{{ gapAbs }}</text>
+        <text class="hero-num num">{{ heroNum }}</text>
         <text class="hero-unit">kcal</text>
+        <text class="hero-tag" :class="heroTone">{{ heroLabel }}</text>
       </view>
-      <view class="hero-row">
-        <view class="hero-cell">
-          <text class="cell-num">{{ summary.intake }}</text>
-          <text class="cell-label">摄入</text>
+
+      <view class="progress-track" v-if="goalSet">
+        <view class="progress-fill" :class="heroTone" :style="{ width: goalPct + '%' }"></view>
+      </view>
+      <view class="progress-scale" v-if="goalSet">
+        <text class="scale-l">{{ summary.intake }} 已摄入</text>
+        <text class="scale-r num">{{ goalPctRaw }}%</text>
+      </view>
+
+      <!-- 蛋白质目标：设了就显示进度（以前设了全 App 看不到） -->
+      <view class="macro" v-if="summary.proteinGoal">
+        <view class="macro-head">
+          <text class="macro-k">蛋白质</text>
+          <text class="macro-v num">{{ summary.protein }} / {{ summary.proteinGoal }} g</text>
         </view>
-        <view class="hero-cell">
-          <text class="cell-num">{{ summary.tdee }}</text>
-          <text class="cell-label">总消耗</text>
-        </view>
-        <view class="hero-cell">
-          <text class="cell-num">{{ summary.calorieGoal || '—' }}</text>
-          <text class="cell-label">目标</text>
+        <view class="macro-track">
+          <view class="macro-fill" :style="{ width: proteinPct + '%' }"></view>
         </view>
       </view>
+
+      <!-- 辅助行：缺口是「相对总消耗」的另一口径，标签写清基准，不再和目标并排 -->
+      <view class="hero-foot">
+        <view class="foot-cell">
+          <text class="foot-num num">{{ summary.intake }}</text>
+          <text class="foot-label">摄入</text>
+        </view>
+        <view class="foot-cell">
+          <text class="foot-num num">{{ summary.tdee }}</text>
+          <text class="foot-label">总消耗</text>
+        </view>
+        <view class="foot-cell">
+          <text class="foot-num num" :class="{ warn: summary.gap > 0 }">{{ gapAbs }}</text>
+          <text class="foot-label">{{ gapWord }}</text>
+        </view>
+      </view>
+
+      <text class="hint" v-if="!summary.count">{{ dayWord }}还没有记录饮食，点下面任一餐次的「+ 添加」开始。</text>
     </view>
 
     <!-- 消耗拆解 -->
     <view class="card">
-      <text class="card-title">今天怎么消耗的</text>
+      <text class="card-title">{{ dayWord }}怎么消耗的</text>
       <view class="kv">
         <text class="kv-k">基础代谢 × 活动系数</text>
         <text class="kv-v">{{ summary.tdeeBase }} kcal</text>
@@ -105,7 +133,7 @@
             {{ e.amount }}g · 碳 {{ e.carb }} / 蛋 {{ e.protein }} / 脂 {{ e.fat }}
           </text>
         </view>
-        <text class="entry-cal">{{ e.calorie }}</text>
+        <text class="entry-cal num">{{ e.calorie }}</text>
         <text class="entry-del" @click.stop="remove(e)">删</text>
       </view>
     </view>
@@ -196,6 +224,21 @@ import { getWaterPrefs } from '@/utils/water-store.js'
 import { dayCalories } from '@/utils/day-summary.js'
 import { today, dateOffset } from '@/utils/body-store.js'
 
+const WEEK_NAMES = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+
+/** 'YYYY-MM-DD' → 本地 Date（自己拆，别交给 Date 解析 '-' 分隔串，各端行为不一致） */
+function parseDate(text) {
+  const p = String(text || '').split('-')
+  return new Date(Number(p[0]) || 1970, (Number(p[1]) || 1) - 1, Number(p[2]) || 1)
+}
+
+/** Date → 'YYYY-MM-DD' */
+function toDateStr(d) {
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${mm}-${dd}`
+}
+
 const EMPTY_SUMMARY = {
   intake: 0, carb: 0, protein: 0, fat: 0, count: 0, water: 0,
   bmr: 0, bmrFormula: 'none', activity: 1.2, tdeeBase: 0,
@@ -246,10 +289,69 @@ export default {
     gapAbs() {
       return Math.abs(Number(this.summary.gap) || 0)
     },
-    gapLabel() {
+    /** 选中日期是「今天 / 昨天 / 前天」——所有"今天…"文案都走它，切日期时不再撒谎 */
+    dayWord() {
+      if (this.date === today()) return '今天'
+      if (this.date === dateOffset(-1)) return '昨天'
+      if (this.date === dateOffset(-2)) return '前天'
+      return '这天'
+    },
+    /** 选中日期的前一天：复制记录只能从这里来（否则在「昨天」页点复制＝自己复制自己） */
+    prevDate() {
+      const d = parseDate(this.date)
+      d.setDate(d.getDate() - 1)
+      return toDateStr(d)
+    },
+    prevWord() {
+      return this.date === dateOffset(-1) ? '前天' : '前一天'
+    },
+    headline() {
+      const d = parseDate(this.date)
+      const week = WEEK_NAMES[d.getDay()] || ''
+      return `${this.dayWord} · ${d.getMonth() + 1}月${d.getDate()}日 ${week}`
+    },
+    goalSet() {
+      return Number(this.summary.calorieGoal) > 0
+    },
+    goalText() {
+      return this.goalSet ? `目标 ${this.summary.calorieGoal} kcal` : '未设热量目标'
+    },
+    /** 距目标还差多少（正=还能吃，负=已超出） */
+    remainCalorie() {
+      return (Number(this.summary.calorieGoal) || 0) - (Number(this.summary.intake) || 0)
+    },
+    /** 主数字：设了目标就是"还差多少"，没设目标就诚实显示已摄入 */
+    heroNum() {
+      return this.goalSet ? Math.abs(this.remainCalorie) : Number(this.summary.intake) || 0
+    },
+    heroLabel() {
+      if (!this.goalSet) return '已摄入'
+      return this.remainCalorie >= 0 ? '还差' : '已超出'
+    },
+    /** ok=还在目标内 / over=已超出 / plain=未设目标 */
+    heroTone() {
+      if (!this.goalSet) return 'plain'
+      return this.remainCalorie >= 0 ? 'ok' : 'over'
+    },
+    goalPctRaw() {
+      const goal = Number(this.summary.calorieGoal) || 0
+      if (!(goal > 0)) return 0
+      return Math.round(((Number(this.summary.intake) || 0) / goal) * 100)
+    },
+    goalPct() {
+      return Math.min(100, Math.max(0, this.goalPctRaw))
+    },
+    proteinPct() {
+      const goal = Number(this.summary.proteinGoal) || 0
+      if (!(goal > 0)) return 0
+      return Math.min(100, Math.max(0, Math.round(((Number(this.summary.protein) || 0) / goal) * 100)))
+    },
+    /** 缺口是「摄入 − 总消耗」，与热量目标不是同一基准，标签必须写出来 */
+    gapWord() {
       const gap = Number(this.summary.gap) || 0
-      if (!this.summary.intake) return '今天还没记录饮食'
-      return gap < 0 ? '还差这些热量达标（缺口）' : '已超出目标（盈余）'
+      if (gap > 0) return '盈余 · 对消耗'
+      if (gap < 0) return '缺口 · 对消耗'
+      return '收支平衡'
     },
     bmrHint() {
       if (!this.summary.bmr) return '先到「我的」填写身体信息，才能算出基础代谢'
@@ -286,15 +388,16 @@ export default {
       this.date = d
       this.reload()
     },
-    // 把昨天的整份记录复制到今天（吃得差不多时省一大截操作）
-    copyYesterday() {
-      const n = copyDay(dateOffset(-1), this.date)
+    // 把选中日期前一天的整份记录复制过来（吃得差不多时省一大截操作）
+    // 注意来源按当前选中日期算，不是写死"昨天"——否则在「昨天」页点它会自己复制自己
+    copyPrevDay() {
+      const n = copyDay(this.prevDate, this.date)
       if (!n) {
-        uni.showToast({ title: '昨天没有记录可复制', icon: 'none' })
+        uni.showToast({ title: `${this.prevWord}没有记录可复制`, icon: 'none' })
         return
       }
       this.reload()
-      uni.showToast({ title: `已复制 ${n} 条`, icon: 'success' })
+      uni.showToast({ title: `已从${this.prevWord}复制 ${n} 条`, icon: 'success' })
     },
     // 点条目：改份量 / 换餐次 / 删除
     entryAction(e) {
@@ -516,9 +619,23 @@ export default {
   background: $bg-card;
   border: 1rpx solid $border-subtle;
 }
-.hero-label {
+.hero-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16rpx;
+}
+.hero-date {
   font-size: 24rpx;
+  color: $text-secondary;
+}
+.hero-goal {
+  font-size: 22rpx;
   color: var(--accent-text);
+  white-space: nowrap;
+}
+.hero-goal.muted {
+  color: $text-muted;
 }
 .hero-num-row {
   display: flex;
@@ -536,27 +653,109 @@ export default {
   font-size: 26rpx;
   color: $text-secondary;
 }
-.hero-row {
+/* 状态标签：绿=还在目标内，暖橙=已超出，灰=未设目标 */
+.hero-tag {
+  font-size: 22rpx;
+  padding: 4rpx 14rpx;
+  border-radius: 999rpx;
+  border: 1rpx solid $border-subtle;
+  color: $text-secondary;
+}
+.hero-tag.ok {
+  color: var(--accent-text);
+  border-color: var(--accent-soft-2);
+}
+.hero-tag.over {
+  color: var(--warm-text);
+  border-color: var(--warm-graphic);
+}
+.hero-tag.plain {
+  color: $text-muted;
+}
+/* 目标进度条 */
+.progress-track {
+  height: 14rpx;
+  margin-top: 18rpx;
+  border-radius: 999rpx;
+  background: $bg-card-light;
+  border: 1rpx solid $border-subtle;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  border-radius: 999rpx;
+  background: var(--accent);
+  transition: width 0.24s var(--ease);
+}
+.progress-fill.over {
+  background: var(--warm-graphic);
+}
+.progress-scale {
   display: flex;
-  margin-top: 24rpx;
-  padding-top: 20rpx;
+  justify-content: space-between;
+  margin-top: 8rpx;
+}
+.scale-l,
+.scale-r {
+  font-size: 20rpx;
+  color: $text-muted;
+}
+/* 蛋白质进度：冷色，与热量绿区分 */
+.macro {
+  margin-top: 20rpx;
+}
+.macro-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.macro-k {
+  font-size: 24rpx;
+  color: $text-secondary;
+}
+.macro-v {
+  font-size: 24rpx;
+  color: $text-main;
+}
+.macro-track {
+  height: 10rpx;
+  margin-top: 10rpx;
+  border-radius: 999rpx;
+  background: $bg-card-light;
+  border: 1rpx solid $border-subtle;
+  overflow: hidden;
+}
+.macro-fill {
+  height: 100%;
+  border-radius: 999rpx;
+  background: var(--cool-graphic);
+  transition: width 0.24s var(--ease);
+}
+/* 辅助行：摄入 / 总消耗 / 缺口 */
+.hero-foot {
+  display: flex;
+  margin-top: 20rpx;
+  padding-top: 16rpx;
   border-top: 1rpx solid $border-subtle;
 }
-.hero-cell {
+.foot-cell {
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
 }
-.cell-num {
-  font-size: 34rpx;
+.foot-num {
+  font-size: 30rpx;
   font-weight: 700;
   color: $text-main;
 }
-.cell-label {
+.foot-num.warn {
+  color: var(--warm-text);
+}
+.foot-label {
   margin-top: 6rpx;
-  font-size: 22rpx;
-  color: $text-secondary;
+  font-size: 20rpx;
+  color: $text-muted;
 }
 
 /* 卡片 */
@@ -634,8 +833,7 @@ export default {
 }
 .cup.on {
   opacity: 1;
-  /* TODO(cool-graphic)：等 ui-dev 的 --cool-graphic 令牌落地后换成 var(--cool-graphic) */
-  border-color: rgba(74, 163, 255, 0.55);
+  border-color: var(--cool-graphic);
 }
 
 /* 条目 */
