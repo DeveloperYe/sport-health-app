@@ -117,6 +117,10 @@ page {
   --warm-text: #a85c07;
   --cool-text: #1663bd;
   --danger-text: #c62828;
+  /* 图形版暖/冷色：白底上必须 ≥3:1（WCAG 1.4.11），比 --warm/--cool 压深、
+     又比 --*-text 略亮。实测对环轨道 #e8eef5：暖 3.56:1、冷 3.89:1；对白卡 4.16/4.55。 */
+  --warm-graphic: #b96808;
+  --cool-graphic: #2277d0;
   --accent-soft: rgba(18, 177, 74, 0.1);
   --accent-soft-2: rgba(18, 177, 74, 0.2);
   --shadow-card: 0 6rpx 20rpx rgba(17, 22, 28, 0.06);
