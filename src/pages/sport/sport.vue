@@ -228,6 +228,32 @@
         </view>
       </view>
     </template>
+
+    <!-- ===== 运动历史（跨天，从「我的」页搬来） =====
+         放在两个类别面板**之外**：历史是跨口径的（跑步/健走 + 其他运动），
+         挂在任一面板下都会出现"切到另一类别就看不到历史"；页面级只实现一份。
+         今日的记录仍在各自面板的「今日记录 / 今日其他运动」里，下面这张卡是完整时间线。
+         总数取真实全量（不是当前渲染条数）；默认 10 条，按「展开更多」每次 +20。 -->
+    <view class="ot-card">
+      <view class="ot-list-head">
+        <text class="ot-title">运动历史</text>
+        <text class="ot-sum" v-if="historyView.total">共 {{ historyView.total }} 条</text>
+      </view>
+      <view v-if="!historyView.rows.length" class="ot-empty">
+        还没有记录，完成一次运动就会出现在这里
+      </view>
+      <view class="ot-item" v-for="r in historyView.rows" :key="r.key">
+        <view class="ot-item-main">
+          <text class="ot-item-name">{{ r.name }}</text>
+          <text class="ot-item-sub">{{ r.dateLabel }} · {{ formatDurationText(r.durationSeconds) }} · {{ r.sub }}</text>
+        </view>
+        <text class="ot-item-cal">{{ r.calorie }} kcal</text>
+        <text class="ot-item-del" @click="delHistory(r)">删除</text>
+      </view>
+      <view class="ot-more" v-if="historyView.remaining > 0" @click="moreHistory">
+        展开更多（还有 {{ historyView.remaining }} 条）
+      </view>
+    </view>
   </view>
 </template>
 
@@ -256,7 +282,10 @@ import {
   formatActivityDuration,
 } from '@/utils/activity-store.js'
 import { today as todayStr } from '@/utils/body-store.js'
-import { allWorkoutRecords } from '@/utils/day-summary.js'
+// 运动历史（跨天）：跑步/健走与其他运动混排的记录由 allExerciseHistory 统一成同一种形状，
+// 展示层（真实总数 / 日期只出现一次 / 分批渲染）在 history-view.js，配了单测。
+import { allWorkoutRecords, allExerciseHistory } from '@/utils/day-summary.js'
+import { buildHistoryRows, moreHistoryLimit, HISTORY_INITIAL } from '@/utils/history-view.js'
 // 顶部类别条（横向滚动）：类别清单数据驱动 + 选中态纯函数解析，配 tests/sport-categories.test.mjs
 import { buildSportCategories, resolveCategoryBar } from '@/utils/sport-categories.js'
 // GPS 轨迹：采集/滤波/距离在 track.js，格式化在 geo.js
@@ -342,6 +371,10 @@ export default {
       otTimer: null,
       showManual: false, // 手动补录面板
       todayRuns: [], // 今天的跑步/健走记录
+      // ===== 运动历史（跨天，从「我的」页搬来）=====
+      historyItems: [], // allExerciseHistory() 原始项：跑步/健走与其他运动混排
+      historyToday: '', // 算「今天/昨天」用的当天日期串（进页面时取一次）
+      historyLimit: HISTORY_INITIAL, // 当前渲染条数上限，「展开更多」每次 +HISTORY_PAGE_STEP
     }
   },
   computed: {
@@ -423,12 +456,23 @@ export default {
         otherMet: this.other.met,
       })
     },
+    // 运动历史要渲染的行 + 真实总数 + 还剩多少条没展开。
+    // total 取全量长度（源实现拿 slice 之后的 length 当「共 N 条」，是假总数）；
+    // name 已摘掉标题里的日期尾巴，日期只在 dateLabel 出现一次。
+    historyView() {
+      return buildHistoryRows(this.historyItems, {
+        todayStr: this.historyToday,
+        limit: this.historyLimit,
+      })
+    },
   },
   onShow() {
     this.pageVisible = true
     this.weight = getWeight()
     this.loadTodayOther()
     this.loadTodayRuns()
+    // 历史可能在「我的」/别的会话里被删过，进页面一律重读
+    this.loadHistory()
     // 底图城市可能刚在地图页换掉：刷新一下，city-key 一变 map-view 就重建
     this.refreshMapCity()
     // 主题可能在别的页切过：回来的这一刻地图必须已经是对的颜色
@@ -565,6 +609,7 @@ export default {
       this.otReset()
       this.other = { name: '', met: 0, minutes: '' }
       this.loadTodayOther()
+      this.loadHistory() // 跨天历史里也要立刻出现这条
       uni.showToast({ title: `${label} ${this.formatDurationText(seconds)}已记录`, icon: 'success' })
     },
     // 放弃本场计时（不记账）。保留已选动作，用户可以立刻重新开始计时。
@@ -639,11 +684,13 @@ export default {
       })
       this.other = { name: '', met: 0, minutes: '' }
       this.loadTodayOther()
+      this.loadHistory() // 手动补录也要进跨天历史
       uni.showToast({ title: '已记录', icon: 'success' })
     },
     removeOther(id) {
       removeActivity(todayStr(), id)
       this.loadTodayOther()
+      this.loadHistory()
     },
     // 时长文案：条目用 formatActivityDuration（秒为真值），汇总用 sumDuration
     durText(item) {
@@ -697,12 +744,45 @@ export default {
           if (!m.confirm) return
           removeRecord(r.id)
           this.loadTodayRuns()
+          this.loadHistory() // 同一份数据也在跨天历史里，一起刷
           uni.showToast({ title: '已删除', icon: 'success' })
         },
       })
     },
     distanceBrief(meters) {
       return formatDistance(meters)
+    },
+
+    // ===== 运动历史（跨天）=====
+    loadHistory() {
+      this.historyToday = todayStr()
+      this.historyItems = allExerciseHistory()
+    },
+    moreHistory() {
+      this.historyLimit = moreHistoryLimit(this.historyLimit, this.historyItems.length)
+    },
+    /**
+     * 删除一条历史记录。两类记录存在**不同的表**里，必须按类型分流：
+     *   跑步 / 健走 → storage.records，按 id 删（removeRecord）
+     *   其他运动   → activity-store 按天存的表，要 date + id 删（removeActivity）
+     * 必须二次确认：删掉就没了，没有撤销。
+     */
+    delHistory(r) {
+      if (!r) return
+      uni.showModal({
+        title: '删除这条记录',
+        content: `${r.date} 的${r.name}（${r.calorie} kcal），删除后当日运动消耗会同步减少。确定吗？`,
+        success: (m) => {
+          if (!m.confirm) return
+          if (r.kind === 'activity') removeActivity(r.date, r.id)
+          else removeRecord(r.id)
+          // 同一份数据被三处展示（历史 / 今日记录 / 今日其他运动），一起刷新
+          this.loadHistory()
+          this.loadTodayRuns()
+          this.loadTodayOther()
+          uni.showToast({ title: '已删除', icon: 'success' })
+        },
+      })
     },
 
     // 底图彻底不可用（WebGL/瓦片读取失败）：本轮不再尝试，直接自绘层兜底
@@ -941,8 +1021,9 @@ export default {
 
       this.resetSession()
       uni.showToast({ title: '运动已保存', icon: 'success' })
-      // 保存后刷新今日记录列表，否则要切页回来才看到
+      // 保存后刷新今日记录与跨天历史，否则要切页回来才看到
       this.loadTodayRuns()
+      this.loadHistory()
     },
     resetSession() {
       // 一次清干净：字段清单在 utils/sport-session.js 的 mergeSessionReset（配了单测）。
@@ -1374,6 +1455,14 @@ export default {
   font-size: 24rpx;
   color: $text-muted;
   padding-left: 8rpx;
+}
+/* 运动历史「展开更多」：整行可点的文字按钮，不描边不填色（与列表同层，不抢视觉） */
+.ot-more {
+  margin-top: 20rpx;
+  padding: 16rpx 0;
+  text-align: center;
+  font-size: 24rpx;
+  color: var(--accent-text);
 }
 
 /* 估算距离提示：只在信号中断后出现，说明这几十米是直线估算的 */
