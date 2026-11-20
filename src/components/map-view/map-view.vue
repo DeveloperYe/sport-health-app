@@ -754,6 +754,19 @@ function asObj(v) {
 // ——不随 data() 重建而丢失。
 let HOST_EL = null
 
+// R2 桥接渠道：**放模块级 Map**，键 = 实例 id + 档案下标。
+//
+// 为什么不再挂到组件实例上：真机 webview 会**静默丢弃**「未在 data() 里声明」的新字段
+// （`this.bridges = {}` 不生效），紧接着的 `this.bridges[key] = …` 就成了给 undefined
+// 赋属性 —— 报 "Cannot set properties of undefined (setting '0')"，整张底图退回自绘层。
+// 模块级 Map 既不依赖实例是否可扩展，也天然随实例 id 隔离。
+const BRIDGE_MAP = new Map()
+let BRIDGE_INST_SEQ = 0
+
+// 主题 MutationObserver 同理放模块级：MutationObserver 有品牌检查，
+// 放进 data() 会被 Vue 包成响应式代理，个别 WebView 上调 .observe() 会报 Illegal invocation。
+const THEME_MO_MAP = new Map()
+
 export default {
   data() {
     return {
@@ -774,11 +787,16 @@ export default {
       chunkN: 0,
       chunkGot: 0,
       chunkBytes: 0,
-      bridge: null, // R2 桥接渠道（whole 模式下永远为 null）
+      instId: 'mvi-' + ++BRIDGE_INST_SEQ, // 桥接渠道按实例 id 存在模块级 Map 里
       sourceMode: 'auto', // 逻辑层推下来的数据源策略：auto / range / whole
       badRanges: [], // 逻辑层推下来的「本机 Range 判不通」档案标记
       bridgeSize: 0, // R2 探测时逻辑层回报的文件字节数
       r1Text: '', // R1 探测结论（写进诊断）
+      // 以下三项原来是"未声明字段"（this.__lastReset / this._pushRetry），
+      // 在 renderjs 里写未声明字段可能被静默丢弃（表现为防抖失效 / 状态重试失效），
+      // 一律改成 data 里的正经字段。
+      lastResetAt: 0, // onReset 防抖时间戳
+      pushRetry: 0, // pushStatus 在 $ownerInstance 未就绪时的重试计数
       timer: null,
     }
   },
@@ -812,8 +830,8 @@ export default {
     onReset() {
       // onArchives（档案变了）与 mvreset（逻辑层信号）几乎同时到达，防抖避免建两次图
       const now = Date.now()
-      if (this.__lastReset && now - this.__lastReset < 500) return
-      this.__lastReset = now
+      if (this.lastResetAt && now - this.lastResetAt < 500) return
+      this.lastResetAt = now
       try {
         if (this.core && this.core.destroy) this.core.destroy()
       } catch (e) {
@@ -833,14 +851,7 @@ export default {
       this.chunkGot = 0
       this.chunkBytes = 0
       // 桥接渠道也要收尾：在途请求全部 reject，别让旧城市的读请求挂到新地图上
-      if (this.bridge) {
-        try {
-          this.bridge.destroy('切城市/重建')
-        } catch (e) {
-          /* ignore */
-        }
-        this.bridge = null
-      }
+      this.destroyBridges('切城市/重建')
       this.bridgeSize = 0
       this.r1Text = ''
       this.tileAbs = ''
@@ -982,14 +993,15 @@ export default {
     onChunk(payload) {
       const c = asObj(payload)
       if (!c) return
-      // ① R2 桥接的应答（task-1）：带 reqId，直接交给桥接渠道配对。
+      // ① R2 桥接的应答（task-1）：带 reqId，按档案下标找到对应桥接渠道配对。
       //    注意这里**绝不把 err 吞掉**：accept 收到 err 会让对应请求 reject，
       //    绝不能伪装成"读到 0 字节"，否则表现为"瓦片全黑"而查不出原因。
       if (c.reqId !== undefined && c.reqId !== null) {
         if (c.size) this.bridgeSize = Number(c.size) || 0
-        if (this.bridge) {
-          this.bridge.accept({ reqId: c.reqId, b64: c.b64, err: c.err })
-        }
+        // ★ 必须按 c.f 找"本档案"的桥接：早期这里写成 this.bridge（单数、且从未被赋值），
+        //   结果 R2 的应答全部石沉大海，每个请求都要干等到 3 秒超时才降级。
+        const b = this.bridgeFor(typeof c.f === 'number' ? c.f : 0)
+        if (b) b.accept({ reqId: c.reqId, b64: c.b64, err: c.err })
         return
       }
       // ② 整包分块协议（whole 模式走这里，原样保留）
@@ -1056,10 +1068,14 @@ export default {
       }
     },
     setSrc(src, extra) {
+      // status 可能还没建（个别运行时 onAppMode 早于 mounted）：写 null/undefined 会抛
+      // "Cannot set properties of null (setting 'src')"，直接把 boot 打断。
+      if (!this.status) this.status = makeMapStatus()
       this.status.src = src + (extra ? '(' + extra + ')' : '')
       this.pushStatus()
     },
     fail(reason) {
+      if (!this.status) this.status = makeMapStatus()
       this.status.err = reason
       this.status.maplibre = 'fail'
       this.pushStatus()
@@ -1079,24 +1095,7 @@ export default {
         this.core = null
       }
       // R2 桥接在途请求一律 reject，别让视图层销毁后还有请求挂着
-      if (this.bridges) {
-        Object.keys(this.bridges).forEach((k) => {
-          try {
-            this.bridges[k].destroy('视图层销毁')
-          } catch (e) {
-            /* ignore */
-          }
-        })
-        this.bridges = null
-      }
-      if (this.bridge) {
-        try {
-          this.bridge.destroy('视图层销毁')
-        } catch (e) {
-          /* ignore */
-        }
-        this.bridge = null
-      }
+      this.destroyBridges('视图层销毁')
     },
 
     // 按可靠性顺序找容器：id（最稳）-> 选择器 -> 模块缓存 -> data.el -> $el
@@ -1144,11 +1143,30 @@ export default {
       try {
         await this.bootInner()
       } catch (e) {
-        this.fail('boot 异常: ' + ((e && e.message) || String(e)))
+        const msg = (e && e.message) || String(e)
+        // 真机上诊断行只能显示一行字，带上第一条栈帧才能定位到具体语句。
+        // （"Cannot set properties of undefined" 这类错误如果不带栈帧，只能靠猜）
+        let frame = ''
+        try {
+          const stack = e && e.stack ? String(e.stack).split('\n') : []
+          for (let i = 1; i < stack.length; i++) {
+            const line = stack[i].trim()
+            if (line && line.indexOf('boot') < 0) {
+              frame = line.replace(/^at\s+/, '').slice(0, 90)
+              break
+            }
+          }
+        } catch (err) {
+          /* ignore */
+        }
+        this.fail('boot 异常: ' + msg + (frame ? ' @' + frame : ''))
       }
     },
 
     async bootInner() {
+      // status 由 mounted 创建；万一 onAppMode 比 mounted 更早触发（个别运行时顺序不同），
+      // 这里兜一下，否则第一行 `this.status.webgl = …` 就是 "Cannot set properties of null"。
+      if (!this.status) this.status = makeMapStatus()
       this.booting = true
       this.status.webgl = probeWebgl() ? 'ok' : 'fail'
       this.status.renderjs = 'ok'
@@ -1291,6 +1309,17 @@ export default {
      *  R1 能用就用 R1（省掉每次瓦片一次跨层往返），否则用 R2。
      */
     async tryRangeArchive(item, index) {
+      // 这道 try 是"新代码不许拖垮底图"的最后一道闸：
+      // 任何意外（桥接建不起来、运行时拒绝写实例字段、fetch 行为差异……）都只让
+      // 本次走整包，绝不冒泡到 boot() 让整张地图退回自绘层。
+      try {
+        return await this.tryRangeArchiveInner(item, index)
+      } catch (e) {
+        this.r1Text = '按需探测异常: ' + ((e && e.message) || String(e)).slice(0, 60)
+        return null
+      }
+    },
+    async tryRangeArchiveInner(item, index) {
       if (!item || !item.file) return null
       const adcode = item.adcode || 'builtin'
       const bad = (this.badRanges || []).indexOf(adcode) >= 0
@@ -1358,27 +1387,63 @@ export default {
       }
       return null
     },
+    /** 本实例的桥接渠道表（模块级 Map，不写组件实例字段） */
+    bridgesOf() {
+      const id = this.instId || 'mvi-0'
+      let m = BRIDGE_MAP.get(id)
+      if (!m) {
+        m = {}
+        BRIDGE_MAP.set(id, m)
+      }
+      return m
+    },
+    hasBridges() {
+      const m = BRIDGE_MAP.get(this.instId || 'mvi-0')
+      return !!(m && Object.keys(m).length)
+    },
+    bridgeFor(index) {
+      const m = BRIDGE_MAP.get(this.instId || 'mvi-0')
+      return (m && m[String(index)]) || null
+    },
+    destroyBridges(reason) {
+      const id = this.instId || 'mvi-0'
+      const m = BRIDGE_MAP.get(id)
+      if (m) {
+        Object.keys(m).forEach((k) => {
+          try {
+            m[k].destroy(reason || '销毁')
+          } catch (e) {
+            /* ignore */
+          }
+        })
+      }
+      BRIDGE_MAP.delete(id)
+    },
     /** 每个档案一条桥接渠道（多档案时 f 必须对应得上前端下标） */
     ensureBridge(index) {
-      if (!this.bridges) this.bridges = {}
-      const key = String(index)
-      if (this.bridges[key]) return this.bridges[key]
-      const self = this
-      this.bridges[key] = createBridgeReader({
-        send(p) {
-          try {
-            self.$ownerInstance.callMethod('mwReadRange', {
-              reqId: p.reqId,
-              offset: p.offset,
-              length: p.length,
-              f: index,
-            })
-          } catch (e) {
-            /* 调用不通就让 bridge 自己超时，超时只会 reject 那一个请求 */
-          }
-        },
-      })
-      return this.bridges[key]
+      try {
+        const m = this.bridgesOf()
+        const key = String(index)
+        if (m[key]) return m[key]
+        const self = this
+        m[key] = createBridgeReader({
+          send(p) {
+            try {
+              self.$ownerInstance.callMethod('mwReadRange', {
+                reqId: p.reqId,
+                offset: p.offset,
+                length: p.length,
+                f: index,
+              })
+            } catch (e) {
+              /* 调用不通就让 bridge 自己超时，超时只会 reject 那一个请求 */
+            }
+          },
+        })
+        return m[key]
+      } catch (e) {
+        return null
+      }
     },
     /** 这个档案可以尝试哪些 URL（R1 探测/读取用） */
     rangeUrlCandidates(item) {
@@ -1510,7 +1575,7 @@ export default {
         this.$ownerInstance.callMethod('mwRecordProbe', {
           mode: mode || this.sourceMode,
           r1: this.r1Text || '(未探测)',
-          r2: this.bridges && Object.keys(this.bridges).length ? '桥接已建立' : '(未使用)',
+          r2: this.hasBridges() ? '桥接已建立' : '(未使用)',
           readStats: stats,
           probes: RANGE_PROBE_COUNT,
         })
