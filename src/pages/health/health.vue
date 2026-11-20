@@ -294,6 +294,14 @@
         </view>
 
         <view class="wt-sheet-actions">
+          <view class="wt-remind">
+            <view class="wt-remind-row" @click="toggleReminder">
+              <text class="wt-remind-k">喝水提醒</text>
+              <view class="wt-switch" :class="{ on: reminderOn }"><view class="wt-switch-dot"></view></view>
+            </view>
+            <text class="wt-remind-hint">{{ reminderHint }}</text>
+          </view>
+
           <view class="mini-btn ghost" @click="closeWaterSet">取消</view>
           <view class="mini-btn primary" @click="saveWaterSet">保存</view>
         </view>
@@ -308,6 +316,7 @@ import PermissionsGate from '@/components/permissions-gate.vue'
 import { getTodayData, getTargets } from '@/utils/storage.js'
 import { getTodaySteps } from '@/utils/health.js'
 import { getWater, setWater } from '@/utils/diet-store.js'
+import { getReminderCfg, setReminderCfg, startWaterReminder, stopWaterReminder } from '@/utils/water-reminder.js'
 import { getBody, getGoals, saveGoals, today, getWeightLog, upsertWeight, saveBody } from '@/utils/body-store.js'
 import { dayCalories, recentAverages } from '@/utils/day-summary.js'
 import { buildWeekBoard } from '@/utils/week-board.js'
@@ -377,6 +386,7 @@ export default {
       weightLog: [],
       // 近 7 天看板（三环口径）与体重历史（可删）
       weekBoard: null,
+      reminderOn: false,
       goalsWeight: 0,
       weightInput: '',
       weekDays: [],
@@ -649,6 +659,11 @@ export default {
       const log = (this.weightLog || []).filter((p) => p && Number(p.w) > 0).slice(-6).reverse()
       return log.map((p) => ({ date: p.d || p.date, kg: Math.round(Number(p.w) * 10) / 10, label: this.dateWord(p.d || p.date) }))
     },
+    /** 提醒开关的说明：把能力边界写清楚，不承诺做不到的事 */
+    reminderHint() {
+      if (!this.reminderOn) return '开启后按计划间隔用系统通知提醒你喝水'
+      return 'App 在后台时会提醒；被系统清理后不再响（点通知可直接记一杯）'
+    },
     weekBars() {
       const days = this.weekDays || []
       if (!days.length) return []
@@ -790,6 +805,17 @@ export default {
         },
       })
     },
+    /** 切换喝水提醒（写配置 + 立即生效/停止） */
+    toggleReminder() {
+      this.reminderOn = !this.reminderOn
+      setReminderCfg({ enabled: this.reminderOn })
+      try {
+        if (this.reminderOn) startWaterReminder()
+        else stopWaterReminder()
+      } catch (e) {
+        /* 起不来不影响其它功能 */
+      }
+    },
     async refresh() {
       const todayStr = today()
       const targets = getTargets() || {}
@@ -912,6 +938,12 @@ export default {
       return (v < 10 ? '0' + v : String(v)) + ':00'
     },
     openWaterSet() {
+      // 开关初始值取存储里的真实状态，避免"界面关着但后台还在提醒"
+      try {
+        this.reminderOn = !!getReminderCfg().enabled
+      } catch (e) {
+        this.reminderOn = false
+      }
       const prefs = getWaterPrefs()
       this.cupSel = prefs.cupMl
       this.cupCustomOn = ![200, 250, 300, 350, 400].includes(Number(prefs.cupMl))
@@ -1431,6 +1463,30 @@ export default {
 }
 
 /* ===== 喝水打卡（科学饮水）===== */
+/* 喝水提醒开关（写清能力边界：App 后台有效、进程被杀后不响） */
+.wt-remind { margin-top: 24rpx; padding-top: 20rpx; border-top: 1rpx solid $border-subtle; }
+.wt-remind-row { display: flex; align-items: center; justify-content: space-between; }
+.wt-remind-k { font-size: 26rpx; color: $text-main; }
+.wt-switch {
+  width: 76rpx;
+  height: 44rpx;
+  border-radius: 22rpx;
+  background: $bg-card-deep;
+  padding: 4rpx;
+  box-sizing: border-box;
+  transition: background 0.18s ease;
+}
+.wt-switch.on { background: $brand-primary; }
+.wt-switch-dot {
+  width: 36rpx;
+  height: 36rpx;
+  border-radius: 18rpx;
+  background: #fff;
+  transition: transform 0.18s ease;
+}
+.wt-switch.on .wt-switch-dot { transform: translateX(32rpx); }
+.wt-remind-hint { display: block; margin-top: 8rpx; font-size: 20rpx; color: $text-muted; line-height: 1.5; }
+
 .wt-gear {
   display: flex;
   align-items: center;
