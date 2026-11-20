@@ -1,5 +1,15 @@
 <template>
   <view class="page" :class="themeClass">
+    <!-- 账号：随机账号 / 已注册 / 已登录（三态判定在 auth-guard 的 accountCardState，模板不写判断） -->
+    <view class="card acard" v-if="accountCard">
+      <view class="acard-avatar">{{ avatarText }}</view>
+      <view class="acard-main">
+        <text class="acard-title">{{ accountCard.title }}</text>
+        <text class="acard-note">{{ accountCard.syncNote }}</text>
+      </view>
+      <text class="acard-btn" @click="openAccount">{{ accountCard.action }}</text>
+    </view>
+
     <!-- 身体信息 -->
     <view class="card">
       <view class="card-head">
@@ -231,6 +241,7 @@ import { recentAverages, allExerciseHistory } from '@/utils/day-summary.js'
 import { removeActivity, formatActivityDuration } from '@/utils/activity-store.js'
 import { getWaterPrefs } from '@/utils/water-store.js'
 import { THEME_OPTIONS, setThemeMode, getMode } from '@/utils/theme.js'
+import { accountCardState, listAccounts, getSession } from '@/utils/auth-guard.js'
 
 export default {
   data() {
@@ -247,9 +258,16 @@ export default {
       activityLabels: ACTIVITY_OPTIONS.map((o) => o.label),
       week: { days: [], activeCount: 0, avgIntake: 0, avgTdee: 0, avgExercise: 0 },
       history: [],
+      // 账号入口卡状态（onShow → reload 时重读，从注册页返回立刻反映）
+      accountCard: null,
     }
   },
   computed: {
+    /** 头像圆标：有手机号取后两位，没有就用「我」 */
+    avatarText() {
+      const phone = (this.accountCard && this.accountCard.phone) || ''
+      return phone ? phone.slice(-2) : '我'
+    },
     activityIndex() {
       const i = ACTIVITY_OPTIONS.findIndex((o) => Number(o.value) === Number(this.form.activity))
       return i < 0 ? 0 : i
@@ -353,6 +371,15 @@ export default {
         avgExercise: week.avgExercise,
       }
       this.history = allExerciseHistory().slice(0, 12)
+      // 账号入口卡：onShow → reload 会重读，用户从注册页返回时这里立刻变
+      this.accountCard = accountCardState({ accounts: listAccounts(), session: getSession() })
+    },
+    /** 进注册页（同一个页面按自身状态渲染注册表单 / 登录表单 / 已登录态） */
+    openAccount() {
+      uni.navigateTo({
+        url: '/pages/register/register',
+        fail: () => uni.showToast({ title: '打不开注册页', icon: 'none' }),
+      })
     },
     // 柱高：按 7 天最大值归一到 120rpx
     barHeight(v) {
@@ -808,5 +835,52 @@ export default {
 .tseg-item.on .tseg-label {
   color: var(--on-accent);
   font-weight: 700;
+}
+
+/* ===== 账号入口卡（2026-11-20）：随机账号 / 已注册 / 已登录 ===== */
+.acard {
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+}
+.acard-avatar {
+  width: 76rpx;
+  height: 76rpx;
+  line-height: 76rpx;
+  text-align: center;
+  border-radius: 999rpx;
+  background: var(--accent-soft);
+  border: 1rpx solid var(--accent-soft-2);
+  color: var(--accent-text);
+  font-size: 26rpx;
+  font-weight: 800;
+}
+.acard-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.acard-title {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: var(--text-1);
+}
+.acard-note {
+  margin-top: 6rpx;
+  font-size: 20rpx;
+  color: var(--text-3);
+}
+.acard-btn {
+  font-size: 24rpx;
+  font-weight: 700;
+  color: var(--on-accent);
+  background: var(--accent);
+  padding: 12rpx 26rpx;
+  border-radius: 999rpx;
+  transition: transform 0.12s var(--ease), opacity 0.18s var(--ease);
+}
+.acard-btn:active {
+  transform: scale(0.96);
+  opacity: 0.9;
 }
 </style>

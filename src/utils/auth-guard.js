@@ -463,3 +463,68 @@ export function closeSession(store) {
 export function accountCount(store) {
   return listAccounts(store).length
 }
+
+// ===========================================================================
+// 三、"我的"页账号入口卡的状态判定（纯函数：不读存储，存储内容由调用方传入）
+// ===========================================================================
+
+/** 阶段 1 的云同步文案：后端没接之前，任何状态都只能这么写 */
+export const SYNC_NOTE = '云同步 · 服务端开通后可用'
+
+/**
+ * 账号入口卡状态
+ *
+ * 三种身份态：
+ *   anonymous  本机还没账号 —— 「随机账号 · 仅本机」+「注册 / 登录」
+ *   registered 有账号但没登录 —— 「账号 138****0000 · 已注册」+「登录」
+ *   signed     已登录（会话与本机账号表对得上）—— 「138****0000 · 已登录」+「管理」
+ * 外加一条恒定说明 syncNote（阶段 1 `syncReady` 恒 false：不许出现"已同步"）。
+ *
+ * 脏数据的兜底：会话里的手机号在本机账号表里找不到（账号被清、换机导入不全）时，
+ * 不认这条会话，按"没登录"处理 —— 否则界面会显示一个并不存在的登录态。
+ *
+ * @param {{accounts?:Array, session?:object}} input
+ * @returns {{mode:'anonymous'|'registered'|'signed', title:string, action:string,
+ *            syncNote:string, syncReady:boolean, phone:string, accountCount:number}}
+ */
+export function accountCardState(input) {
+  const i = input || {}
+  const accounts = (Array.isArray(i.accounts) ? i.accounts : []).filter((a) => a && a.phone)
+  const session = i.session && i.session.phone ? i.session : null
+  const base = {
+    syncNote: SYNC_NOTE,
+    syncReady: false, // 阶段 1：后端未接，界面不许承诺已同步
+    accountCount: accounts.length,
+  }
+
+  if (session && accounts.some((a) => a.phone === session.phone)) {
+    const phone = maskPhone(session.phone)
+    return Object.assign({}, base, {
+      mode: 'signed',
+      title: phone + ' · 已登录',
+      action: '管理',
+      phone,
+    })
+  }
+
+  if (accounts.length) {
+    // 本机有多个账号时显示最近注册的那个（createdAt 最大，缺字段当 0）
+    const latest = accounts
+      .slice()
+      .sort((a, b) => (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0))[0]
+    const phone = maskPhone(latest.phone)
+    return Object.assign({}, base, {
+      mode: 'registered',
+      title: '账号 ' + phone + ' · 已注册',
+      action: '登录',
+      phone,
+    })
+  }
+
+  return Object.assign({}, base, {
+    mode: 'anonymous',
+    title: '随机账号 · 仅本机',
+    action: '注册 / 登录',
+    phone: '',
+  })
+}
