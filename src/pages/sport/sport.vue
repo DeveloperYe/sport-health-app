@@ -76,7 +76,7 @@
         <!-- 口径说明（一句话，小字）：热量按时长 × MET × 体重算，与步数无关。
              没有这句，用户会问"我走了这么多步，为什么热量和以前不一样"。
              MET 值随类别变（跑步 8.0 / 健走 4.3），所以把它显示出来。 -->
-        <text class="timer-metric">热量 = MET {{ modeMet }} × 体重 {{ weight }}kg × 时长（与步数无关）</text>
+        <text class="timer-metric">热量 = MET {{ metText(modeMet) }} × 体重 {{ weight }}kg × 时长（与步数无关）</text>
         <!-- 没填体重时按默认 60kg 算：MET 口径下体重直接决定热量，必须说清 -->
         <text class="timer-metric-warn" v-if="!weightKnown">按默认 60kg 估算，去「我的」填一下体重更准</text>
         <text class="timer-hint" v-if="state === 'idle'">准备好后，点击开始</text>
@@ -138,7 +138,7 @@
       <view class="ot-card" v-if="other.met > 0">
         <view class="ot-picked">
           <text class="ot-picked-name">{{ other.name }}</text>
-          <text class="ot-picked-met">MET {{ other.met }}</text>
+          <text class="ot-picked-met">MET {{ metText(other.met) }}</text>
         </view>
 
         <!-- 计时区：跑着的时候实时跳时间和消耗 -->
@@ -199,7 +199,7 @@
         <view class="ot-results" v-if="otherResults.length">
           <view class="ot-result" v-for="r in otherResults" :key="r.name + r.met" @click="pickOther(r)">
             <text class="ot-result-name">{{ r.name }}</text>
-            <text class="ot-result-met">MET {{ r.met }}</text>
+            <text class="ot-result-met">MET {{ metText(r.met) }}</text>
           </view>
         </view>
 
@@ -227,7 +227,7 @@
         <view class="ot-item" v-for="it in todayOther" :key="it.id">
           <view class="ot-item-main">
             <text class="ot-item-name">{{ it.name }}</text>
-            <text class="ot-item-sub">MET {{ it.met }} · {{ durText(it) }}</text>
+            <text class="ot-item-sub">MET {{ metText(it.met) }} · {{ durText(it) }}</text>
           </view>
           <text class="ot-item-cal">{{ it.calorie }} kcal</text>
           <text class="ot-item-del" @click="removeOther(it.id)">删除</text>
@@ -287,7 +287,7 @@ import {
   summarizeActivities,
   formatActivityDuration,
 } from '@/utils/activity-store.js'
-import { today as todayStr, getWeightLog } from '@/utils/body-store.js'
+import { today as todayStr, hasWeight } from '@/utils/body-store.js'
 // 运动历史（跨天）：跑步/健走与其他运动混排的记录由 allExerciseHistory 统一成同一种形状，
 // 展示层（真实总数 / 日期只出现一次 / 分批渲染）在 history-view.js，配了单测。
 import { allWorkoutRecords, allExerciseHistory } from '@/utils/day-summary.js'
@@ -465,7 +465,7 @@ export default {
     },
     otHint() {
       if (this.otState === 'idle') return '选好动作后点「开始计时」，边练边看消耗'
-      if (this.otState === 'running') return `计时中 · MET ${this.other.met} × 体重 ${this.weight}kg`
+      if (this.otState === 'running') return `计时中 · MET ${this.metText(this.other.met)} × 体重 ${this.weight}kg`
       return '已暂停，可继续或结束'
     },
     // 类别条要渲染的项 + 当前选中下标（选中项据此自动滚入视野）。
@@ -492,12 +492,10 @@ export default {
   onShow() {
     this.pageVisible = true
     this.weight = getWeight()
-    // 体重日志非空 = 用户真的填过体重（否则热量是按默认 60kg 估的，界面上要说明）
-    try {
-      this.weightKnown = getWeightLog().length > 0
-    } catch (e) {
-      this.weightKnown = false
-    }
+    // 体重日志/体重键任一有值 = 用户真的填过体重（否则热量是按默认 60kg 估的，界面上要说明）。
+    // 用 body-store.hasWeight() 而不是 getBody()：后者会带回兜底 60kg，永远为真；
+    // 也不用 getWeightLog().length，那样老数据只写过 fh_weight 的用户会被误判成"没填"。
+    this.weightKnown = hasWeight()
     this.loadTodayOther()
     this.loadTodayRuns()
     // 历史可能在「我的」/别的会话里被删过，进页面一律重读
@@ -727,6 +725,17 @@ export default {
     },
     formatDurationText(seconds) {
       return formatActivityDuration({ seconds })
+    },
+    /**
+     * MET 的展示文案：统一一位小数。
+     * 只用于界面 —— 落库的 met 仍是数字（8 / 4.3），绝不写字符串进去。
+     * 为什么统一：MODES.run.met 是 8.0，JS 里 8.0 === 8，模板直接插值会显示 "MET 8"，
+     * 而健走显示 "MET 4.3"，同一行两种精度看着像规则不一致。
+     */
+    metText(v) {
+      const n = Number(v)
+      if (!isFinite(n) || n <= 0) return '0.0'
+      return n.toFixed(1)
     },
     sumDuration(sum) {
       return formatActivityDuration({ seconds: sum.seconds })

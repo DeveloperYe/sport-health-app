@@ -37,17 +37,17 @@
 
         <view class="field">
           <text class="field-label">年龄</text>
-          <input class="field-inp" type="number" v-model="form.age" placeholder="岁" placeholder-class="ph" />
+          <input class="field-inp" type="number" v-model="form.age" placeholder="如 25" placeholder-class="ph" />
           <text class="field-unit">岁</text>
         </view>
         <view class="field">
           <text class="field-label">身高</text>
-          <input class="field-inp" type="digit" v-model="form.height" placeholder="cm" placeholder-class="ph" />
+          <input class="field-inp" type="digit" v-model="form.height" placeholder="如 175" placeholder-class="ph" />
           <text class="field-unit">cm</text>
         </view>
         <view class="field">
           <text class="field-label">体重</text>
-          <input class="field-inp" type="digit" v-model="form.weight" placeholder="kg" placeholder-class="ph" />
+          <input class="field-inp" type="digit" v-model="form.weight" placeholder="如 70" placeholder-class="ph" />
           <text class="field-unit">kg</text>
         </view>
         <view class="field">
@@ -106,17 +106,17 @@
       </view>
       <view class="field">
         <text class="field-label">饮水</text>
-        <input class="field-inp" type="number" v-model="goals.water" placeholder="杯" placeholder-class="ph" />
+        <input class="field-inp" type="number" v-model="goals.water" placeholder="如 8" placeholder-class="ph" />
         <text class="field-unit">杯</text>
       </view>
       <view class="field">
         <text class="field-label">蛋白质</text>
-        <input class="field-inp" type="number" v-model="goals.protein" placeholder="g" placeholder-class="ph" />
+        <input class="field-inp" type="number" v-model="goals.protein" placeholder="如 120" placeholder-class="ph" />
         <text class="field-unit">g</text>
       </view>
       <view class="field">
         <text class="field-label">目标体重</text>
-        <input class="field-inp" type="digit" v-model="goals.weight" placeholder="kg" placeholder-class="ph" />
+        <input class="field-inp" type="digit" v-model="goals.weight" placeholder="如 68" placeholder-class="ph" />
         <text class="field-unit">kg</text>
       </view>
       <view class="btn" @click="saveGoalInfo">保存目标</view>

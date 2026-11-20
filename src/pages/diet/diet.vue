@@ -204,7 +204,7 @@
         <!-- 份量 + 确认 -->
         <view class="amount-row">
           <text class="amount-label">吃了多少</text>
-          <input class="inp amount-inp" type="digit" v-model="amount" placeholder="克" placeholder-class="ph" />
+          <input class="inp amount-inp" type="digit" v-model="amount" placeholder="如 150" placeholder-class="ph" />
           <text class="amount-unit">g</text>
         </view>
         <view class="sheet-actions">

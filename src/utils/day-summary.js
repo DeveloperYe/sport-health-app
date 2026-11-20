@@ -163,7 +163,7 @@ export function allExerciseHistory() {
     title: `${a.name} · ${a.date}`,
     duration: Number(a.seconds) || Math.round((Number(a.minutes) || 0) * 60),
     calorie: Number(a.calorie) || 0,
-    sub: `MET ${a.met}`,
+    sub: `MET ${Number(a.met).toFixed(1)}`,
     at: Number(a.at) || 0,
   }))
   return runs.concat(acts).sort((x, y) => y.at - x.at)
