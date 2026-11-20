@@ -82,6 +82,11 @@
         <!-- #ifdef APP-PLUS -->
         <text v-if="diag" class="timer-diag">{{ diag }}</text>
         <!-- #endif -->
+        <!-- 计步自检：用户报「步数算不出来」时一键摊开真值 + 判定。
+             一直显示（不加 #ifdef、不限运动中）—— 出问题时用户往往还没开始运动，
+             而 H5 上判定为 no-app 本身也是有用信息（说明步数要真机才有）。
+             自检是一次性快照 + 判定；上面那行 diag 是实时值，两者互补。 -->
+        <view class="timer-check-btn" @click="stepSelfCheck">计步自检</view>
       </view>
 
       <!-- 操作按钮 -->
@@ -232,6 +237,12 @@ import { sessionSteps, branchDelta, baseUsable } from '@/utils/steps-math.js'
 // #ifdef APP-PLUS
 import { getStepDiag } from '@/utils/health.js'
 // #endif
+// 计步自检：静态引入而非动态 import —— App 端 file:// webview 加载独立 chunk 有失败风险，
+// 真机上会表现成"点了没反应"；本模块只有 ~160 行、依赖的 health/storage 本就在主包，
+// 静态引入只多约 2 KB，换来真机必可用。
+// ⚠️ 必须放在 #ifdef APP-PLUS 之外：自检按钮在 H5 上也要能点（判定 no-app 本身是有用信息），
+// 放进 App 专属块会让 H5 构建把 import 整行删掉，方法运行到 collectStepFacts 就报未定义。
+import { collectStepFacts, buildStepReport } from '@/utils/step-selftest.js'
 import { getTodayData, saveTodayData, addRecord, getWeight, removeRecord } from '@/utils/storage.js'
 import { syncDaily } from '@/utils/cloud.js'
 // 其他运动：MET 库检索 + 按 MET×体重×时长 算消耗 + 当日记录存储
@@ -836,6 +847,29 @@ export default {
         this.stepTimer = null
       }
     },
+    /**
+     * 计步自检：一次性快照 + 判定，解释「步数为什么算不出来」。
+     * 判定逻辑与采集都在 utils/step-selftest.js（纯函数那半有 13 条单测），这里只负责弹窗。
+     * 结论**同时写进剪贴板**：用户截不到屏也能直接粘给开发者。
+     * 自检本身绝不能把页面搞崩 —— 任何异常都降级成一句 toast。
+     */
+    async stepSelfCheck() {
+      try {
+        // 静态 import（不用动态 import）：App 端 file:// webview 加载独立 chunk 有失败风险，
+        // 真机上会表现成"点了没反应"；模块只有 ~160 行、依赖的 health/storage 本就在主包，
+        // 静态引入只多约 2 KB，换来真机必成功。
+        const r = buildStepReport(await collectStepFacts())
+        uni.setClipboardData({ data: r.line + '\n' + r.verdictText, showToast: false })
+        uni.showModal({
+          title: '计步自检',
+          content: r.line + '\n\n' + r.verdictText,
+          showCancel: false,
+          confirmText: '知道了',
+        })
+      } catch (e) {
+        uni.showToast({ title: '自检失败：' + ((e && e.message) || e), icon: 'none' })
+      }
+    },
     async finish() {
       // 🔒 重入锁（P0-1）：结束流程里有两处 await（读计步、读当日步数），
       // 这期间「结束」按钮仍然在（state 还没归 idle），双击会 addRecord 两条、
@@ -1026,6 +1060,17 @@ export default {
   font-size: 20rpx;
   color: $text-muted;
   word-break: break-all;
+}
+/* 计步自检按钮：单行小按钮 → 胶囊（卡片 28rpx / 方块 16rpx / 胶囊 999rpx 的设计语言），
+   ghost 观感与卡片里的次要按钮一致，平面无渐变、颜色全走变量 */
+.timer-check-btn {
+  margin-top: 20rpx;
+  padding: 14rpx 36rpx;
+  border-radius: 999rpx;
+  background: $bg-card-light;
+  color: $text-main;
+  font-size: 24rpx;
+  border: 1rpx solid $border-subtle;
 }
 
 /* 操作按钮 */
@@ -1342,7 +1387,8 @@ export default {
 /* flat-press:2026-11-06 */
 .btn:active,
 .ot-mini-btn:active,
-.map-city-btn:active {
+.map-city-btn:active,
+.timer-check-btn:active {
   transform: scale(0.97);
   opacity: 0.9;
 }
