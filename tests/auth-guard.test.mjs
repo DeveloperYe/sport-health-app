@@ -27,6 +27,8 @@ import {
   getSession,
   openSession,
   closeSession,
+  accountCardState,
+  SYNC_NOTE,
 } from '../src/utils/auth-guard.js'
 
 /** 内存版 store，形状与 uni 存储适配器一致：{ get, set, remove } */
@@ -376,4 +378,94 @@ test('会话：open 后可读（不含密码）、close 后为 null', () => {
   assert.equal(getSession(store).phone, PHONE)
   closeSession(store)
   assert.equal(getSession(store), null)
+})
+
+// =================== 「我的」页账号入口卡的四态判定 ========================
+
+const ACC = (phone, createdAt) => ({ phone, createdAt, salt: 's', hash: 'h' })
+
+test('accountCardState：本机无账号 → anonymous（随机账号 · 仅本机 + 注册 / 登录）', () => {
+  const s = accountCardState({ accounts: [], session: null })
+  assert.equal(s.mode, 'anonymous')
+  assert.equal(s.title, '随机账号 · 仅本机')
+  assert.equal(s.action, '注册 / 登录')
+  assert.equal(s.phone, '')
+  assert.equal(s.accountCount, 0)
+})
+
+test('accountCardState：有账号未登录 → registered，标题带打码手机号 + 登录', () => {
+  const s = accountCardState({ accounts: [ACC(PHONE, 1)], session: null })
+  assert.equal(s.mode, 'registered')
+  assert.equal(s.title, '账号 138****8000 · 已注册')
+  assert.equal(s.action, '登录')
+  assert.equal(s.phone, '138****8000')
+  assert.equal(s.accountCount, 1)
+})
+
+test('accountCardState：会话与本机账号对得上 → signed（· 已登录 + 管理）', () => {
+  const s = accountCardState({
+    accounts: [ACC(PHONE, 1)],
+    session: { phone: PHONE, maskedPhone: '138****8000' },
+  })
+  assert.equal(s.mode, 'signed')
+  assert.equal(s.title, '138****8000 · 已登录')
+  assert.equal(s.action, '管理')
+})
+
+test('accountCardState：多个账号取最近注册的那个（createdAt 最大）', () => {
+  const s = accountCardState({
+    accounts: [ACC('13800138001', 100), ACC('13900139002', 900), ACC('13700137003', 500)],
+    session: null,
+  })
+  assert.equal(s.mode, 'registered')
+  assert.equal(s.phone, '139****9002')
+  assert.equal(s.accountCount, 3)
+})
+
+test('accountCardState：脏会话（手机号不在本机账号表）不认成已登录', () => {
+  // 有别的账号 → 降级为 registered，而不是显示一个并不存在的登录态
+  const withOthers = accountCardState({
+    accounts: [ACC(PHONE, 1)],
+    session: { phone: '13900139000' },
+  })
+  assert.equal(withOthers.mode, 'registered')
+  // 一个账号都没有 → 降级为 anonymous
+  const empty = accountCardState({ accounts: [], session: { phone: '13900139000' } })
+  assert.equal(empty.mode, 'anonymous')
+})
+
+test('accountCardState：四态都带云同步说明，且 syncReady 恒 false（阶段 1）', () => {
+  const states = [
+    accountCardState({ accounts: [], session: null }),
+    accountCardState({ accounts: [ACC(PHONE, 1)], session: null }),
+    accountCardState({ accounts: [ACC(PHONE, 1)], session: { phone: PHONE } }),
+  ]
+  for (const s of states) {
+    assert.equal(s.syncNote, SYNC_NOTE)
+    assert.equal(s.syncNote, '云同步 · 服务端开通后可用')
+    assert.equal(s.syncReady, false)
+  }
+})
+
+test('accountCardState：文案里不出现任何"已同步"类承诺（禁用词回归）', () => {
+  const banned = ['已同步', '云端已保存', '已备份到云', '跨设备可用', '数据已安全加密上传', '已验证手机号']
+  const states = [
+    accountCardState({ accounts: [], session: null }),
+    accountCardState({ accounts: [ACC(PHONE, 1)], session: null }),
+    accountCardState({ accounts: [ACC(PHONE, 1)], session: { phone: PHONE } }),
+  ]
+  for (const s of states) {
+    const text = s.title + '|' + s.action + '|' + s.syncNote
+    for (const word of banned) {
+      assert.equal(text.indexOf(word), -1, '不该出现「' + word + '」，实际: ' + text)
+    }
+  }
+})
+
+test('accountCardState：入参缺失或被塞脏数据都不抛异常', () => {
+  for (const input of [undefined, null, {}, { accounts: null }, { accounts: [null, {}] }]) {
+    const s = accountCardState(input)
+    assert.equal(s.mode, 'anonymous')
+    assert.equal(s.accountCount, 0)
+  }
 })
