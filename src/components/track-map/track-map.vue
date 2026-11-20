@@ -106,7 +106,10 @@ export default {
       ctx.draw()
     },
     drawGrid(ctx, w, h) {
-      ctx.setStrokeStyle('rgba(255,255,255,0.045)')
+      // 网格只是肌理，但必须是「能在当前底色上看出来的肌理」：
+      // 以前写死 rgba(255,255,255,.045)，白天主题下白底白线 = 完全看不见。
+      const p = palette()
+      ctx.setStrokeStyle(p.dark ? 'rgba(255,255,255,0.045)' : 'rgba(17,22,28,0.07)')
       ctx.setLineWidth(1)
       const step = 32
       for (let x = step; x < w; x += step) {
@@ -239,8 +242,11 @@ export default {
 }
 .tm-empty-ico {
   font-size: 56rpx;
-  color: rgba(43, 212, 92, 0.5);
+  /* 原来写死 rgba(43,212,92,.5)：白天主题下白底 + 半透明绿 ≈ 1.5:1，几乎看不见。
+     改用强调色令牌，两套主题都够亮。 */
+  color: var(--accent-text);
   line-height: 1;
+  opacity: 0.75;
 }
 .tm-empty-text {
   margin-top: 16rpx;
@@ -256,20 +262,23 @@ export default {
 }
 .tm-scale-bar {
   height: 8rpx;
-  border-left: 2rpx solid rgba(255, 255, 255, 0.75);
-  border-right: 2rpx solid rgba(255, 255, 255, 0.75);
-  border-bottom: 2rpx solid rgba(255, 255, 255, 0.75);
+  /* 比例尺是「图形信息」，非文字对比度按 3:1 要求；原来 rgba(255,255,255,.75)
+     在亮色卡片（#ffffff）上对比度 1.0:1 —— 白天主题下整条比例尺直接消失。
+     var(--text-2)：暗色 #9aa3ae / 亮色 #5b6675，对比度均 ≥5.5:1。 */
+  border-left: 2rpx solid var(--text-2);
+  border-right: 2rpx solid var(--text-2);
+  border-bottom: 2rpx solid var(--text-2);
 }
 .tm-scale-text {
   margin-left: 10rpx;
   font-size: 20rpx;
-  color: rgba(255, 255, 255, 0.65);
+  color: var(--text-2);
 }
 .tm-north {
   position: absolute;
   right: 24rpx;
   top: 20rpx;
   font-size: 20rpx;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--text-2);
 }
 </style>

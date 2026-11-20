@@ -33,6 +33,8 @@ import { containerOk, describeValue } from './dom.js'
 import workerSource from 'maplibre-gl/dist/maplibre-gl-worker.mjs?raw'
 import { makeMapStatus, formatMapStatus, trimStr } from './map-status.js'
 import { toClassicWorkerSource as stripModuleSyntax, deriveSiblingUrl } from './worker-src.js'
+// Protocol 注册表的回收：pmtiles 没有 remove API，只能直删它的 Map（见该文件顶部注释）
+import { evictProtocolEntries } from './protocol-registry.js'
 
 // 诊断行的拼装与状态对象在 map-status.js（逻辑层也要用，但不能引这个文件）
 export { makeMapStatus, formatMapStatus }
@@ -221,6 +223,26 @@ function ensureProtocol() {
 
 // ===== 诊断：状态对象与格式化在 map-status.js（两端共用同一份格式） =====
 
+/**
+ * H5 端把「Protocol 注册表还剩几条」暴露给自动化脚本。
+ *
+ * 为什么需要：P0-2（切城市内存泄漏）的判据只能从注册表看 ——
+ * 连续切 3 个城市后 `protocol.tiles.size` 不应一直增长。
+ * 这是个只读探针，不参与任何业务逻辑；只在有 window 的环境挂，
+ * 逻辑层（v8）/ 小程序的全局里没有 window，直接跳过。
+ */
+function exposeDebug() {
+  try {
+    if (typeof window === 'undefined') return
+    const dbg = window.__mvDebug || (window.__mvDebug = {})
+    dbg.protocolSize = () => (protocolInstance && protocolInstance.tiles ? protocolInstance.tiles.size : -1)
+    dbg.protocolKeys = () => (protocolInstance && protocolInstance.tiles ? Array.from(protocolInstance.tiles.keys()) : [])
+    dbg.workerUrl = () => workerUrl
+  } catch (e) {
+    /* ignore */
+  }
+}
+
 /** WebGL 探测：真机能不能跑 MapLibre 全看这一步 */
 export function probeWebgl() {
   try {
@@ -357,6 +379,7 @@ export function createTrackMap(opts) {
 
   ensureWorker(status)
   const protocol = ensureProtocol()
+  exposeDebug()
 
   let bounds = null
   let fitted = false
@@ -366,6 +389,8 @@ export function createTrackMap(opts) {
   const tileKeys = {}
   const instances = []
   const sourceIds = {}
+  // 本 core 登记进 Protocol 的键（destroy 时按它回收，见 protocol-registry.js）
+  const archiveKeys = archives.map((a) => a.key)
 
   // 主题：'dark' | 'light'。图层不再只生成一次 —— 运行时要能原地换色标
   let themeName = opts.theme === 'light' ? 'light' : 'dark'
@@ -671,6 +696,15 @@ export function createTrackMap(opts) {
       destroyed = true
       try {
         map.remove()
+      } catch (e) {
+        /* ignore */
+      }
+      // 回收 Protocol 注册表里的条目。
+      // pmtiles 的 Protocol 只有 add()/get()、没有 remove()，而它又是模块级单例，
+      // 不删就会在切城市时把上一份整包 Uint8Array 永远攥住（青岛 22 MB / 重庆 198 MB）。
+      // keysToEvict 只在「该键当前仍指向本实例」时才算可删，所以不会打断活着的地图。
+      try {
+        evictProtocolEntries(protocol, archiveKeys, instances)
       } catch (e) {
         /* ignore */
       }

@@ -80,6 +80,16 @@
         <view class="empty" v-if="!list.length">
           <text>没搜到，换个关键词试试（比如"青岛"或"370200"）</text>
         </view>
+        <!-- 分页：370 个城市不能一次全渲染（低端机会卡），
+             但也不能像以前那样只看得到前 30 个、剩下的只能靠搜索猜名字。
+             滚到底会自动加 30 条；按钮留着是因为个别机型 H5/App 的 reach-bottom 不一定触发。 -->
+        <view class="more" v-if="!searching && restCount > 0">
+          <view class="mini-btn small ghost" @click="loadMore">再显示 {{ moreStep }} 个（剩 {{ restCount }}）</view>
+          <view class="mini-btn small ghost" @click="showAll">显示全部 {{ listTotal }} 个</view>
+        </view>
+        <view class="more-tip" v-if="searching && listTotal > 30">
+          <text>搜索命中 {{ listTotal }} 个，已全部列出</text>
+        </view>
       </view>
     </view>
 
@@ -144,7 +154,7 @@ import {
   startMeasureInBackground,
   measureState,
 } from '@/utils/city-maps.js'
-import { downloadCity, deleteCity, storageSelfTest, mapSelfTest } from '@/utils/city-map-download.js'
+import { downloadCity, deleteCity, storageSelfTest, mapSelfTest, resumePendingVerifies } from '@/utils/city-map-download.js'
 
 export default {
   data() {
@@ -180,7 +190,8 @@ export default {
     totalCount() {
       return CITIES.length
     },
-    list() {
+    // 关键字命中的完整列表（已下载 / 使用中的排前面），**不含 limit**
+    matched() {
       const kw = String(this.kw || '').trim()
       const hit = []
       for (let i = 0; i < CITIES.length; i++) {
@@ -190,7 +201,24 @@ export default {
       // 已下载的排前面：不用在 370 条里翻自己装过哪个
       const on = hit.filter((c) => this.isOn(c.adcode) || String(this.current) === c.adcode)
       const off = hit.filter((c) => !this.isOn(c.adcode) && String(this.current) !== c.adcode)
-      return on.concat(off).slice(0, this.limit)
+      return on.concat(off)
+    },
+    // 搜索中不截断：用户明确在找某个城市，别让他再点「加载更多」
+    searching() {
+      return !!String(this.kw || '').trim()
+    },
+    list() {
+      const all = this.matched
+      return this.searching ? all : all.slice(0, this.limit)
+    },
+    listTotal() {
+      return this.matched.length
+    },
+    restCount() {
+      return Math.max(0, this.listTotal - this.list.length)
+    },
+    moreStep() {
+      return Math.min(this.limit, this.restCount)
     },
     installedCount() {
       return Object.keys(this.installed || {}).length
@@ -209,6 +237,10 @@ export default {
       return c ? c.name : this.current
     },
   },
+  mounted() {
+    // P1-8：上次被杀进程打断的后台摘要在这里补跑，否则会永远显示「校验中…」
+    this.resumeVerifyQueue()
+  },
   onShow() {
     this.reloadState()
     this.showCachedSpeed()
@@ -222,6 +254,10 @@ export default {
   },
   onUnload() {
     this.stopTick()
+  },
+  // 滚到底自动加 30 条（P0-3：以前只能看到前 30 个城市）
+  onReachBottom() {
+    this.loadMore()
   },
   methods: {
 
@@ -240,6 +276,41 @@ export default {
     isOn(adcode) {
       return !!this.installed[String(adcode)]
     },
+    // 补跑上次没算完的后台摘要（P1-8）
+    resumeVerifyQueue() {
+      let n = 0
+      try {
+        n = resumePendingVerifies({
+          onMismatch: (c) => {
+            this.reloadState()
+            try {
+              uni.showModal({
+                title: '离线包校验失败',
+                content: '「' + c.name + '」的包内容与官方摘要不一致，已自动删除，请重新下载。',
+                showCancel: false,
+              })
+            } catch (e) {
+              /* ignore */
+            }
+          },
+          onMissing: () => this.reloadState(),
+          onDone: () => this.reloadState(),
+        })
+      } catch (e) {
+        /* ignore */
+      }
+      if (n) this.reloadState()
+    },
+    // 每次多显示 30 个（滚动到底会自动调它）
+    loadMore() {
+      if (this.restCount <= 0) return
+      if (this.searching) return
+      this.limit = this.limit + 30
+    },
+    // 一次性全展开（370 条在低端机上会卡一下，所以只在用户主动点时才做）
+    showAll() {
+      this.limit = CITIES.length
+    },
     // 已装包的校验状态文案：后台摘要算完会自动刷新
     verifyText(adcode) {
       const r = this.installed[String(adcode)]
@@ -248,6 +319,7 @@ export default {
       if (r.verify === 'SHA-256') return ' · SHA-256 已校验'
       if (r.verify === '字节数+结构') return ' · 结构校验'
       if (r.verify === 'mismatch') return ' · 校验失败'
+      if (r.verify === 'missing') return ' · 文件已丢失'
       return ''
     },
     startTick() {
@@ -327,7 +399,10 @@ export default {
       if (r.ok) {
         this.dl = { ...this.dl, [a]: { ...cur, running: false, err: '' } }
         this.reloadState()
-        this.speedLine = '本次最快线路：' + r.mirror + '（' + formatBytes(city.bytes) + '，SHA-256 已校验）'
+        // P1-6：大包（>8 MB）下载完只做了结构校验，全量摘要在后台排队，
+        // 以前这里一律写「SHA-256 已校验」，等于对用户撒谎。
+        const verifyNote = r.verifyPending ? '结构校验通过，SHA-256 后台核对中' : 'SHA-256 已校验'
+        this.speedLine = '本次最快线路：' + r.mirror + '（' + formatBytes(city.bytes) + '，' + verifyNote + '）'
         // 没有当前城市时，下载完自动切过去，省一步
         if (!getCurrent()) {
           setCurrent(a)
@@ -668,6 +743,25 @@ export default {
   padding: 40rpx 0;
   text-align: center;
   font-size: 24rpx;
+  color: $text-muted;
+}
+/* 分页条：370 城不全渲染，「再显示 N 个 / 显示全部」放列表底部 */
+.more {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 24rpx;
+  padding-top: 20rpx;
+  border-top: 1rpx solid $border-subtle;
+}
+.more .mini-btn.small {
+  flex: 1;
+}
+.more-tip {
+  margin-top: 20rpx;
+  padding-top: 16rpx;
+  border-top: 1rpx solid $border-subtle;
+  text-align: center;
+  font-size: 22rpx;
   color: $text-muted;
 }
 .note {

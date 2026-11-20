@@ -32,7 +32,7 @@
     <view class="hero">
       <text class="hero-label">{{ gapLabel }}</text>
       <view class="hero-num-row">
-        <text class="hero-num">{{ gapAbs }}</text>
+        <text class="hero-num num">{{ gapAbs }}</text>
         <text class="hero-unit">kcal</text>
       </view>
       <view class="hero-row">
@@ -499,7 +499,7 @@ export default {
 .quick-btn {
   font-size: 24rpx;
   color: var(--accent-text);
-  border: 1rpx solid rgba(43, 212, 92, 0.45);
+  border: 1rpx solid var(--accent-soft-2);
   padding: 8rpx 20rpx;
   border-radius: 999rpx;
 }
@@ -518,7 +518,7 @@ export default {
 }
 .hero-label {
   font-size: 24rpx;
-  color: var(--accent-text)-light;
+  color: var(--accent-text);
 }
 .hero-num-row {
   display: flex;
@@ -634,6 +634,7 @@ export default {
 }
 .cup.on {
   opacity: 1;
+  /* TODO(cool-graphic)：等 ui-dev 的 --cool-graphic 令牌落地后换成 var(--cool-graphic) */
   border-color: rgba(74, 163, 255, 0.55);
 }
 
@@ -682,7 +683,7 @@ export default {
   top: 0;
   bottom: 0;
   background: var(--mask);
-  z-index: 90;
+  z-index: var(--z-sheet); /* 令牌见 styles/theme.scss：999，须盖过 tabBar 的 998 */
   display: flex;
   align-items: flex-end;
 }
@@ -709,7 +710,7 @@ export default {
 }
 .sheet-tab.active {
   color: var(--accent-text);
-  border: 1rpx solid rgba(43, 212, 92, 0.5);
+  border: 1rpx solid var(--accent-soft-2);
 }
 .inp {
   margin-top: 18rpx;

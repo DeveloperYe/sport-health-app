@@ -161,7 +161,7 @@ export default {
   right: 0;
   top: 0;
   bottom: 0;
-  z-index: 200;
+  z-index: var(--z-gate); /* 令牌见 styles/theme.scss：1200，阻塞式浮层须高于页面面板与 tabBar */
   background: var(--mask);
   display: flex;
   align-items: center;

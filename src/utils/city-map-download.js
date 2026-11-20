@@ -18,6 +18,7 @@ import {
   formatSpeed,
   formatBytes,
   APP_MAP_DIR,
+  getInstalledPath,
   markInstalled,
   unmarkInstalled,
   getInstalled,
@@ -26,7 +27,7 @@ import {
 } from './city-maps.js'
 import { Sha256 } from './sha256.js'
 import { idbPut, idbGet, idbDelete, idbKeys } from './idb-tiles.js'
-import { shouldSwitchMirror, SLOW_WINDOW_MS } from './mirror-pick.js'
+import { shouldSwitchMirror, SLOW_WINDOW_MS, makeSpeedMeter } from './mirror-pick.js'
 import { checkPmtilesStructure } from './pmtiles-check.js'
 import { readAny, fileReaderRead, nativeReadBase64, toBytes, getReadStrategy } from './native-file.js'
 
@@ -428,9 +429,9 @@ function xhrDownload(url, opts) {
     let got = 0
     let total = 0
     let t0 = Date.now()
-    let windowStart = Date.now()
-    let windowBytes = 0
-    let lastBps = 0
+    // 速率统一由 makeSpeedMeter 算（增量窗口）。以前这里把累计 loaded 当窗口增量，
+    // 下 30 秒后速度虚高约 20 倍，掉速换线永远不触发。
+    const meter = makeSpeedMeter()
     const close = (r) => {
       try {
         if (xhr) xhr.abort()
@@ -448,15 +449,9 @@ function xhrDownload(url, opts) {
         if (!total) t0 = Date.now()
         got = (e && e.loaded) || 0
         total = (e && e.total) || 0
-        windowBytes = got
-        const now = Date.now()
-        if (now - windowStart >= 1500) {
-          lastBps = (windowBytes * 1000) / Math.max(1, now - windowStart)
-          windowStart = now
-          windowBytes = 0
-        }
-        onProgress(got, total, lastBps)
-        if (shouldAbort(lastBps, got, total)) close({ ok: false, abort: true, err: '速度过低已中止', got })
+        const s = meter.push(got, Date.now())
+        onProgress(got, total, s.bps)
+        if (shouldAbort(s.bps, got, total)) close({ ok: false, abort: true, err: '速度过低已中止', got })
       }
       xhr.onload = () => {
         const ab = xhr.response
@@ -479,9 +474,7 @@ function uniDownload(url, opts) {
   return new Promise((resolve) => {
     let task = null
     let t0 = 0
-    let windowStart = 0
-    let windowBytes = 0
-    let lastBps = 0
+    const meter = makeSpeedMeter()
     let stallTimer = null
     // App 端必须自己兜超时：uni.downloadFile 不设超时会一直挂着，
     // 那"掉速换线"就永远等不到——手机上一卡住表现为永远下载中。
@@ -514,29 +507,19 @@ function uniDownload(url, opts) {
       })
       touchStall()
       if (task && task.onProgressUpdate) {
-        let prev = 0
         task.onProgressUpdate((p) => {
           touchStall()
           const written = p.totalBytesWritten || 0
           const now = Date.now()
-          if (!t0) {
-            t0 = now
-            windowStart = now
-          }
-          windowBytes += Math.max(0, written - prev)
-          prev = written
-          if (now - windowStart >= 1500) {
-            lastBps = (windowBytes * 1000) / Math.max(1, now - windowStart)
-            windowStart = now
-            windowBytes = 0
-          }
-          const overall = (written * 1000) / Math.max(1, now - t0)
-          onProgress(written, p.totalBytesExpectedToWrite || 0, lastBps || overall)
+          if (!t0) t0 = now
+          // 与 H5 分支共用同一个增量窗口测速器（以前两边各写一遍，H5 那份算错了）
+          const s = meter.push(written, now)
+          onProgress(written, p.totalBytesExpectedToWrite || 0, s.bps)
           if (
             onSlow &&
             shouldSwitchMirror({
               elapsedMs: now - t0,
-              bps: lastBps || overall,
+              bps: s.bps,
               loadedBytes: written,
               totalBytes: p.totalBytesExpectedToWrite || 0,
               hasNextMirror: onSlow(),
@@ -619,11 +602,9 @@ export async function downloadCity(adcode, opts) {
         }
       }
     } else {
-      let lastBps = 0
-      let startTs = Date.now()
+      const startTs = Date.now()
       res = await xhrDownload(url, {
         onProgress: (loaded, total, bps) => {
-          lastBps = bps
           onProgress({ phase: 'download', loaded, total, bps, mirror: label, note: label })
         },
         // 掉速换线：跑过 6 秒、速度低于阈值、且还有下一条线路可用
@@ -768,11 +749,30 @@ let verifyRunning = false
 /**
  * 排队给某个已装城市做全量摘要核对。
  * @param {string} adcode
- * @param {{onDone?:Function, onMismatch?:Function}} [opts]
+ * @param {{onDone?:Function, onMismatch?:Function, onMissing?:Function}} [opts]
  */
 export function verifyCityBackground(adcode, opts) {
   verifyQueue.push({ adcode: String(adcode), opts: opts || {} })
   runVerifyQueue()
+}
+
+/**
+ * 启动时补跑「上次没算完」的全量摘要（P1-8）。
+ *
+ * 场景：大于 8 MB 的包下载完只标 'pending'，摘要丢到后台算；
+ * 用户这时直接杀进程 / 系统回收 / 切走再也没进这个页面，
+ * 记录就永远停在 pending —— 页面上一直显示「校验中…」，还每秒轮询。
+ * 所以在页面 mounted 里扫一遍已装清单，把 pending 重新入队。
+ *
+ * @param {{onDone?:Function, onMismatch?:Function, onMissing?:Function}} [opts]
+ * @returns {number} 重新入队的条数
+ */
+export function resumePendingVerifies(opts) {
+  const o = opts || {}
+  const all = getInstalled()
+  const codes = Object.keys(all).filter((k) => all[k] && all[k].verify === 'pending')
+  for (let i = 0; i < codes.length; i++) verifyCityBackground(codes[i], o)
+  return codes.length
 }
 
 async function runVerifyQueue() {
@@ -793,6 +793,7 @@ async function runVerifyQueue() {
 }
 
 async function verifyOneCity(adcode, opts) {
+  const o = opts || {}
   const city = getCity(adcode)
   const rec = getInstalled()[adcode]
   if (!city || !rec) return
@@ -801,7 +802,17 @@ async function verifyOneCity(adcode, opts) {
 
   let hex = ''
   if (isAppRuntime()) {
-    const rel = APP_MAP_DIR + adcode + '.pmtiles'
+    // 落盘路径可能被保存退路改过（_doc → _downloads → 临时文件），
+    // 必须按记录走（P1-5）：以前固定拼 _doc/maps/<adcode>.pmtiles，
+    // 走退路落盘的包会打不开 → 白降级成「字节数+结构」，永远不会升级到 SHA-256。
+    const rel = getInstalledPath(adcode) || APP_MAP_DIR + adcode + '.pmtiles'
+    // 文件都不在就别急着下结论，也别留一个永远算不完的 pending
+    const file = await openAppFile(rel, 6000)
+    if (!file) {
+      setInstalledVerify(adcode, 'missing', '')
+      if (o.onMissing) o.onMissing(rel)
+      return
+    }
     hex = nativeSha256Hex(absPathOf(rel), rec.bytes || 0) || ''
     if (!hex) {
       // 原生不可用就退回 JS 分块（后台跑，预算放宽到 60 秒，用户感觉不到）
@@ -810,22 +821,27 @@ async function verifyOneCity(adcode, opts) {
     }
     if (!hex) {
       setInstalledVerify(adcode, '字节数+结构', '')
-      if (opts.onDone) opts.onDone('字节数+结构')
+      if (o.onDone) o.onDone('字节数+结构')
       return
     }
   } else {
     const bytes = await idbGet(adcode)
-    if (!bytes) return
+    if (!bytes) {
+      // 记录还在但 IndexedDB 里没有内容（清过站点数据）：如实标注，别停在 pending
+      setInstalledVerify(adcode, 'missing', '')
+      if (o.onMissing) o.onMissing('IndexedDB:' + adcode)
+      return
+    }
     hex = new Sha256().update(bytes).digest()
   }
 
   if (city.sha256 && String(hex).toLowerCase() !== String(city.sha256).toLowerCase()) {
     await deleteCity(adcode)
-    if (opts.onMismatch) opts.onMismatch(city)
+    if (o.onMismatch) o.onMismatch(city)
     return
   }
   setInstalledVerify(adcode, 'SHA-256', hex)
-  if (opts.onDone) opts.onDone('SHA-256')
+  if (o.onDone) o.onDone('SHA-256')
 }
 
 /** 存储自检：把「能不能写／读／删」和真实路径摊开，交给诊断卡一键运行 */

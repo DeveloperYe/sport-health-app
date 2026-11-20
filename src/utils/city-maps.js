@@ -325,6 +325,44 @@ function probeViaXhr(Ctor, mirror, url, opts) {
 }
 
 /**
+ * 探测用的临时文件清理（P2-9）。
+ *
+ * uni.downloadFile 每探一次气流就落一个临时文件（256 KB–1 MB），
+ * 以前成功/中止后都不删：页面重进（缓存 30 分钟过期）+「重测」会不断累积。
+ * 这里只删探测用的那份，**绝不碰真实下载的 tempFilePath**（那份要 moveTo 落地）。
+ */
+function removeProbeTemp(p) {
+  const path = String(p || '')
+  if (!path) return
+  const noop = function () {}
+  const url = path.indexOf('file://') === 0 ? path : path.charAt(0) === '/' ? 'file://' + path : path
+  try {
+    if (typeof plus !== 'undefined' && plus.io && plus.io.resolveLocalFileSystemURL) {
+      plus.io.resolveLocalFileSystemURL(
+        url,
+        (entry) => {
+          try {
+            entry.remove(noop, noop)
+          } catch (e) {
+            noop()
+          }
+        },
+        noop
+      )
+      return
+    }
+  } catch (e) {
+    /* ignore */
+  }
+  try {
+    const fsm = typeof uni !== 'undefined' && uni.getFileSystemManager ? uni.getFileSystemManager() : null
+    if (fsm && fsm.unlink) fsm.unlink({ filePath: path, success: noop, fail: noop })
+  } catch (e) {
+    /* ignore */
+  }
+}
+
+/**
  * 原生下载器探测：拉 Range 头一段，够了就 abort。
  * 与真实下载同一个引擎，所以测出来的速度和真实下载最相关。
  */
@@ -353,9 +391,11 @@ function probeViaDownload(mirror, url, opts) {
       task = uni.downloadFile({
         url: full,
         header: { Range: 'bytes=0-' + (bytes - 1) },
-        success: () => {
+        success: (res) => {
           clearTimeout(timer)
           const ms = Math.max(1, Date.now() - t0)
+          // 探测只为拿速度，落下来的临时文件没用了（P2-9）
+          removeProbeTemp(res && res.tempFilePath)
           // 走到 success 说明服务器没理会 Range（下的是整包）：
           // 用"已知总大小或已收字节"算速率，不要拿目标字节数糊弄（会把快线路算成慢线路）
           const used = expected || maxSeen || bytes

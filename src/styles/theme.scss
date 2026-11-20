@@ -35,6 +35,11 @@ page {
   --warm-text: #ffb347;
   --cool-text: #6fb6ff;
   --danger-text: #ff8a8a;
+  /* 作"图形"（环形进度弧、色块、图标）用的暖/冷色：满足 WCAG 1.4.11 的图形 3:1。
+     与 --*-text 分开是因为图形的可读阈值只有 3:1，白天可以比文字版更鲜艳一点，
+     否则橙色会被压成接近褐色、蓝色接近藏青，环就失去"数据分类色"的观感。 */
+  --warm-graphic: #ffb347;
+  --cool-graphic: #4aa3ff;
   --accent-soft: rgba(43, 212, 92, 0.12);
   --accent-soft-2: rgba(43, 212, 92, 0.24);
   --shadow-card: none;
@@ -45,6 +50,11 @@ page {
   --chip-bg: rgba(21, 24, 29, 0.88);
   --chip-line: rgba(255, 255, 255, 0.1);
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* 层级（z-index）：与主题无关，只在这里定义一份，暗/亮两个主题块不重复声明。
+     参照物：uni-app 的 tabBar 固定 998 —— 页面内浮层必须高于它才点得到按钮，
+     阻塞式授权浮层又必须高于页面内浮层，所以是 999 < 1200 两级。 */
+  --z-sheet: 999; /* 页面内底部面板（喝水设置等） */
+  --z-gate: 1200; /* 阻塞式全屏浮层（首次授权闸门），必须盖住一切，含 tabBar */
 }
 
 /* ===================== 黑夜 ===================== */
@@ -68,6 +78,9 @@ page {
   --warm: #ffb347;
   --cool: #4aa3ff;
   --danger: #ff6b6b;
+  /* 暗底上 3:1 绰绰有余（实测暖 9.99:1、冷 6.76:1 对 --bg-card），直接用亮版 */
+  --warm-graphic: #ffb347;
+  --cool-graphic: #4aa3ff;
   --accent-soft: rgba(43, 212, 92, 0.12);
   --accent-soft-2: rgba(43, 212, 92, 0.24);
   --shadow-card: none;

@@ -1255,7 +1255,7 @@ export default {
   top: 0;
   bottom: 0;
   background: var(--mask);
-  z-index: 999; /* tabBar 是 998，必须盖过它，否则底部按钮点不到 */
+  z-index: var(--z-sheet); /* 令牌见 styles/theme.scss：999，须盖过 tabBar 的 998 */
   display: flex;
   align-items: flex-end;
 }

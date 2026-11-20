@@ -269,6 +269,14 @@ export default {
       this.ready = false
       this.failed = false
       this.core = null
+      // 诊断字段归零：新城市建图前不该还挂着旧城市的瓦片数与错误（P2-13/P2-14）。
+      // App 端的诊断行由视图层 mwStatus 覆盖，那边也有同样的归零（resetDiag）。
+      if (this.status) {
+        this.status.tiles = 0
+        this.status.err = ''
+        this.status.src = ''
+        this.pushStatus()
+      }
       // 通知视图层：销毁旧地图重新建。
       // 光把 appMode 抖成 false→true 不够 —— 视图层 onAppMode 的守卫是 !this.core，
       // 旧 core 还在，boot() 会被直接跳过，地图就永远停在旧城市。
@@ -569,12 +577,28 @@ export default {
       this.collected = null
       this.pending = null
       this.curFile = 0
-      this.tileB64 = ''
-      this.tileChunkCount = 0
+      // 跨层分块状态必须一起清干净（P1-7）：
+      // 切城市完全可能正好发生在 base64 过桥的中途，残留的 chunkParts/chunkGot
+      // 会把旧档案的半块并进新档案的拼装（拼装完成判据是 chunkGot >= chunkN），
+      // 拼出错误字节 → PMTiles 头校验不过 → 真机上表现成「一个瓦片档案都没读到」。
+      this.chunkParts = null
+      this.chunkN = 0
+      this.chunkGot = 0
+      this.chunkBytes = 0
       this.tileAbs = ''
       this.ready = false
+      // 新城市建图前不该显示上一个城市的瓦片数与错误（P2-13/P2-14）
+      this.resetDiag()
       this.syncThemeFromDom()
       this.boot()
+    },
+    /** 重建地图前把诊断字段归零：避免旧城市的 tiles 计数与 err 挂在新地图上 */
+    resetDiag() {
+      if (!this.status) return
+      this.status.tiles = 0
+      this.status.err = ''
+      this.status.src = ''
+      this.pushStatus()
     },
     /** 逻辑层要求强制对齐（切回页面时）：以 DOM 为准再切一次 */
     onSync() {
