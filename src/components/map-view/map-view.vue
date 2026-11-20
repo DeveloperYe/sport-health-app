@@ -478,8 +478,16 @@ export default {
           onOutOfBounds: (b) => this.$emit('outofbounds', b),
           onReady: () => {
             this.ready = true
-            // 建图成功就开始盯主题 class（App 端主题切换的主通道）
-            this.watchThemeClass()
+            // App 端才需要盯 class（renderjs 里实现的 watchThemeClass）；
+            // H5 走逻辑层，没有这个方法 —— 直接调会抛 "is not a function"（老代码遗留），
+            // H5 的主题切换由下面的 theme watcher 负责。
+            if (typeof this.watchThemeClass === 'function') {
+              try {
+                this.watchThemeClass()
+              } catch (e) {
+                /* ignore */
+              }
+            }
             // H5 也在逻辑层，直接写记录（不必走跨层 callMethod）
             try {
               setReadProbe({
@@ -1079,6 +1087,20 @@ export default {
           this.pushRetry = (this.pushRetry || 0) + 1
           setTimeout(() => this.pushStatus(), 300)
         }
+      }
+    },
+    // 状态轮询：tiles 计数是异步长出来的，定时把诊断行刷回逻辑层。
+    // ★ 这两个方法**必须在 renderjs 里各定义一份**：逻辑层的同名方法属于另一个组件实例，
+    //   视图层 `this.startStatusTimer` 是 undefined —— 真机报
+    //   "this.startStatusTimer is not a function @Proxy.build"，整张底图退回自绘层。
+    startStatusTimer() {
+      this.stopStatusTimer()
+      this.timer = setInterval(() => this.pushStatus(), 1000)
+    },
+    stopStatusTimer() {
+      if (this.timer) {
+        clearInterval(this.timer)
+        this.timer = null
       }
     },
     setSrc(src, extra) {
