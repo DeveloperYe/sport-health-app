@@ -3,7 +3,7 @@
  *
  *   摄入   ← 饮食记录（diet-store）
  *   每日消耗 ← 基础代谢 BMR × 活动系数（body-calc）
- *   运动消耗 ← 跑步/走路记录（storage.records）+ 其他运动（activity-store）
+ *   运动消耗 ← 跑步/健走记录（storage.records）+ 其他运动（activity-store）
  *   缺口   = 摄入 − (每日消耗 + 运动消耗)
  *
  * 为什么运动消耗要分两处加：跑步页按轨迹时长算，其他运动按手填时长算，
@@ -26,7 +26,7 @@ export function dateOfRecord(rec) {
   return `${d.getFullYear()}-${mm}-${dd}`
 }
 
-/** 某天的运动消耗（跑步/走路 + 其他运动） */
+/** 某天的运动消耗（跑步/健走 + 其他运动） */
 export function dayExercise(date) {
   const runs = getRecords().filter((r) => dateOfRecord(r) === date)
   const runCalorie = runs.reduce((a, r) => a + (Number(r.calories) || 0), 0)
@@ -133,7 +133,7 @@ export function recentAverages(n) {
   }
 }
 
-/** 全部跑步/走路记录（按时间倒序，带日期串），运动历史页用 */
+/** 全部跑步/健走记录（按时间倒序，带日期串），运动历史页用 */
 export function allWorkoutRecords() {
   return getRecords()
     .map((r) => Object.assign({}, r, { date: dateOfRecord(r) }))
@@ -141,7 +141,7 @@ export function allWorkoutRecords() {
 }
 
 /**
- * 运动历史：跑步/走路 + 其他运动混排（按时间倒序）
+ * 运动历史：跑步/健走 + 其他运动混排（按时间倒序）
  * 两类记录存在不同表里、字段也不同，这里统一成同一种形状给界面用：
  *   { kind: 'run'|'activity', id, date, title, duration(秒), calorie, sub, at }
  */
@@ -150,7 +150,7 @@ export function allExerciseHistory() {
     kind: 'run',
     id: r.id,
     date: r.date,
-    title: `${r.type === 'walk' ? '走路' : '跑步'} · ${r.date}`,
+    title: `${r.type === 'walk' ? '健走' : '跑步'} · ${r.date}`,
     duration: Math.round((Number(r.duration) || 0) * 60),
     calorie: Number(r.calories) || 0,
     sub: `${r.steps || 0} 步 · ${Math.round(Number(r.distance) || 0)} 米`,
