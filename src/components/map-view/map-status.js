@@ -16,6 +16,8 @@ export function makeMapStatus(seed) {
       err: '', // 最后一条错误
       src: '', // 瓦片字节来自哪条路径
       worker: '', // worker 用的是 blob 还是默认
+      srcMode: '', // 数据源形态：range（按需 Range）/ whole（整包入内存）/ mixed
+      readStats: '', // 读取统计：rd:请求数/命中/字节/错误
     },
     seed || {}
   )
@@ -38,6 +40,8 @@ export function formatMapStatus(s) {
   const st = s || {}
   const extra = []
   if (st.src) extra.push('src:' + st.src)
+  if (st.srcMode) extra.push('mode:' + st.srcMode)
+  if (st.readStats) extra.push(st.readStats)
   if (st.worker) extra.push('worker:' + st.worker)
   return (
     'webgl:' + (st.webgl || '-') +

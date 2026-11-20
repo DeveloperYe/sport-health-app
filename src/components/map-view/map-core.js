@@ -35,6 +35,8 @@ import { makeMapStatus, formatMapStatus, trimStr } from './map-status.js'
 import { toClassicWorkerSource as stripModuleSyntax, deriveSiblingUrl } from './worker-src.js'
 // Protocol 注册表的回收：pmtiles 没有 remove API，只能直删它的 Map（见该文件顶部注释）
 import { evictProtocolEntries } from './protocol-registry.js'
+// 按需 Range 读取的数据源与字节缓存（纯函数层，不碰 DOM/plus）
+import { createRangeSource, makeByteLru, formatReadStats, MIN_RANGE_BYTES } from './range-source.js'
 
 // 诊断行的拼装与状态对象在 map-status.js（逻辑层也要用，但不能引这个文件）
 export { makeMapStatus, formatMapStatus }
@@ -238,6 +240,27 @@ function exposeDebug() {
     dbg.protocolSize = () => (protocolInstance && protocolInstance.tiles ? protocolInstance.tiles.size : -1)
     dbg.protocolKeys = () => (protocolInstance && protocolInstance.tiles ? Array.from(protocolInstance.tiles.keys()) : [])
     dbg.workerUrl = () => workerUrl
+    // 默认 0：whole 模式下没人会去累加它 —— e2e 正是靠「必须等于 0」证明新代码零进入。
+    // （H5 的探测计数由 map-view 逻辑层覆盖成真计数器，这里只在它没设时兜底。）
+    if (typeof dbg.rangeProbes !== 'function') dbg.rangeProbes = () => 0
+  } catch (e) {
+    /* ignore */
+  }
+}
+
+/**
+ * 建图完成后把「读取侧」的只读探针挂到 `window.__mvDebug`（e2e 判据用，不依赖 UI）。
+ *   __mvDebug.sourceMode() -> 'range' | 'whole' | 'mixed'
+ *   __mvDebug.readStats()  -> { mode, cache:{...}, sources:[{key, mode, stats}] }
+ *   __mvDebug.status()     -> 当前诊断状态对象（tiles/err/srcMode/readStats 都在这）
+ */
+function exposeDebugReadApi(api) {
+  try {
+    if (typeof window === 'undefined' || !api) return
+    const dbg = window.__mvDebug || (window.__mvDebug = {})
+    dbg.sourceMode = () => api.getSourceMode()
+    dbg.readStats = () => api.getReadStats()
+    dbg.status = () => api.status
   } catch (e) {
     /* ignore */
   }
@@ -258,7 +281,7 @@ export function probeWebgl() {
   }
 }
 
-// ===== 内存 PMTiles 源 =====
+// ===== 内存 PMTiles 源（whole 模式，**与旧实现逐字节等价，不许顺手优化**）=====
 function memorySource(bytes, key) {
   const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)
   return {
@@ -271,6 +294,50 @@ function memorySource(bytes, key) {
       return Promise.resolve({ data: u8.buffer.slice(start, end) })
     },
   }
+}
+
+/** 瓦片数据源默认策略：'auto' | 'range' | 'whole'（见 resolveSourceMode） */
+export const DEFAULT_TILE_SOURCE_MODE = 'auto'
+
+/**
+ * **唯一**的数据源分派点（Lead 要求：三级分派集中在一处，
+ * 这样「回滚 = 改一个常量」，新文件不被引用就不进包）。
+ *
+ * archive 两种形态：
+ *   - 整包：`{ key, bytes }`            → memorySource（= 今天的行为）
+ *   - 按需：`{ key, size, reader }`     → createRangeSource（reader 由 R1/R2 提供）
+ *
+ * @returns {{source:object, mode:'range'|'whole'}}
+ */
+export function makeSource(archive, opts) {
+  const a = archive || {}
+  const o = opts || {}
+  const mode = o.mode === 'range' || o.mode === 'whole' ? o.mode : DEFAULT_TILE_SOURCE_MODE
+  const key = a.key
+  // 门槛：size 明显不可能（<1 KB）一律不认 —— 否则 clampRange 会把所有请求截成 0，
+  // pmtiles 解析 header 失败后静默不请求，表现为「纯灰空白 + 0 错误」（真机已复现）。
+  const canRange = typeof a.reader === 'function' && Number(a.size) >= MIN_RANGE_BYTES
+  const canWhole = !!a.bytes
+
+  if (mode === 'whole') {
+    if (!canWhole) throw new Error('whole 模式缺少整包字节：' + key)
+    return { source: memorySource(a.bytes, key), mode: 'whole' }
+  }
+  if (mode === 'range') {
+    // 强制按需：能按需就按需；万一探测阶段失败、只拿到整包字节，
+    // 也不能硬失败（那会让整张地图退回自绘层）——降级为整包并在诊断里如实显示。
+    if (canRange) {
+      return { source: createRangeSource({ key: key, size: a.size, reader: a.reader, cache: o.cache }), mode: 'range' }
+    }
+    if (canWhole) return { source: memorySource(a.bytes, key), mode: 'whole' }
+    throw new Error('range 模式既无 reader 也无 bytes：' + key)
+  }
+  // auto：能按需就按需，否则退回整包
+  if (canRange) {
+    return { source: createRangeSource({ key: key, size: a.size, reader: a.reader, cache: o.cache }), mode: 'range' }
+  }
+  if (!canWhole) throw new Error('档案既没有 reader 也没有 bytes：' + key)
+  return { source: memorySource(a.bytes, key), mode: 'whole' }
 }
 
 // ===== 轨迹 GeoJSON =====
@@ -374,7 +441,10 @@ export function createTrackMap(opts) {
       : null
   const fixedZoom = Number.isFinite(opts.zoom) ? Number(opts.zoom) : null
 
-  const archives = (opts.archives || []).filter((a) => a && a.key && a.bytes)
+  // 两种档案形态都收：整包（bytes）或按需（size + reader）。分派在 makeSource 里。
+  const archives = (opts.archives || []).filter(
+    (a) => a && a.key && (a.bytes || (typeof a.reader === 'function' && Number(a.size) > 0))
+  )
   if (!archives.length) throw new Error('没有可用的瓦片档案')
 
   ensureWorker(status)
@@ -395,13 +465,30 @@ export function createTrackMap(opts) {
   // 主题：'dark' | 'light'。图层不再只生成一次 —— 运行时要能原地换色标
   let themeName = opts.theme === 'light' ? 'light' : 'dark'
 
+  // 按需读取用的共享字节缓存（多个档案共用一个）。
+  // ★ whole 模式下**根本不创建**：这是「回退等价性」的一部分 —— 新代码连分配都不做。
+  const rangeCache = opts.sourceMode === 'whole' ? null : makeByteLru(opts.byteCacheBytes)
+  const sourceRefs = {}
+  const sourceModes = {}
   for (let ai = 0; ai < archives.length; ai++) {
     const a = archives[ai]
-    const inst = new PMTiles(memorySource(a.bytes, a.key))
+    const built = makeSource(a, { mode: opts.sourceMode, cache: rangeCache })
+    const inst = new PMTiles(built.source)
     protocol.add(inst)
     instances.push(inst)
     sourceIds[a.key] = 1
+    sourceRefs[a.key] = built.source
+    sourceModes[a.key] = built.mode
   }
+  /** 本次建图实际用的数据源形态（诊断行与 e2e 判据都用它） */
+  const effectiveMode = (() => {
+    const vals = archives.map((a) => sourceModes[a.key])
+    const hasRange = vals.indexOf('range') >= 0
+    const hasWhole = vals.indexOf('whole') >= 0
+    if (hasRange && hasWhole) return 'mixed'
+    return hasRange ? 'range' : 'whole'
+  })()
+  status.srcMode = effectiveMode
 
   /**
    * 按当前主题生成底图图层。
@@ -541,6 +628,28 @@ export function createTrackMap(opts) {
     }
   })
 
+  /** 把各档案的读取统计汇总成诊断行里的一小段（rd:请求/命中/字节/错误） */
+  function refreshReadStats() {
+    try {
+      const agg = { requests: 0, hits: 0, bytes: 0, errors: 0 }
+      const keys = Object.keys(sourceRefs)
+      for (let i = 0; i < keys.length; i++) {
+        const src = sourceRefs[keys[i]]
+        const s = src && typeof src.stats === 'function' ? src.stats() : null
+        if (!s) continue
+        agg.requests += s.requests || 0
+        agg.hits += s.hits || 0
+        agg.bytes += s.bytes || 0
+        agg.errors += s.errors || 0
+      }
+      if (agg.requests) status.readStats = formatReadStats(agg, 0)
+    } catch (e) {
+      /* ignore */
+    }
+  }
+  // idle 是「这一屏画完了」的时刻，正好拿来看这屏花了多少次按需读取
+  map.on('idle', refreshReadStats)
+
   map.on('load', () => {
     status.maplibre = 'ok'
     status.err = ''
@@ -555,7 +664,19 @@ export function createTrackMap(opts) {
   )
     .then((hs) => {
       const valid = hs.filter((h) => h && isFinite(h.minLon) && isFinite(h.maxLat))
-      if (!valid.length) return
+      if (!valid.length) {
+        // range 模式下 header 读不出来 = 之后一片空白且**没有任何报错**（pmtiles 会静默放弃）。
+        // 这种"无声失败"必须在这里喊出来，否则用户只看到灰底、诊断行还是 tiles:0 err:-。
+        if (effectiveMode === 'range' || effectiveMode === 'mixed') {
+          const st = sourceRefs[archives[0].key]
+          const rs = st && typeof st.stats === 'function' ? st.stats() : null
+          setErr(
+            'range:文件头读取失败' +
+              (rs ? '（请求 ' + rs.requests + ' 次/共 ' + rs.bytes + ' 字节/截断 ' + (rs.clamped || 0) + ' 次）' : '')
+          )
+        }
+        return
+      }
       bounds = valid.reduce(
         (acc, h) => ({
           minLon: Math.min(acc.minLon, h.minLon),
@@ -660,6 +781,27 @@ export function createTrackMap(opts) {
     getBounds() {
       return bounds
     },
+    /** 本次建图实际用的数据源形态：'range' | 'whole' | 'mixed' */
+    getSourceMode() {
+      return effectiveMode
+    },
+    /**
+     * 读取统计（诊断行 + e2e 判据）：
+     * `mode` 三级实际形态、`cache` LRU 统计、`sources` 每个档案的请求数/命中/字节/错误。
+     */
+    getReadStats() {
+      const out = { mode: effectiveMode, cache: rangeCache ? rangeCache.stats() : null, sources: [] }
+      for (let i = 0; i < archives.length; i++) {
+        const key = archives[i].key
+        const src = sourceRefs[key]
+        out.sources.push({
+          key: key,
+          mode: sourceModes[key],
+          stats: src && typeof src.stats === 'function' ? src.stats() : null,
+        })
+      }
+      return out
+    },
     setPoints(points) {
       if (destroyed) return
       lastPoints = points || []
@@ -708,9 +850,29 @@ export function createTrackMap(opts) {
       } catch (e) {
         /* ignore */
       }
+      // 按需读取的读者（R1 fetch 的 AbortController / R2 桥接的在途请求）也要收尾，
+      // 否则切城市后那些请求会一直挂着、把旧地图的错误打进新地图的诊断行。
+      for (let i = 0; i < archives.length; i++) {
+        const dispose = archives[i] && archives[i].dispose
+        if (typeof dispose === 'function') {
+          try {
+            dispose()
+          } catch (e) {
+            /* ignore */
+          }
+        }
+      }
+      if (rangeCache) {
+        try {
+          rangeCache.clear()
+        } catch (e) {
+          /* ignore */
+        }
+      }
     },
   }
 
   if (lastPoints && lastPoints.length) api.setPoints(lastPoints)
+  exposeDebugReadApi(api)
   return api
 }

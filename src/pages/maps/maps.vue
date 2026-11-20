@@ -110,6 +110,8 @@
         <text class="card-title">诊断</text>
         <view class="mini-btn small ghost" @click="runStorageTest">存储自检</view>
         <view class="mini-btn small ghost" @click="runMapTest">底图自检</view>
+        <view class="mini-btn small ghost" @click="runReadTest">读取自检</view>
+        <view class="mini-btn small ghost" @click="clearReadMemory">清记忆</view>
         <view class="mini-btn small ghost" @click="copyDiag">复制</view>
       </view>
       <text class="diag-line">运行时：{{ diagInfo.runtime }}</text>
@@ -119,7 +121,33 @@
       <text class="diag-line" v-for="(l, i) in diagInfo.lines" :key="'dl' + i">{{ l }}</text>
       <text class="diag-line" v-if="!diagInfo.lines.length">还没测过速</text>
       <text class="diag-line" v-for="(l, i) in storageLines" :key="'st' + i">{{ l }}</text>
+      <!-- 读取自检（task-1）：每行有稳定前缀 R1:/R2:/R3:/生效:/rd:，自动化脚本按文本断言 -->
+      <text class="diag-line" v-for="(l, i) in rangeLines" :key="'rdl' + i">{{ l }}</text>
       <text class="diag-line" v-if="manualPrefix">已手动指定：{{ manualLabel }}（下载时跳过测速）</text>
+      <view class="manual-row">
+        <view
+          class="mini-btn small"
+          :class="{ ghost: sourceMode !== 'auto' }"
+          @click="pickSourceMode('auto')"
+        >
+          自动
+        </view>
+        <view
+          class="mini-btn small"
+          :class="{ ghost: sourceMode !== 'range' }"
+          @click="pickSourceMode('range')"
+        >
+          强制按需
+        </view>
+        <view
+          class="mini-btn small"
+          :class="{ ghost: sourceMode !== 'whole' }"
+          @click="pickSourceMode('whole')"
+        >
+          强制整包（回退）
+        </view>
+      </view>
+      <text class="diag-line">数据源策略：{{ sourceModeLabel }}（storage 键 fh_map_source_mode = auto / range / whole，改完下次进运动页生效）</text>
       <view class="manual-row">
         <view
           class="mini-btn small"
@@ -153,8 +181,10 @@ import {
   probeTransportName,
   startMeasureInBackground,
   measureState,
+  getSourceMode,
 } from '@/utils/city-maps.js'
 import { downloadCity, deleteCity, storageSelfTest, mapSelfTest, resumePendingVerifies } from '@/utils/city-map-download.js'
+import { readRangeSelfTest, applySourceMode, resetRangeMemory } from '@/utils/map-read-selftest.js'
 
 export default {
   data() {
@@ -167,6 +197,8 @@ export default {
       transport: '',
       diagInfo: { runtime: '', xhr: '', pxhr: '', downloader: '', lines: [] },
       storageLines: [],
+      rangeLines: [], // 读取自检输出（task-1，行首有稳定前缀 R1:/R2:/R3:/生效:/rd:）
+      sourceMode: 'auto', // 当前数据源策略：auto / range / whole
       manualPrefix: '',
       tickTimer: null,
       limit: 30,
@@ -236,16 +268,23 @@ export default {
       const c = getCity(this.current)
       return c ? c.name : this.current
     },
+    sourceModeLabel() {
+      if (this.sourceMode === 'range') return '强制按需（range）'
+      if (this.sourceMode === 'whole') return '强制整包（whole，最稳但大包占内存）'
+      return '自动（auto：先试按需，不通就退回整包）'
+    },
   },
   mounted() {
     // P1-8：上次被杀进程打断的后台摘要在这里补跑，否则会永远显示「校验中…」
     this.resumeVerifyQueue()
+    this.reloadSourceMode()
   },
   onShow() {
     this.reloadState()
     this.showCachedSpeed()
     this.transport = probeTransportName()
     this.fillEnv()
+    this.reloadSourceMode()
     this.startTick()
     this.kickMeasure(false)
   },
@@ -487,12 +526,61 @@ export default {
         this.storageLines = ['自检异常: ' + ((e && e.message) || e)]
       }
     },
+    // ===== 读取自检（task-1）=====
+    // 输出行固定前缀：策略: / R1: / R2: / R3: / 生效: / rd: / 记忆: / 结论:
+    async runReadTest() {
+      this.rangeLines = ['读取自检中…']
+      try {
+        const r = await readRangeSelfTest({
+          onLines: (ls) => {
+            this.rangeLines = ls
+          },
+        })
+        this.rangeLines = r.lines || this.rangeLines
+        this.reloadSourceMode()
+      } catch (e) {
+        this.rangeLines = ['读取自检异常: ' + ((e && e.message) || e)]
+      }
+    },
+    async clearReadMemory() {
+      let n = 0
+      try {
+        n = resetRangeMemory()
+      } catch (e) {
+        n = 0
+      }
+      this.reloadSourceMode()
+      uni.showToast({ title: n ? '已清除 ' + n + ' 条读取记忆' : '本来没有读取记忆', icon: 'none' })
+      await this.runReadTest()
+    },
+    pickSourceMode(mode) {
+      try {
+        // 'auto' = 清掉 storage 覆盖，回到代码常量
+        applySourceMode(mode === 'auto' ? '' : mode)
+      } catch (e) {
+        /* ignore */
+      }
+      this.reloadSourceMode()
+      uni.showToast({ title: '数据源：' + this.sourceModeLabel, icon: 'none' })
+    },
+    reloadSourceMode() {
+      let m = ''
+      try {
+        m = getSourceMode()
+      } catch (e) {
+        m = ''
+      }
+      this.sourceMode = m || 'auto'
+    },
     copyDiag() {
       const d = this.diagInfo
       const txt =
         '运行时 ' + d.runtime + ' | XHR ' + d.xhr + ' | plus.net.XHR ' + d.pxhr +
         ' | 下载器 ' + d.downloader + ' | 通道 ' + this.transport +
-        '\n' + (d.lines || []).join('\n') + '\n--- 存储自检 ---\n' + (this.storageLines || []).join('\n')
+        ' | 数据源 ' + this.sourceModeLabel +
+        '\n' + (d.lines || []).join('\n') +
+        '\n--- 存储自检 ---\n' + (this.storageLines || []).join('\n') +
+        '\n--- 读取自检 ---\n' + (this.rangeLines || []).join('\n')
       uni.setClipboardData({
         data: txt,
         success: () => uni.showToast({ title: '已复制', icon: 'none' }),
