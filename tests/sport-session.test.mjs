@@ -24,8 +24,8 @@ import {
 // 与 health.js 的 MODES 对齐（health.js 带 uni 条件编译，纯测试不能 import，
 // 数值改动时要同步这里 —— 见 sport-session.js 里 sessionCalorieByMet 的参数说明）
 const MODES = {
-  run: { label: '跑步', met: 8.0, stepPerMin: 150 },
-  walk: { label: '健走', met: 4.3, stepPerMin: 110 },
+  run: { label: '跑步', met: 8.0 },
+  walk: { label: '健走', met: 4.3 },
 }
 
 // ===== 可控 gate：让测试决定 await 何时落地 =====
@@ -307,6 +307,38 @@ test('口径 C：体重为 0 / 未填 → 0（调用方负责用默认 60 兜底
   assert.equal(sessionCalorieByMet({ met: 8.0, minutes: 30, weightKg: undefined }), 0)
   // 默认体重 60 的下限口径：60kg 有效
   assert.equal(sessionCalorieByMet({ met: 8.0, minutes: 30, weightKg: 60 }), 240)
+})
+
+test('口径 C：跑步 vs 健走 30 分钟的比值钉在 8.0/4.3（≈1.86）', () => {
+  // 用 60kg、30 分钟这一组用户实际会看到的数字钉死：
+  //   跑步 8.0 × 60 × 0.5h = 240 kcal
+  //   健走 4.3 × 60 × 0.5h = 129 kcal
+  // 240/129 = 1.8605，与 8.0/4.3 = 1.8605 一致（取整带来的偏差 ≤ 0.4%）
+  const run = sessionCalorieByMet({ met: 8.0, minutes: 30, weightKg: 60 })
+  const walk = sessionCalorieByMet({ met: 4.3, minutes: 30, weightKg: 60 })
+  assert.equal(run, 240)
+  assert.equal(walk, 129)
+  const expect = 8.0 / 4.3
+  const actual = run / walk
+  assert.ok(Math.abs(actual - expect) < 0.01, `比值 ${actual.toFixed(4)} 应≈${expect.toFixed(4)}`)
+  // 长时长时取整误差被抹平，比值更贴近理论值
+  const run5 = sessionCalorieByMet({ met: 8.0, minutes: 300, weightKg: 60 })
+  const walk5 = sessionCalorieByMet({ met: 4.3, minutes: 300, weightKg: 60 })
+  assert.equal(run5, 2400)
+  assert.equal(walk5, 1290)
+  assert.ok(Math.abs(run5 / walk5 - 8.0 / 4.3) < 0.001)
+})
+
+test('口径 C：体重翻倍 → 热量翻倍（线性），体重变了历史记录不变', () => {
+  const base = sessionCalorieByMet({ met: 8.0, minutes: 30, weightKg: 60 })
+  const double = sessionCalorieByMet({ met: 8.0, minutes: 30, weightKg: 120 })
+  assert.equal(base, 240)
+  assert.equal(double, 480)
+  assert.equal(double, base * 2, 'MET 口径对体重是严格线性')
+  // 同一个人 60→70kg：240 → 280（8.0×70×0.5=280）
+  assert.equal(sessionCalorieByMet({ met: 8.0, minutes: 30, weightKg: 70 }), 280)
+  // 时长翻倍同样翻倍（另一条线性轴）
+  assert.equal(sessionCalorieByMet({ met: 8.0, minutes: 60, weightKg: 60 }), 480)
 })
 
 test('口径 C：与「其他运动」同一个公式（同样的 MET/体重/时长结果必须一致）', () => {
