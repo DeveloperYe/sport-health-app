@@ -20,6 +20,10 @@ import { buildAttemptOrder, saneBps, pickTopN } from './mirror-pick.js'
 const K_INSTALLED = 'fh_map_installed' // { [adcode]: {adcode,name,bytes,sha256,at} }
 const K_CURRENT = 'fh_map_current' // adcode 字符串
 const K_MIRROR = 'fh_map_mirror_v1' // { at, best, list:[{prefix,bps}] }
+// task-1：瓦片数据源策略与"这台机器不认 Range"的记忆（都不进 APK 常量，改完即时生效）
+const K_SOURCE_MODE = 'fh_map_source_mode' // 'auto' | 'range' | 'whole'
+const K_RANGE_BAD = 'fh_map_range_bad_v1' // { [adcode]: {at, why} }
+const K_READ_PROBE = 'fh_map_read_probe_v1' // 上次真正建图时的探测结果（自检卡读它）
 
 // ===== 加速线路（都指向同一个 GitHub Release 直链）=====
 // 顺序只是"没测出结果时的兜底顺序"，实际用测速结果排序。
@@ -205,6 +209,78 @@ export function unmarkInstalled(adcode) {
   delete all[String(adcode)]
   writeJson(K_INSTALLED, all)
   if (getCurrent() === String(adcode)) writeJson(K_CURRENT, '')
+}
+
+// ===== 瓦片数据源策略（task-1）=====
+//
+// 三个通道，保证"真机某机型 fetch(file://) 不通也能切回去，且不用重新出包"：
+//   ① 常量 DEFAULT_TILE_SOURCE_MODE（代码里，出包才变）
+//   ② storage `fh_map_source_mode`（用户/自检卡一点即生效，优先级最高）
+//   ③ 坏机型记忆 `fh_map_range_bad_v1`（自动模式下记住哪个包探不通，下次直接跳级）
+
+/** 可用的数据源策略 */
+export const SOURCE_MODES = ['auto', 'range', 'whole']
+
+/** 读当前策略；没设置过返回空串（调用方回退到代码常量） */
+export function getSourceMode() {
+  const v = readJson(K_SOURCE_MODE, '')
+  const s = String(v || '').trim()
+  return SOURCE_MODES.indexOf(s) >= 0 ? s : ''
+}
+
+/** 设置策略（传空串 = 清除设置，回到代码常量） */
+export function setSourceMode(mode) {
+  const s = String(mode || '').trim()
+  if (!s) {
+    try {
+      uni.removeStorageSync(K_SOURCE_MODE)
+    } catch (e) {
+      /* ignore */
+    }
+    return ''
+  }
+  if (SOURCE_MODES.indexOf(s) < 0) return getSourceMode()
+  writeJson(K_SOURCE_MODE, s)
+  return s
+}
+
+/** 这个包在本机被判过"Range 不通"吗 */
+export function isRangeBad(adcode) {
+  const all = readJson(K_RANGE_BAD, {})
+  const k = String(adcode || 'builtin')
+  return !!(all && all[k])
+}
+
+/** 记住"这个包这台机器 Range 不通"，下次自动模式直接跳级（省一次 300 ms 探测） */
+export function markRangeBad(adcode, why) {
+  const all = readJson(K_RANGE_BAD, {})
+  const k = String(adcode || 'builtin')
+  const next = all && typeof all === 'object' ? all : {}
+  next[k] = { at: Date.now(), why: String(why || '').slice(0, 120) }
+  writeJson(K_RANGE_BAD, next)
+}
+
+/** 清掉坏机型记忆（自检卡的「清除记忆并重试」） */
+export function clearRangeBad() {
+  writeJson(K_RANGE_BAD, {})
+}
+
+export function listRangeBad() {
+  const all = readJson(K_RANGE_BAD, {})
+  const out = []
+  if (!all || typeof all !== 'object') return out
+  Object.keys(all).forEach((k) => out.push({ adcode: k, at: (all[k] && all[k].at) || 0, why: (all[k] && all[k].why) || '' }))
+  return out
+}
+
+/** 记录"上次真正建图时"的探测结果（视图层探不了 storage，由逻辑层代写） */
+export function setReadProbe(rec) {
+  writeJson(K_READ_PROBE, Object.assign({ at: Date.now() }, rec || {}))
+}
+
+export function getReadProbe() {
+  const v = readJson(K_READ_PROBE, null)
+  return v && typeof v === 'object' ? v : null
 }
 
 // ===== 平台：文件路径 =====
