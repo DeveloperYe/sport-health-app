@@ -40,6 +40,14 @@ page {
      否则橙色会被压成接近褐色、蓝色接近藏青，环就失去"数据分类色"的观感。 */
   --warm-graphic: #ffb347;
   --cool-graphic: #4aa3ff;
+  /* 三环弧线的渐变终点（起点复用它上面的 --accent-text / --warm-graphic / --cool-graphic）。
+     为什么按主题给不同终点：渐变两端都必须对轨道 --bg-card-3 保持 ≥3:1（WCAG 1.4.11）。
+     暗色轨道很暗，预算宽（实测亮度差 31%/26%/42%），能做出明显渐变；
+     白天轨道 #e8eef5 很亮，橙色可用窗口只剩 3.28–4.16，亮度差仅 10%，做出来也看不出。
+     所以白天把终点设成「等于起点」，渐变自然退化为单色——这是刻意设计，不是漏改。 */
+  --accent-ring-2: #45dd73;
+  --warm-ring-2: #ffc364;
+  --cool-ring-2: #6cb6ff;
   --accent-soft: rgba(43, 212, 92, 0.12);
   --accent-soft-2: rgba(43, 212, 92, 0.24);
   --shadow-card: none;
@@ -81,6 +89,10 @@ page {
   /* 暗底上 3:1 绰绰有余（实测暖 9.99:1、冷 6.76:1 对 --bg-card），直接用亮版 */
   --warm-graphic: #ffb347;
   --cool-graphic: #4aa3ff;
+  /* 暗色渐变终点：对轨道 #252b34 实测 绿 10.21:1 / 暖 10.57:1 / 冷 8.90:1，全部 ≥3:1 */
+  --accent-ring-2: #45dd73;
+  --warm-ring-2: #ffc364;
+  --cool-ring-2: #6cb6ff;
   --accent-soft: rgba(43, 212, 92, 0.12);
   --accent-soft-2: rgba(43, 212, 92, 0.24);
   --shadow-card: none;
@@ -121,6 +133,12 @@ page {
      又比 --*-text 略亮。实测对环轨道 #e8eef5：暖 3.56:1、冷 3.89:1；对白卡 4.16/4.55。 */
   --warm-graphic: #b96808;
   --cool-graphic: #2277d0;
+  /* 白天刻意等于起点色 → 渐变退化为单色。理由见 page 块内同组令牌的注释：
+     白天轨道太亮，渐变两端都要 ≥3:1 就只剩 10% 亮度差，做出来看不出来；
+     亮色要的是"利落"，渐变留给暗色。不要"顺手"把它们改成更浅的色。 */
+  --accent-ring-2: #0b7c33;
+  --warm-ring-2: #b96808;
+  --cool-ring-2: #2277d0;
   --accent-soft: rgba(18, 177, 74, 0.1);
   --accent-soft-2: rgba(18, 177, 74, 0.2);
   --shadow-card: 0 6rpx 20rpx rgba(17, 22, 28, 0.06);
