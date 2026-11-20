@@ -17,8 +17,8 @@ import {
 // 与 health.js 的 MODES / nutrition.js 的 QUICK_EXERCISES 对齐（都带 uni 或 @ 别名，
 // 纯测试 import 不了，所以按真实内容造一份；数值漂了这组测试会先报错）
 const MODES = {
-  run: { label: '跑步', met: 8.0, stepPerMin: 150 },
-  walk: { label: '健走', met: 4.3, stepPerMin: 110 },
+  run: { label: '跑步', met: 8.0 },
+  walk: { label: '健走', met: 4.3 },
 }
 const QUICK = [
   { name: '跑步', met: 8.3 },

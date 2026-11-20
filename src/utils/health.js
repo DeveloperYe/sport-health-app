@@ -425,9 +425,11 @@ export function getStepBranches() {
 // #endif
 
 // 运动模式元数据：MET（代谢当量）用于卡路里估算
+// stepPerMin（曾为 150/110）已删除：它从未参与任何计算，而"按时长估步数"会伪造读数、
+// 掩盖传感器故障（见「计步自检」的判定逻辑）。要找回：git log -S stepPerMin
 export const MODES = {
-  run: { label: '跑步', met: 8.0, stepPerMin: 150 },
-  walk: { label: '健走', met: 4.3, stepPerMin: 110 },
+  run: { label: '跑步', met: 8.0 },
+  walk: { label: '健走', met: 4.3 },
 }
 
 // 按步数估算卡路里（每千步约 40 千卡，以 60kg 为基准线性折算）

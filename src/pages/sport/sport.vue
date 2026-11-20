@@ -73,6 +73,12 @@
             <text class="timer-sub-label">千卡</text>
           </view>
         </view>
+        <!-- 口径说明（一句话，小字）：热量按时长 × MET × 体重算，与步数无关。
+             没有这句，用户会问"我走了这么多步，为什么热量和以前不一样"。
+             MET 值随类别变（跑步 8.0 / 健走 4.3），所以把它显示出来。 -->
+        <text class="timer-metric">热量 = MET {{ modeMet }} × 体重 {{ weight }}kg × 时长（与步数无关）</text>
+        <!-- 没填体重时按默认 60kg 算：MET 口径下体重直接决定热量，必须说清 -->
+        <text class="timer-metric-warn" v-if="!weightKnown">按默认 60kg 估算，去「我的」填一下体重更准</text>
         <text class="timer-hint" v-if="state === 'idle'">准备好后，点击开始</text>
         <text class="timer-hint" v-else-if="state === 'running'">
           运动进行中…{{ bgGained >= 0 ? `　后台期间新增 ${bgGained} 个点` : '' }}
@@ -281,7 +287,7 @@ import {
   summarizeActivities,
   formatActivityDuration,
 } from '@/utils/activity-store.js'
-import { today as todayStr } from '@/utils/body-store.js'
+import { today as todayStr, getWeightLog } from '@/utils/body-store.js'
 // 运动历史（跨天）：跑步/健走与其他运动混排的记录由 allExerciseHistory 统一成同一种形状，
 // 展示层（真实总数 / 日期只出现一次 / 分批渲染）在 history-view.js，配了单测。
 import { allWorkoutRecords, allExerciseHistory } from '@/utils/day-summary.js'
@@ -300,6 +306,7 @@ import {
   isCurrentSession,
   shouldDiscardSession,
   sessionMinutes,
+  sessionCalorieByMet,
   mergeSessionReset,
 } from '@/utils/sport-session.js'
 import { formatDistance, formatPace } from '@/utils/geo.js'
@@ -329,6 +336,10 @@ export default {
       liveSteps: 0,
       stepTimer: null,
       weight: 60,
+      // 用户是否真的填过体重：getWeight() 没填时返回默认 60，无法区分「真的 60kg」与「没填」。
+      // 所有写入体重的入口（health 页「记下」、我的页「保存」、云端恢复）都走
+      // body-store.saveBody → upsertWeight，所以体重日志非空 = 填过。
+      weightKnown: false,
       diag: '',
       // 后台保活诊断：切后台时的点数，回前台后算"后台期间新增了几点"
       pointsAtHide: -1,
@@ -384,8 +395,20 @@ export default {
       return `${m}:${s}`
     },
     caloriePreview() {
-      // 热量按真实步数 + 体重估算（每千步约 40 千卡，随体重线性折算）
-      return calcCaloriesBySteps(this.liveSteps, this.weight)
+      // 热量口径 C（2026-11-20 用户拍板）：MET × 体重 × 时长，与「其他运动」同一个函数
+      // （body-calc.calcExerciseCalorie），全 App 只有这一条热量公式。
+      // 与步数无关：跑步 8.0 / 健走 4.3 两个 MET 才让两个类别有了实际差别
+      // （同 30 分钟跑步 ≈ 健走的 1.86 倍）；步数照旧只展示与本场记录。
+      return sessionCalorieByMet({
+        met: this.modeMet,
+        minutes: this.seconds / 60,
+        weightKg: this.weight,
+      })
+    },
+    // 当前类别的 MET（跑步 8.0 / 健走 4.3）：界面口径说明与热量计算都用它，避免两处各写一遍
+    modeMet() {
+      const m = MODES[this.mode]
+      return m ? m.met : 0
     },
     stepPreview() {
       // 运动页步数 = 真实计步器会话内累计（本场走了多少步）
@@ -469,6 +492,12 @@ export default {
   onShow() {
     this.pageVisible = true
     this.weight = getWeight()
+    // 体重日志非空 = 用户真的填过体重（否则热量是按默认 60kg 估的，界面上要说明）
+    try {
+      this.weightKnown = getWeightLog().length > 0
+    } catch (e) {
+      this.weightKnown = false
+    }
     this.loadTodayOther()
     this.loadTodayRuns()
     // 历史可能在「我的」/别的会话里被删过，进页面一律重读
@@ -995,7 +1024,17 @@ export default {
         id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
         type: this.mode,
         duration: minutes,
-        calories: calcCaloriesBySteps(realSteps, this.weight),
+        // 热量口径 C：MET × 体重 × 时长（与计时卡上的实时值、与「其他运动」同一个公式）。
+        // 用整场 seconds 而不是取整后的 minutes，长尾时长不会因为进位而虚增。
+        calories: sessionCalorieByMet({
+          met: this.modeMet,
+          minutes: seconds / 60,
+          weightKg: this.weight,
+        }),
+        // 把当时用的 MET 与体重一并落库：以后体重变了也能解释"这条为什么是这个数"
+        // （与 activity-store 记 weightUsed 同一个思路）
+        met: this.modeMet,
+        weightUsed: this.weight,
         steps: realSteps,
         distance: Math.round(gpsDistance), // 米（GPS 累计）
         hasTrack: track.length > 1,
@@ -1011,6 +1050,13 @@ export default {
       // 运动期间走的步数本就包含在传感器累计里，这里再 += record.steps 会把
       // 同一批步数算两次（运动中途切后台再切回时尤其明显）。
       // 改为拉一次当天真值，热量按它重算，保证口径一致。
+      // 👇 这里的 daily.calories 与上面 record.calories **不是一回事**，故意保持按步数折算：
+      //   record.calories = 这一场运动的消耗（口径 C：MET × 体重 × 时长）
+      //   daily.calories  = 当日**全部**步数折算的总消耗（含日常走动），是每日总账的一环
+      // 已验证不会重复计：day-summary 的 dayExercise/dayCalories 只读 records 与
+      // activity-store，**从不读 getTodayData()**；daily.{steps,calories} 目前只有
+      // cloud.syncDaily 在上传时读。所以把运动消耗改成 MET 口径不影响当日总账，
+      // 也不能把 daily.calories 改成 MET —— 那会把"全天步数消耗"变成"运动消耗"，含义就错了。
       const todaySteps = await getTodaySteps()
       if (todaySteps > 0) daily.steps = todaySteps
       daily.calories = calcCaloriesBySteps(daily.steps || 0, this.weight)
@@ -1134,6 +1180,22 @@ export default {
   margin-top: 32rpx;
   font-size: 26rpx;
   color: $text-muted;
+}
+/* 热量口径说明：热量 = MET × 体重 × 时长，与步数无关（2026-11-20 口径 C） */
+.timer-metric {
+  margin-top: 24rpx;
+  padding: 0 24rpx;
+  font-size: 20rpx;
+  color: $text-muted;
+  text-align: center;
+}
+/* 未填体重时的提示：MET 口径下体重直接影响热量，按默认 60kg 算就得说清 */
+.timer-metric-warn {
+  margin-top: 6rpx;
+  padding: 0 24rpx;
+  font-size: 20rpx;
+  color: var(--warm-text);
+  text-align: center;
 }
 /* 临时诊断（定位后移除） */
 .timer-diag {
