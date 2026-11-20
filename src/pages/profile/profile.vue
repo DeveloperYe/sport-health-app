@@ -1,15 +1,5 @@
 <template>
   <view class="page" :class="themeClass">
-    <!-- 账号：随机账号 / 已注册 / 已登录（三态判定在 auth-guard 的 accountCardState，模板不写判断） -->
-    <view class="card acard" v-if="accountCard">
-      <view class="acard-avatar">{{ avatarText }}</view>
-      <view class="acard-main">
-        <text class="acard-title">{{ accountCard.title }}</text>
-        <text class="acard-note">{{ accountCard.syncNote }}</text>
-      </view>
-      <text class="acard-btn" @click="openAccount">{{ accountCard.action }}</text>
-    </view>
-
     <!-- 身体信息 -->
     <view class="card">
       <view class="card-head">
@@ -66,7 +56,7 @@
     <view class="card">
       <text class="card-title">计算成果</text>
       <view class="big-num-row">
-        <text class="big-num num">{{ bmr }}</text>
+        <text class="big-num">{{ bmr }}</text>
         <text class="big-unit">kcal / 天（基础代谢 BMR）</text>
       </view>
       <view class="kv"><text class="kv-k">瘦体重</text><text class="kv-v">{{ leanMass || '—' }} kg</text></view>
@@ -146,15 +136,15 @@
       </view>
       <view class="stat-row">
         <view class="stat-cell">
-          <text class="stat-num num">{{ week.avgIntake }}</text>
+          <text class="stat-num">{{ week.avgIntake }}</text>
           <text class="stat-label">平均摄入</text>
         </view>
         <view class="stat-cell">
-          <text class="stat-num num">{{ week.avgTdee }}</text>
+          <text class="stat-num">{{ week.avgTdee }}</text>
           <text class="stat-label">平均消耗</text>
         </view>
         <view class="stat-cell">
-          <text class="stat-num num" :class="{ warn: weekAvgGap > 0 }">{{ weekAvgGap }}</text>
+          <text class="stat-num" :class="{ warn: weekAvgGap > 0 }">{{ weekAvgGap }}</text>
           <text class="stat-label">日均缺口</text>
         </view>
       </view>
@@ -189,7 +179,7 @@
           <text class="hist-title">{{ r.title }}</text>
           <text class="hist-sub">{{ durText(r.duration) }} · {{ r.sub }}</text>
         </view>
-        <text class="hist-cal num">{{ r.calorie }}</text>
+        <text class="hist-cal">{{ r.calorie }}</text>
         <text class="hist-del" @click="delRecord(r)">删</text>
       </view>
     </view>
@@ -239,9 +229,7 @@ import {
 import { getRecords, removeRecord } from '@/utils/storage.js'
 import { recentAverages, allExerciseHistory } from '@/utils/day-summary.js'
 import { removeActivity, formatActivityDuration } from '@/utils/activity-store.js'
-import { getWaterPrefs } from '@/utils/water-store.js'
-import { THEME_OPTIONS, setThemeMode, getMode } from '@/utils/theme.js'
-import { accountCardState, listAccounts, getSession } from '@/utils/auth-guard.js'
+import { THEME_OPTIONS, setThemeMode } from '@/utils/theme.js'
 
 export default {
   data() {
@@ -258,16 +246,9 @@ export default {
       activityLabels: ACTIVITY_OPTIONS.map((o) => o.label),
       week: { days: [], activeCount: 0, avgIntake: 0, avgTdee: 0, avgExercise: 0 },
       history: [],
-      // 账号入口卡状态（onShow → reload 时重读，从注册页返回立刻反映）
-      accountCard: null,
     }
   },
   computed: {
-    /** 头像圆标：有手机号取后两位，没有就用「我」 */
-    avatarText() {
-      const phone = (this.accountCard && this.accountCard.phone) || ''
-      return phone ? phone.slice(-2) : '我'
-    },
     activityIndex() {
       const i = ACTIVITY_OPTIONS.findIndex((o) => Number(o.value) === Number(this.form.activity))
       return i < 0 ? 0 : i
@@ -371,15 +352,6 @@ export default {
         avgExercise: week.avgExercise,
       }
       this.history = allExerciseHistory().slice(0, 12)
-      // 账号入口卡：onShow → reload 会重读，用户从注册页返回时这里立刻变
-      this.accountCard = accountCardState({ accounts: listAccounts(), session: getSession() })
-    },
-    /** 进注册页（同一个页面按自身状态渲染注册表单 / 登录表单 / 已登录态） */
-    openAccount() {
-      uni.navigateTo({
-        url: '/pages/register/register',
-        fail: () => uni.showToast({ title: '打不开注册页', icon: 'none' }),
-      })
     },
     // 柱高：按 7 天最大值归一到 120rpx
     barHeight(v) {
@@ -464,18 +436,13 @@ export default {
         version: 1,
         exportedAt: new Date().toISOString(),
         body: getBody(),
-        goals: getGoals(), // 每日目标（热量/步数/饮水/蛋白/目标体重）；fh_targets 已废弃，不再导出
+        goals: getGoals(),
         weightLog: getWeightLog(),
         records: getRecords(),
-        waterPrefs: getWaterPrefs(), // 杯容量 / 饮水时段 / 目标覆盖，换机后不用重设
-        themeMode: getMode(), // 跟随系统 / 白天 / 黑夜
-        // 按天存的表直接读原始键，保证导出是全量而不是只导出今天
+        // 直接读原始键，保证导出是全量而不是只导出今天
         dietDays: uni.getStorageSync('fh_diet_days') || {},
         waterDays: uni.getStorageSync('fh_water_days') || {},
         activityDays: uni.getStorageSync('fh_activity_days') || {},
-        // 冷却起点：water-store 只有按天读的 getLastCupAt(date)，没有"全部"接口，
-        // 这里与上面三处同样按原始键全量导出；store 补 getWaterLastMap() 后可换成它
-        waterLast: uni.getStorageSync('fh_water_last') || {},
       }
       uni.setClipboardData({
         data: JSON.stringify(payload),
@@ -665,7 +632,7 @@ export default {
 .rec-btn {
   font-size: 24rpx;
   color: var(--accent-text);
-  border: 1rpx solid var(--accent-soft-2);
+  border: 1rpx solid rgba(43, 212, 92, 0.5);
   padding: 8rpx 20rpx;
   border-radius: 999rpx;
 }
@@ -835,52 +802,5 @@ export default {
 .tseg-item.on .tseg-label {
   color: var(--on-accent);
   font-weight: 700;
-}
-
-/* ===== 账号入口卡（2026-11-20）：随机账号 / 已注册 / 已登录 ===== */
-.acard {
-  display: flex;
-  align-items: center;
-  gap: 18rpx;
-}
-.acard-avatar {
-  width: 76rpx;
-  height: 76rpx;
-  line-height: 76rpx;
-  text-align: center;
-  border-radius: 999rpx;
-  background: var(--accent-soft);
-  border: 1rpx solid var(--accent-soft-2);
-  color: var(--accent-text);
-  font-size: 26rpx;
-  font-weight: 800;
-}
-.acard-main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-.acard-title {
-  font-size: 28rpx;
-  font-weight: 700;
-  color: var(--text-1);
-}
-.acard-note {
-  margin-top: 6rpx;
-  font-size: 20rpx;
-  color: var(--text-3);
-}
-.acard-btn {
-  font-size: 24rpx;
-  font-weight: 700;
-  color: var(--on-accent);
-  background: var(--accent);
-  padding: 12rpx 26rpx;
-  border-radius: 999rpx;
-  transition: transform 0.12s var(--ease), opacity 0.18s var(--ease);
-}
-.acard-btn:active {
-  transform: scale(0.96);
-  opacity: 0.9;
 }
 </style>
