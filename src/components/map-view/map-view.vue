@@ -54,62 +54,19 @@
 // H5：在这里直接建图（H5 有 DOM，不需要 renderjs）。
 // App：这里不建图，只负责「用 plus.io 把瓦片读出来、分块过桥」以及显示诊断行。
 //      注意 App 逻辑层绝不能引 map-core.js（会把 maplibre 拖进没有 window 的 v8 层）。
-import { readTilesViaPlusIo, TILE_FILES, tileUserPath, tileWww, plusLocalPath, openRangeHandle, readRangeB64 } from './tiles.js'
+import { readTilesViaPlusIo, TILE_FILES, tileUserPath } from './tiles.js'
 import { archivesChanged } from './archives-key.js'
-import {
-  getCurrent,
-  isInstalled,
-  getCity,
-  getInstalledPath,
-  getSourceMode,
-  isRangeBad,
-  markRangeBad,
-  setReadProbe,
-} from '@/utils/city-maps.js'
+import { getCurrent, isInstalled, getCity, getInstalledPath } from '@/utils/city-maps.js'
 import { makeMapStatus, formatMapStatus } from './map-status.js'
 // #ifdef H5
 import { createTrackMap, probeWebgl, waitForSize } from './map-core.js'
-import { tileUrlCandidates, loadTilesFromUrls, probeRangeRead, fetchRange } from './tiles.js'
+import { tileUrlCandidates, loadTilesFromUrls } from './tiles.js'
 // #endif
 
 let seq = 0
 // 跨层搬运 base64 的块大小：必须是 4 的倍数（base64 4 字符 = 3 字节），
 // 这样视图层每块都能独立 atob，不用先 join 出一个 15MB 字符串。
 const TILE_CHUNK_CHARS = 512 * 1024
-
-// ===== R2 桥接用的文件句柄缓存（task-1）=====
-// 必须放模块级、不能用 data()：Vue 会把 File 包成响应式代理，既浪费又可能破坏原生句柄。
-// 键 = 档案 key + 落盘路径（多城市同名不会串）。
-const RANGE_HANDLES = new Map()
-function handleKeyOf(adcode, rel) {
-  return String(adcode || 'builtin') + '|' + String(rel || '')
-}
-/** 切城市 / 卸载时清空并让句柄可回收（显式 dispose 语义：去掉引用即可） */
-function clearRangeHandles() {
-  try {
-    RANGE_HANDLES.forEach((rec) => {
-      if (rec) rec.file = null
-    })
-    RANGE_HANDLES.clear()
-  } catch (e) {
-    /* ignore */
-  }
-}
-
-// H5 侧的「按需探测次数」计数（App 侧在 renderjs 里另有一份）。
-// whole 模式下它必须保持 0 —— e2e 用 window.__mvDebug.rangeProbes() 断言。
-let RANGE_PROBE_H5 = 0
-function bumpH5Probe() {
-  RANGE_PROBE_H5++
-  try {
-    if (typeof window !== 'undefined') {
-      const dbg = window.__mvDebug || (window.__mvDebug = {})
-      dbg.rangeProbes = () => RANGE_PROBE_H5
-    }
-  } catch (e) {
-    /* ignore */
-  }
-}
 
 export default {
   name: 'map-view',
@@ -146,7 +103,6 @@ export default {
       mapTheme: 'dark', // 地图色标：dark / light（跟随全局主题）
       syncTick: 0, // 切回本页时自增，强制把主题对齐一次
       resetTick: 0, // 切城市时自增：让视图层彻底销毁旧地图再重建
-      sourceModeSel: 'auto', // 数据源策略（storage 覆盖 > 代码常量），随档案一起推给视图层
     }
   },
   computed: {
@@ -157,23 +113,9 @@ export default {
     pointsPayload() {
       return { n: this.tick, list: this.points }
     },
-    // App：把档案清单推给视图层（视图层与逻辑层是两个 JS 上下文，不能共享模块状态）。
-    // task-1 起顺带带上数据源策略与本机「Range 判不通」的标记：
-    // 策略一变，payload 就变，视图层据此重建（改完 storage 下次进运动页即生效）。
+    // App：把档案清单推给视图层（视图层与逻辑层是两个 JS 上下文，不能共享模块状态）
     archivesPayload() {
-      const bad = []
-      try {
-        const cur = getCurrent()
-        if (cur && isRangeBad(cur)) bad.push(cur)
-        if (isRangeBad('builtin')) bad.push('builtin')
-      } catch (e) {
-        /* ignore */
-      }
-      return JSON.stringify({
-        list: this.archives || [],
-        mode: this.sourceModeSel || 'auto',
-        bad: bad,
-      })
+      return JSON.stringify(this.archives || [])
     },
   },
   watch: {
@@ -207,20 +149,6 @@ export default {
       // #endif
     },
     visible(v) {
-      // 每次回到本页都对一次「数据源策略」：用户可能刚在地图页把整包/按需切过。
-      // 不在这里对，storage 改了也得等下次切城市才生效。
-      if (v) {
-        try {
-          const m = getSourceMode() || 'auto'
-          if (m !== this.sourceModeSel) {
-            this.sourceModeSel = m
-            this.reloadForCity()
-            return
-          }
-        } catch (e) {
-          /* ignore */
-        }
-      }
       // #ifdef H5
       // 只做尺寸恢复；轮询与渲染**不停**（App 开着就连续渲染）
       if (this.core && this.core.setVisible) this.core.setVisible(v)
@@ -264,8 +192,6 @@ export default {
   beforeUnmount() {
     this.clearWatchdog()
     this.teardownH5()
-    // 组件卸载：把 R2 桥接用的文件句柄全部放掉，别留悬空引用
-    clearRangeHandles()
   },
   methods: {
     /**
@@ -322,29 +248,16 @@ export default {
 
     // 决定这次要加载哪些档案：装了城市包就用它，否则用包内自带的青岛包
     resolveArchives() {
-      // 数据源策略：storage 覆盖优先（改完下次建图即生效），否则用代码常量（map-core 里的 auto）
-      try {
-        this.sourceModeSel = getSourceMode() || 'auto'
-      } catch (e) {
-        this.sourceModeSel = 'auto'
-      }
       const cur = getCurrent()
       if (cur && isInstalled(cur)) {
         const c = getCity(cur)
         if (c) {
-          const rel = getInstalledPath(c.adcode) || ''
-          // abs 给视图层的 R1 探测用（fetch 需要设备绝对路径，逻辑层才拿得到）
-          this.archives = [{ file: c.adcode + '.pmtiles', where: 'user', adcode: c.adcode, name: c.name, path: rel, abs: rel ? plusLocalPath(rel) || '' : '', center: Array.isArray(c.center) ? c.center : null }]
+          this.archives = [{ file: c.adcode + '.pmtiles', where: 'user', adcode: c.adcode, name: c.name, path: getInstalledPath(c.adcode) || '', center: Array.isArray(c.center) ? c.center : null }]
           return this.archives
         }
       }
       // 内置青岛包：包自带中心落在胶州湾水面，这里改用市南区坐标
-      this.archives = (TILE_FILES || []).map((f) => ({
-        file: f,
-        where: 'bundled',
-        center: [120.3845, 36.0605],
-        abs: plusLocalPath(tileWww(f)) || '',
-      }))
+      this.archives = (TILE_FILES || []).map((f) => ({ file: f, where: 'bundled', center: [120.3845, 36.0605] }))
       return this.archives
     },
     // 切换城市后重建地图（档案换了，中心点/bbox 也要重新从包头发起）
@@ -352,8 +265,6 @@ export default {
       // ★ 必须先重算档案：以前只在 H5 分支里调 resolveArchives()，
       //   App 端切城市时 archives 还是旧城市 → 视图层建出来的还是旧底图。
       this.resolveArchives()
-      // 旧城市的文件句柄不再需要（留着只会拖着已删除/被替换的文件）
-      clearRangeHandles()
       this.teardownH5()
       this.ready = false
       this.failed = false
@@ -392,57 +303,16 @@ export default {
       // 逐个档案加载，取到几个用几个（缺文件不致命）
       const archives = []
       const notes = []
-      let rangeSize = 0 // H5 走按需读取时的整包大小（诊断/自检要显示）
       for (let i = 0; i < this.archives.length; i++) {
         const a = this.archives[i]
         let bytes = null
         let srcText = ''
         if (a.where === 'user') {
-          // H5 端下载的包存在 IndexedDB 里（IDB 不支持部分读 → 本轮仍整包，见 task-4）
+          // H5 端下载的包存在 IndexedDB 里
           const mod = await import('@/utils/city-map-download.js')
           bytes = await mod.readPackedBytes(a.adcode)
           srcText = 'idb'
           if (!bytes) notes.push(a.file + '✗(未下载)')
-        } else if (this.sourceModeSel !== 'whole') {
-          // task-1：H5 的包内档案走 fetch+Range（静态服务器支持 206 时生效）。
-          // 服务器不支持 Range（返回 200 整包）时探测会判成 whole-file，这里自动落回整包。
-          const cands = tileUrlCandidates(a.file)
-          let picked = null
-          for (let k = 0; k < cands.length; k++) {
-            bumpH5Probe()
-            const pr = await probeRangeRead(cands[k], { timeoutMs: 800 })
-            // 要求 size 合理（>1 KB）：探测若只拿到分片长度，后续所有读取都会被截成 0
-            // → pmtiles 静默放弃、地图纯灰空白（真机已复现），所以这里必须挡住。
-            if (pr && pr.ok && pr.size > 1024) {
-              picked = { url: cands[k], size: pr.size }
-              break
-            }
-            if (pr && pr.kind === 'whole-file') break
-          }
-          if (picked) {
-            rangeSize = picked.size
-            archives.push({
-              key: a.file,
-              size: picked.size,
-              via: 'range-H5',
-              reader: (o, l) => fetchRange(picked.url, o, l, { timeoutMs: 8000 }),
-            })
-            notes.push(a.file + '←range')
-            continue
-          }
-          // 探测不通：走下面的整包 fetch（老路径）
-          let r = null
-          try {
-            r = await loadTilesFromUrls(cands)
-          } catch (e) {
-            r = { bytes: null, err: (e && e.message) || String(e) }
-          }
-          if (r && r.bytes) {
-            bytes = r.bytes
-            srcText = String(r.src || '').replace(/^[a-z]+@/, '')
-          } else {
-            notes.push(a.file + '✗')
-          }
         } else {
           let r = null
           try {
@@ -473,24 +343,11 @@ export default {
           status: this.status,
           theme: this.mapTheme,
           points: this.points,
-          // task-1：H5 也走同一处分派（auto/range/whole）
-          sourceMode: this.sourceModeSel === 'whole' ? 'whole' : this.sourceModeSel === 'range' ? 'range' : 'auto',
           onOutOfBounds: (b) => this.$emit('outofbounds', b),
           onReady: () => {
             this.ready = true
             // 建图成功就开始盯主题 class（App 端主题切换的主通道）
             this.watchThemeClass()
-            // H5 也在逻辑层，直接写记录（不必走跨层 callMethod）
-            try {
-              setReadProbe({
-                mode: this.core && this.core.getSourceMode ? this.core.getSourceMode() : this.sourceModeSel,
-                r1: 'h5:' + (this.status.srcMode || '') + (rangeSize ? ' size=' + rangeSize : ''),
-                r2: '(H5 不用桥接)',
-                readStats: this.status.readStats || '',
-              })
-            } catch (e) {
-              /* ignore */
-            }
           },
         })
       } catch (e) {
@@ -614,85 +471,6 @@ export default {
       }
       this.chunk = { f: this.currentFile, i: i, n: n, b64: b64.slice(i * TILE_CHUNK_CHARS, (i + 1) * TILE_CHUNK_CHARS) }
     },
-
-    // ===== R2 桥接：视图层请求读一段字节（task-1）=====
-    // 与 mwNeedTiles（整包过桥）完全独立；whole 模式下这个方法永远不会被调用。
-    //
-    // 三条纪律：
-    //  ① 读不到就回 `err`，**绝不回空数据**（空数据会被 pmtiles 当成"瓦片全黑"）；
-    //  ② 句柄失效只重开一次，第二次还失败立即回 err（不许无限重试）；
-    //  ③ 句柄缓存在模块级 Map 里，切城市/卸载时清空。
-    mwReadRange(payload) {
-      // #ifdef APP-PLUS
-      const p = payload && typeof payload === 'object' ? payload : {}
-      const reqId = p.reqId
-      const f = typeof p.f === 'number' ? p.f : 0
-      const offset = Math.max(0, Math.floor(Number(p.offset) || 0))
-      const length = Math.max(0, Math.floor(Number(p.length) || 0))
-      const a = (this.archives && this.archives[f]) || null
-      const file = a ? a.file : TILE_FILES[f]
-      const respond = (obj) => {
-        this.chunk = Object.assign({ f: f, reqId: reqId }, obj)
-      }
-      if (!file) {
-        respond({ err: '档案下标越界: ' + f })
-        return
-      }
-      // 用户下载包在 _doc/maps/（或保存退路目录），包内自带在 _www/static/tiles/
-      const rel = a && a.where === 'user' ? getInstalledPath(a.adcode) || tileUserPath(file) : tileWww(file)
-      const key = handleKeyOf(a && a.adcode, rel)
-      const absPath = plusLocalPath(rel) || ''
-      const readOnce = (handle) =>
-        readRangeB64(handle, absPath, offset, length, 4000).catch((e) => ({ ok: false, err: (e && e.message) || String(e) }))
-      const work = async () => {
-        let rec = RANGE_HANDLES.get(key)
-        let handle = rec && rec.file
-        if (!handle) {
-          handle = await openRangeHandle(rel, 6000)
-          if (handle) RANGE_HANDLES.set(key, { file: handle, rel: rel })
-        }
-        if (!handle) {
-          respond({ err: '打不开文件: ' + rel })
-          return
-        }
-        let r = await readOnce(handle)
-        if (!r || !r.ok) {
-          // 只允许重开一次：切城市/文件被替换后旧句柄会失效，但无限重试会把桥堵死
-          const again = await openRangeHandle(rel, 6000)
-          if (!again) {
-            respond({ err: (r && r.err) || '读取失败（重开句柄也失败）' })
-            return
-          }
-          RANGE_HANDLES.set(key, { file: again, rel: rel })
-          r = await readOnce(again)
-        }
-        if (!r || !r.ok) {
-          respond({ err: (r && r.err) || '读取失败' })
-          return
-        }
-        respond({ b64: r.b64, size: (handle && handle.size) || 0 })
-      }
-      work().catch((e) => respond({ err: (e && e.message) || String(e) }))
-      // #endif
-    },
-    /** 视图层建图完成后回报实测结果（视图层没有 uni，只能由逻辑层代写 storage） */
-    mwRecordProbe(rec) {
-      try {
-        setReadProbe(rec && typeof rec === 'object' ? rec : {})
-      } catch (e) {
-        /* ignore */
-      }
-    },
-    /** 视图层判定「这台机器这个包 Range 不通」→ 记住，下次自动模式直接跳级 */
-    mwMarkRangeBad(p) {
-      try {
-        const o = p && typeof p === 'object' ? p : {}
-        const ad = o.adcode || (this.archives[0] && this.archives[0].adcode) || 'builtin'
-        markRangeBad(ad, o.why || '')
-      } catch (e) {
-        /* ignore */
-      }
-    },
   },
 }
 </script>
@@ -711,28 +489,8 @@ import {
   hasPlusIo,
   TILE_FILES,
   toPlusUrl,
-  probeRangeRead,
-  fetchRange,
-  magic7Ok,
 } from './tiles.js'
 import { archivesChanged } from './archives-key.js'
-import { createBridgeReader } from './range-bridge.js'
-import { formatReadStats } from './range-source.js'
-
-// 「新代码是否真的零进入」的判据（task-1）：whole 模式下这个计数必须保持 0。
-// 暴露到 window.__mvDebug.rangeProbes()，e2e 直接断言，不依赖 UI 点击。
-let RANGE_PROBE_COUNT = 0
-function bumpProbe(n) {
-  RANGE_PROBE_COUNT += n || 1
-  try {
-    if (typeof window !== 'undefined') {
-      const dbg = window.__mvDebug || (window.__mvDebug = {})
-      dbg.rangeProbes = () => RANGE_PROBE_COUNT
-    }
-  } catch (e) {
-    /* ignore */
-  }
-}
 
 // 视图层拿到的过桥数据在不同运行时可能是对象、也可能是 JSON 串，两种都认
 function asObj(v) {
@@ -774,11 +532,6 @@ export default {
       chunkN: 0,
       chunkGot: 0,
       chunkBytes: 0,
-      bridge: null, // R2 桥接渠道（whole 模式下永远为 null）
-      sourceMode: 'auto', // 逻辑层推下来的数据源策略：auto / range / whole
-      badRanges: [], // 逻辑层推下来的「本机 Range 判不通」档案标记
-      bridgeSize: 0, // R2 探测时逻辑层回报的文件字节数
-      r1Text: '', // R1 探测结论（写进诊断）
       timer: null,
     }
   },
@@ -832,17 +585,6 @@ export default {
       this.chunkN = 0
       this.chunkGot = 0
       this.chunkBytes = 0
-      // 桥接渠道也要收尾：在途请求全部 reject，别让旧城市的读请求挂到新地图上
-      if (this.bridge) {
-        try {
-          this.bridge.destroy('切城市/重建')
-        } catch (e) {
-          /* ignore */
-        }
-        this.bridge = null
-      }
-      this.bridgeSize = 0
-      this.r1Text = ''
       this.tileAbs = ''
       this.ready = false
       // 新城市建图前不该显示上一个城市的瓦片数与错误（P2-13/P2-14）
@@ -952,24 +694,13 @@ export default {
       if (this.core && this.core.setPoints) this.core.setPoints(list)
     },
     // 逻辑层推下来的档案清单（视图层与逻辑层是两个上下文，不能共享模块状态）
-    // task-1 起 payload 是 `{ list, mode, bad }`（兼容老的"纯数组"形态）
     onArchives(v) {
-      const payload = asObj(v)
-      const list = Array.isArray(payload)
-        ? payload
-        : payload && Array.isArray(payload.list)
-          ? payload.list
-          : null
-      if (!list) return
-      const mode = payload && !Array.isArray(payload) && payload.mode ? String(payload.mode) : this.sourceMode
-      const bad = payload && !Array.isArray(payload) && Array.isArray(payload.bad) ? payload.bad : this.badRanges
+      const list = asObj(v)
+      if (!Array.isArray(list)) return
       const changed = archivesChanged(this.archiveList, list)
-      const modeChanged = !!mode && mode !== this.sourceMode
       this.archiveList = list
-      if (mode) this.sourceMode = mode
-      this.badRanges = bad || []
-      // 档案或数据源策略变了就重建：即使 reset 信号丢了也不会停在旧城市/旧策略（自愈）
-      if ((changed || modeChanged) && this.core) this.onReset()
+      // 档案换了就重建：即使 reset 信号丢了也不会停在旧城市（自愈）
+      if (changed && this.core) this.onReset()
     },
     onVisible(v) {
       // 只做尺寸恢复；渲染与轮询不停（保持轨迹连续）
@@ -981,19 +712,7 @@ export default {
     },
     onChunk(payload) {
       const c = asObj(payload)
-      if (!c) return
-      // ① R2 桥接的应答（task-1）：带 reqId，直接交给桥接渠道配对。
-      //    注意这里**绝不把 err 吞掉**：accept 收到 err 会让对应请求 reject，
-      //    绝不能伪装成"读到 0 字节"，否则表现为"瓦片全黑"而查不出原因。
-      if (c.reqId !== undefined && c.reqId !== null) {
-        if (c.size) this.bridgeSize = Number(c.size) || 0
-        if (this.bridge) {
-          this.bridge.accept({ reqId: c.reqId, b64: c.b64, err: c.err })
-        }
-        return
-      }
-      // ② 整包分块协议（whole 模式走这里，原样保留）
-      if (typeof c.i !== 'number') return
+      if (!c || typeof c.i !== 'number') return
       // n === 0 是「这一份读失败」的控制块：跳过它，接着要下一份，不拖垮整张底图
       if (!c.n) {
         if (c.err) this.setSrc('skip:' + ((this.archiveList[c.f] || {}).file || c.f) + '(' + c.err + ')')
@@ -1077,25 +796,6 @@ export default {
       if (this.core) {
         this.core.destroy()
         this.core = null
-      }
-      // R2 桥接在途请求一律 reject，别让视图层销毁后还有请求挂着
-      if (this.bridges) {
-        Object.keys(this.bridges).forEach((k) => {
-          try {
-            this.bridges[k].destroy('视图层销毁')
-          } catch (e) {
-            /* ignore */
-          }
-        })
-        this.bridges = null
-      }
-      if (this.bridge) {
-        try {
-          this.bridge.destroy('视图层销毁')
-        } catch (e) {
-          /* ignore */
-        }
-        this.bridge = null
       }
     },
 
@@ -1195,12 +895,6 @@ export default {
           : TILE_FILES.map((f) => ({ file: f, where: 'bundled' }))
       // 逐个档案加载：包内档案先让视图层自己 fetch / XHR（相对路径、_www、plus 绝对路径都试），
       // 拿不到的排队，最后逐个走 plus.io 过桥。用户下载的城市包没有 URL，直接排队过桥。
-      //
-      // task-1：`sourceMode !== 'whole'` 时先试「按需读取」（R1 fetch+Range / R2 跨层桥接），
-      // 成功就不再整包下载；失败/不适用则**原样落到下面的整包老路径**。
-      // ★ whole 模式下 rangeMode 恒为 false —— 探测、桥接创建、mwReadRange 都不会被调用，
-      //   这条是「回退等价性」的唯一保证（e2e 用 __mvDebug.rangeProbes()===0 断言）。
-      const rangeMode = this.sourceMode !== 'whole'
       const collected = []
       const pending = []
       const notes = []
@@ -1208,20 +902,6 @@ export default {
         const item = list[i]
         const file = item.file
         let r = null
-        if (rangeMode) {
-          let got = null
-          try {
-            got = await this.tryRangeArchive(item, i)
-          } catch (e) {
-            got = null
-          }
-          if (got) {
-            collected.push(got)
-            notes.push(file + '←' + got.via)
-            if (got.url && !this.tileAbs) this.tileAbs = got.url
-            continue
-          }
-        }
         if (item.where === 'user') {
           // 用户下载的包在 _doc/maps/（或保存退路目录）。先让**视图层自己 fetch**
           // 这个 file:// 绝对路径 —— WebView 读文件不走 plus.io.FileReader，
@@ -1280,134 +960,6 @@ export default {
       this.askNextFile()
     },
 
-    /**
-     * task-1：把某个档案做成「按需读取」形态。
-     * 返回 null = 放弃按需（调用方走原整包路径）；返回对象 = createTrackMap 的 range 档案。
-     *
-     * 判定顺序：
-     *  ① R2 桥接探测（16 KB）：验证「逻辑层能读到这个包」，并顺手拿到文件字节数 size
-     *  ② R1 fetch+Range 探测：R2 通了才试（file:// 响应常常没有 Content-Length，
-     *     拿不到 size 就没法做末尾截断，所以 size 一律以 R2 为准）
-     *  R1 能用就用 R1（省掉每次瓦片一次跨层往返），否则用 R2。
-     */
-    async tryRangeArchive(item, index) {
-      if (!item || !item.file) return null
-      const adcode = item.adcode || 'builtin'
-      const bad = (this.badRanges || []).indexOf(adcode) >= 0
-      bumpProbe()
-      // ① R2 探测（本机判过不通的包，auto 模式直接跳过；range 模式仍然试）
-      let r2ok = false
-      if (!bad || this.sourceMode === 'range') {
-        const bridge = this.ensureBridge(index)
-        if (bridge) {
-          try {
-            const head = await bridge.request(0, 16384)
-            r2ok = !!head && head.byteLength >= 7 && magic7Ok(head)
-          } catch (e) {
-            r2ok = false
-          }
-        }
-      }
-      // ② R1 探测
-      let r1 = null
-      if (r2ok && this.sourceMode !== 'range') {
-        const cands = this.rangeUrlCandidates(item)
-        for (let k = 0; k < cands.length; k++) {
-          const p = await probeRangeRead(cands[k], { timeoutMs: 400 })
-          if (p && p.ok) {
-            r1 = { url: cands[k], kind: p.kind }
-            break
-          }
-          // 这个源明确忽略 Range：换候选也没用，直接停
-          if (p && p.kind === 'whole-file') break
-        }
-      }
-      const size = this.bridgeSize || 0
-      // size 必须合理（>1 KB）：太小说明探测拿到的不是整包大小，按需读取必然读不出东西
-      if (!(size > 1024)) return null
-      if (r1) {
-        this.r1Text = 'R1:' + r1.kind + '✓ size=' + size
-        return {
-          key: item.file,
-          size: size,
-          via: 'range-R1',
-          url: r1.url,
-          reader: (o, l) => fetchRange(r1.url, o, l, { timeoutMs: 8000 }),
-          dispose: () => {},
-        }
-      }
-      if (r2ok) {
-        const bridge = this.ensureBridge(index)
-        if (bridge) {
-          this.r1Text = 'R1:不可用 → R2'
-          return {
-            key: item.file,
-            size: size,
-            via: 'range-R2',
-            reader: (o, l) => bridge.request(o, l),
-            dispose: () => {},
-          }
-        }
-      }
-      // 都失败：让逻辑层记住「这台机器这个包不通」，auto 模式下次直接跳级
-      this.r1Text = 'R1/R2 均失败'
-      try {
-        this.$ownerInstance.callMethod('mwMarkRangeBad', { adcode: adcode, why: this.r1Text })
-      } catch (e) {
-        /* ignore */
-      }
-      return null
-    },
-    /** 每个档案一条桥接渠道（多档案时 f 必须对应得上前端下标） */
-    ensureBridge(index) {
-      if (!this.bridges) this.bridges = {}
-      const key = String(index)
-      if (this.bridges[key]) return this.bridges[key]
-      const self = this
-      this.bridges[key] = createBridgeReader({
-        send(p) {
-          try {
-            self.$ownerInstance.callMethod('mwReadRange', {
-              reqId: p.reqId,
-              offset: p.offset,
-              length: p.length,
-              f: index,
-            })
-          } catch (e) {
-            /* 调用不通就让 bridge 自己超时，超时只会 reject 那一个请求 */
-          }
-        },
-      })
-      return this.bridges[key]
-    },
-    /** 这个档案可以尝试哪些 URL（R1 探测/读取用） */
-    rangeUrlCandidates(item) {
-      const out = []
-      const push = (u) => {
-        if (u && out.indexOf(u) < 0) out.push(u)
-      }
-      if (item && item.abs) {
-        const a = String(item.abs)
-        push(a.indexOf('file://') === 0 ? a : 'file://' + (a.charAt(0) === '/' ? a : '/' + a))
-        push(a)
-      }
-      if (item && item.where === 'user') {
-        try {
-          const rel = item.path || '_doc/maps/' + (item.file || '')
-          const url = toPlusUrl(rel)
-          push(url)
-          if (url && url.indexOf('file://') === 0) push(url.slice(7))
-          else push('file://' + (url.charAt(0) === '/' ? url : '/' + url))
-        } catch (e) {
-          /* ignore */
-        }
-      } else if (item && item.file) {
-        const cands = tileUrlCandidates(item.file)
-        for (let i = 0; i < cands.length; i++) push(cands[i])
-      }
-      return out
-    },
-
     // 一次只过桥一份档案，避免同时压多份 base64 把手机内存顶爆
     askNextFile() {
       if (!this.pending || !this.pending.length) return this.finishBuild()
@@ -1452,8 +1004,6 @@ export default {
           status: this.status,
           theme: this.mapTheme,
           points: this.lastPoints,
-          // task-1：三级分派由 map-core 的 makeSource 统一做，这里只转达策略
-          sourceMode: this.sourceMode === 'whole' ? 'whole' : this.sourceMode === 'range' ? 'range' : 'auto',
           onOutOfBounds: (b) => {
             try {
               this.$ownerInstance.callMethod('mwOutOfBounds', b)
@@ -1471,8 +1021,6 @@ export default {
         })
         // App 端：建图完成后开始盯主题 class 变化
         this.watchThemeClass()
-        // 把「这次到底走了哪一级 + 统计」写进 storage，地图页的「读取自检」要读它
-        this.recordReadProbe()
       } catch (e) {
         return this.fail('建图异常: ' + ((e && e.message) || e))
       }
@@ -1480,43 +1028,6 @@ export default {
       this.setSrc(this.status.src || '', 'host:' + found.from)
       // tiles 计数是异步长出来的，定时刷回逻辑层显示
       this.startStatusTimer()
-    },
-
-    /**
-     * 把这次建图的实测结果写给逻辑层（视图层没有 uni，只能 callMethod 代写 storage）。
-     * 地图页「读取自检」读的就是这条记录，用来回答「这台机器现在走的是哪一级」。
-     */
-    recordReadProbe() {
-      try {
-        let stats = ''
-        try {
-          const rs = this.core && this.core.getReadStats ? this.core.getReadStats() : null
-          if (rs && rs.sources) {
-            const agg = { requests: 0, hits: 0, bytes: 0, errors: 0 }
-            for (let i = 0; i < rs.sources.length; i++) {
-              const s = rs.sources[i] && rs.sources[i].stats
-              if (!s) continue
-              agg.requests += s.requests || 0
-              agg.hits += s.hits || 0
-              agg.bytes += s.bytes || 0
-              agg.errors += s.errors || 0
-            }
-            if (agg.requests) stats = formatReadStats(agg, 0)
-          }
-        } catch (e) {
-          /* ignore */
-        }
-        const mode = this.core && this.core.getSourceMode ? this.core.getSourceMode() : this.sourceMode
-        this.$ownerInstance.callMethod('mwRecordProbe', {
-          mode: mode || this.sourceMode,
-          r1: this.r1Text || '(未探测)',
-          r2: this.bridges && Object.keys(this.bridges).length ? '桥接已建立' : '(未使用)',
-          readStats: stats,
-          probes: RANGE_PROBE_COUNT,
-        })
-      } catch (e) {
-        /* ignore */
-      }
     },
   },
 }
