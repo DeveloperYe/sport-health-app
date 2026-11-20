@@ -16,8 +16,6 @@
              uni.createCanvasContext 在 H5 上会静默失败（实测画布像素为 0，环画不出来），
              而 conic-gradient 在 Chromium 内核 WebView 里稳定可用。 -->
         <view class="ring-layer" v-for="ring in rings" :key="ring.key" :style="ring.style"></view>
-        <!-- 弧两端的圆头：几何由 ringCaps 算，样式只给圆角兜底 -->
-        <view class="ring-cap" v-for="cap in ringCaps" :key="cap.key" :style="cap.style"></view>
         <view class="ring-center">
           <text class="ring-center-num">{{ burned }}</text>
           <text class="ring-center-unit">kcal</text>
@@ -119,30 +117,6 @@
         </view>
       </view>
 
-      <!-- 体重管理：最近一次 / 趋势 / 按趋势预测 / 空态（原「我的」页那四项搬过来，录入与折线上面已有） -->
-      <view class="wm-row" v-if="weightMeta.last">
-        <text class="wm-k">最近一次</text>
-        <text class="wm-v">{{ weightMeta.last }} kg · {{ weightMeta.lastDateLabel }}</text>
-      </view>
-      <view class="wm-row" v-if="weightMeta.slopeText">
-        <text class="wm-k">趋势</text>
-        <text class="wm-v">{{ weightMeta.slopeText }}</text>
-      </view>
-      <view class="wm-row" v-if="weightMeta.forecastText">
-        <text class="wm-k">按当前趋势</text>
-        <text class="wm-v">{{ weightMeta.forecastText }}</text>
-      </view>
-      <text class="card-hint" v-if="!weightMeta.count">还没有体重记录；建议每周固定时间称一次，趋势才准。</text>
-
-      <!-- 删除某个历史记录：removeWeight 之前是死接口，这里接上 -->
-      <view class="wl-list" v-if="weightRecent.length">
-        <view class="wl-item" v-for="w in weightRecent" :key="w.date">
-          <text class="wl-date">{{ w.label }}</text>
-          <text class="wl-kg">{{ w.kg }} kg</text>
-          <text class="wl-del" @click="delWeight(w.date)">删除</text>
-        </view>
-      </view>
-
       <!-- 目标进度 -->
       <view class="goal-bar" v-if="goalProgress !== null">
         <view class="goal-bar-head">
@@ -174,45 +148,6 @@
         <view class="mini-btn primary" @click="goDiet">记录饮食</view>
         <view class="mini-btn ghost" @click="goProfile">完善身体信息</view>
       </view>
-    </view>
-
-    <!-- ===== 板块：近 7 天数据看板（三环口径：步数 / 消耗 / 饮水） ===== -->
-    <view class="card">
-      <view class="card-head">
-        <text class="card-title">近 7 天数据</text>
-        <text class="card-tag">{{ weekBoard ? weekBoard.recordedDays : 0 }} / 7 天有记录</text>
-      </view>
-
-      <template v-if="weekBoard && !weekBoard.allEmpty">
-        <!-- 三序列共用一张图：横轴 7 天，每天 3 根细柱；高度 = 占各自目标的百分比（单位不同不能直接比高度） -->
-        <view class="wb-legend">
-          <view class="wb-lg" v-for="s in weekBoard.series" :key="s.key" :class="'wb-' + s.key">
-            <view class="wb-dot"></view>
-            <text class="wb-lg-k">{{ s.label }}</text>
-            <text class="wb-lg-v">{{ s.avgText }}</text>
-          </view>
-        </view>
-
-        <view class="wb-chart">
-          <view class="wb-group" v-for="(grp, i) in weekBoard.groups" :key="i">
-            <view class="wb-bwrap">
-              <view
-                class="wb-b"
-                v-for="bar in grp.bars"
-                :key="bar.key"
-                :class="['wb-b-' + bar.key, { empty: bar.empty }]"
-                :style="{ height: bar.pct + '%' }"
-              ></view>
-            </view>
-            <text class="wb-x">{{ grp.label }}</text>
-          </view>
-        </view>
-        <view class="wb-legend-note">
-          <text class="wb-note">虚线 = 目标线（100%），对三根柱都成立</text>
-        </view>
-        <text class="card-hint">柱高是「占各自目标的百分比」；没记录的那天不画柱、也不计入日均。</text>
-      </template>
-      <text class="card-hint" v-else>最近 7 天还没有记录：走几步、记一次运动或喝一杯水就会出现在这里。</text>
     </view>
 
     <!-- ===== 板块二：喝水打卡（科学饮水：容量 / 时段 / 间隔 / 冷却） ===== -->
@@ -294,14 +229,6 @@
         </view>
 
         <view class="wt-sheet-actions">
-          <view class="wt-remind">
-            <view class="wt-remind-row" @click="toggleReminder">
-              <text class="wt-remind-k">喝水提醒</text>
-              <view class="wt-switch" :class="{ on: reminderOn }"><view class="wt-switch-dot"></view></view>
-            </view>
-            <text class="wt-remind-hint">{{ reminderHint }}</text>
-          </view>
-
           <view class="mini-btn ghost" @click="closeWaterSet">取消</view>
           <view class="mini-btn primary" @click="saveWaterSet">保存</view>
         </view>
@@ -311,18 +238,12 @@
 </template>
 
 <script>
-import { ringGeometryOf, capCenters } from '@/utils/ring-geometry.js'
 import PermissionsGate from '@/components/permissions-gate.vue'
 import { getTodayData, getTargets } from '@/utils/storage.js'
 import { getTodaySteps } from '@/utils/health.js'
 import { getWater, setWater } from '@/utils/diet-store.js'
-import { getReminderCfg, setReminderCfg, startWaterReminder, stopWaterReminder } from '@/utils/water-reminder.js'
 import { getBody, getGoals, saveGoals, today, getWeightLog, upsertWeight, saveBody } from '@/utils/body-store.js'
 import { dayCalories, recentAverages } from '@/utils/day-summary.js'
-import { buildWeekBoard } from '@/utils/week-board.js'
-import { getDailyByDate } from '@/utils/storage.js'
-import { calcWeightSlope, forecastDaysToGoal } from '@/utils/body-calc.js'
-import { removeWeight } from '@/utils/body-store.js'
 import { calcBMI, bmiLabel } from '@/utils/body-calc.js'
 import {
   getWaterPrefs,
@@ -346,8 +267,6 @@ export default {
   data() {
     return {
       ringSize: 0, // px，量到容器宽度后计算环尺寸
-      // 端帽直径 = 环带宽度 + 本值（px）。0 = 与环带齐平（390px 屏上 17px）；2 = 更饱满（19px）
-      ringCapBoost: 0,
       retry: 0,
       dateText: '',
       greeting: '你好',
@@ -384,9 +303,6 @@ export default {
       gap7: null,
       // 减脂板块：体重趋势 / 目标进度 / 近 7 天缺口
       weightLog: [],
-      // 近 7 天看板（三环口径）与体重历史（可删）
-      weekBoard: null,
-      reminderOn: false,
       goalsWeight: 0,
       weightInput: '',
       weekDays: [],
@@ -467,17 +383,18 @@ export default {
      * conic-gradient 的 from -90deg 让进度从 12 点方向开始。
      */
     rings() {
-      const g = ringGeometryOf(this.ringSize)
-      if (!g) return []
-      const { size, band, rOuter, rMid, rInner } = g
+      const size = this.ringSize
+      if (!size) return []
+      const band = Math.max(9, Math.round(size * 0.062))
+      const gap = Math.round(band * 0.85)
+      const rOuter = size / 2 - 2
+      const rMid = rOuter - band - gap
+      const rInner = rMid - band - gap
 
-      // 三环颜色必须走令牌：原来写死的 '#2bd45c/#ffb347/#4aa3ff' 是「暗色主题」的取值，
-      // 白天模式下既与图例不同色，作为图形对比度也只有 1.5–2.5:1（WCAG 1.4.11 要求 3:1）。
-      // var() 在 conic-gradient 里合法：字符串最终落进元素 inline style，由浏览器在元素作用域解析。
       const defs = [
-        { key: 'steps', r: rOuter, color: 'var(--accent-text)', color2: 'var(--accent-ring-2)', p: this.pct(this.steps, this.stepGoal) },
-        { key: 'calorie', r: rMid, color: 'var(--warm-graphic)', color2: 'var(--warm-ring-2)', p: this.pct(this.exercise, this.calorieGoal) },
-        { key: 'water', r: rInner, color: 'var(--cool-graphic)', color2: 'var(--cool-ring-2)', p: this.pct(this.water, this.waterGoal) },
+        { key: 'steps', r: rOuter, color: '#2bd45c', p: this.pct(this.steps, this.stepGoal) },
+        { key: 'calorie', r: rMid, color: '#ffb347', p: this.pct(this.exercise, this.calorieGoal) },
+        { key: 'water', r: rInner, color: '#4aa3ff', p: this.pct(this.water, this.waterGoal) },
       ]
 
       return defs.map((d) => {
@@ -496,69 +413,13 @@ export default {
             height: diameter + 'px',
             borderRadius: '50%',
             // 底色轨道也走主题变量，否则白天模式下白环看不见
-              // ⚠️ 必须 from 0deg：CSS conic-gradient 的 0deg 就是 12 点方向。
-              // 老代码写的 from -90deg 会把起点转到「9 点方向」，于是进度弧整段偏了 90°
-              // （像素采样实测：0%..130% 之外 275°..360° 也是彩色），0% 时看不出来、
-              // 加了端帽后表现为「起点端帽落在弧中间像疙瘩、终点端帽落在轨道上像孤立圆点」。
-              // 满环（>=99.9%）必须用单色：渐变从起点色到终点色，闭合处要浅色直接接回深色，
-              // 12 点位置会留下一个明显的色阶断口（实测截图可见）。中间态没有这个问题，
-              // 因为弧末端接的是轨道色、起点前也是轨道色，只有两端"内部过渡"。
-              background:
-                ratio >= 0.999
-                  ? d.color
-                  : `conic-gradient(from 0deg, ${d.color} 0deg, ${d.color2} ${deg}deg, var(--bg-card-3) ${deg}deg 360deg)`,
+              background: `conic-gradient(from -90deg, ${d.color} 0deg ${deg}deg, var(--bg-card-3) ${deg}deg 360deg)`,
             WebkitMaskImage: maskFor,
             maskImage: maskFor,
           },
         }
       })
     },
-    /**
-     * 弧端圆头：每条弧两端各一个直径 = band + ringCapBoost 的圆，圆心落在环带中线上。
-     * 平切的端头是"塑料感"的主要来源（成熟健身环都是圆头），这一步是观感收益的主体。
-     *
-     * 三态边界（缺一个都是视觉 bug）：
-     *   ratio <= 0     → 不画，否则"今天还没动却有个绿点"
-     *   ratio >= 0.999 → 不画，满环时两端重合在 12 点会多出一个疙瘩
-     *   0 < ratio < 1  → 两端都画；ratio 极小时两端自然重叠，形成圆润的起点，观感正确
-     *
-     * 副作用（可接受）：端帽沿弧向外延伸 band/2，视觉进度多读约 2–3%，不值得为此修正角度。
-     */
-    ringCaps() {
-      const g = ringGeometryOf(this.ringSize)
-      if (!g) return []
-      const { band, rOuter, rMid, rInner, cx } = g
-      const capD = band + this.ringCapBoost
-      const defs = [
-        { key: 'steps', r: rOuter, color: 'var(--accent-text)', color2: 'var(--accent-ring-2)', p: this.pct(this.steps, this.stepGoal) },
-        { key: 'calorie', r: rMid, color: 'var(--warm-graphic)', color2: 'var(--warm-ring-2)', p: this.pct(this.exercise, this.calorieGoal) },
-        { key: 'water', r: rInner, color: 'var(--cool-graphic)', color2: 'var(--cool-ring-2)', p: this.pct(this.water, this.waterGoal) },
-      ]
-      const caps = []
-      defs.forEach((d) => {
-        const pts = capCenters({ r: d.r, ratio: d.p / 100, key: d.key, band, cx, capD }).map((p) => ({
-          ...p,
-          bg: p.key.endsWith('-start') ? d.color : d.color2, // 起点用起点色、终点用终点色（有渐变时接缝才自然）
-        }))
-        if (!pts.length) return
-        pts.forEach((pt) => {
-          caps.push({
-            key: pt.key,
-            style: {
-              left: pt.x + 'px',
-              top: pt.y + 'px',
-              width: capD + 'px',
-              height: capD + 'px',
-              marginLeft: -capD / 2 + 'px',
-              marginTop: -capD / 2 + 'px',
-              background: pt.bg,
-            },
-          })
-        })
-      })
-      return caps
-    },
-
     minWeight() {
       const ws = this.weightLog.map((p) => Number(p.w) || 0).filter((w) => w > 0)
       return ws.length ? Math.min.apply(null, ws) : 0
@@ -628,42 +489,6 @@ export default {
       return d > 0 ? `还需减 ${d} kg` : `还可增 ${Math.abs(d)} kg`
     },
     // 近 7 天缺口柱：高度按本周最大绝对值归一
-    /** 体重管理的四项：最近一次 / 趋势 / 预测（录入与折线本页已有，不重复实现） */
-    weightMeta() {
-      const log = this.weightLog || []
-      const withKg = log.filter((p) => p && Number(p.w) > 0 && (p.d || p.date))
-      // 体重日志的字段是 {d, w}（body-store.js:15）；早期版本用过 date，这里两个都认
-      const count = withKg.length
-      if (!count) return { count: 0, last: '', lastDateLabel: '', slopeText: '', forecastText: '' }
-      const last = withKg[withKg.length - 1]
-      const lastKg = Number(last.w)
-      const target = Number(this.goalWeight) || 0
-      const slope = count >= 2 ? calcWeightSlope(withKg) : 0
-      let slopeText = ''
-      if (count < 2) slopeText = '再记一次就能算出趋势'
-      else if (Math.abs(slope) < 0.005) slopeText = '基本持平'
-      else {
-        const perWeek = Math.abs(slope * 7)
-        slopeText = (slope > 0 ? '每周约 +' : '每周约 −') + perWeek.toFixed(2) + ' kg'
-      }
-      let forecastText = ''
-      if (target > 0 && count >= 2 && Math.abs(slope) > 0.005) {
-        const days = forecastDaysToGoal(lastKg, slope, target)
-        if (days !== null && days > 0 && days < 3650) forecastText = '约 ' + days + ' 天到 ' + target + ' kg'
-        else if (days !== null && days <= 0) forecastText = '当前趋势偏离目标'
-      }
-      return { count, last: String(lastKg), lastDateLabel: this.dateWord(last.d || last.date), slopeText, forecastText }
-    },
-    /** 最近几条体重日志（带可删的日期），最新的在前 */
-    weightRecent() {
-      const log = (this.weightLog || []).filter((p) => p && Number(p.w) > 0).slice(-6).reverse()
-      return log.map((p) => ({ date: p.d || p.date, kg: Math.round(Number(p.w) * 10) / 10, label: this.dateWord(p.d || p.date) }))
-    },
-    /** 提醒开关的说明：把能力边界写清楚，不承诺做不到的事 */
-    reminderHint() {
-      if (!this.reminderOn) return '开启后按计划间隔用系统通知提醒你喝水'
-      return 'App 在后台时会提醒；被系统清理后不再响（点通知可直接记一杯）'
-    },
     weekBars() {
       const days = this.weekDays || []
       if (!days.length) return []
@@ -756,66 +581,6 @@ export default {
       uni.showToast({ title: '已记录', icon: 'success' })
     },
     /** 一次性刷新全部指标 */
-    /** 日期 → 今天/昨天/11月19日/2025年12月31日 */
-    dateWord(date) {
-      const d = String(date || '')
-      const t = today()
-      if (d === t) return '今天'
-      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d)
-      if (!m) return d
-      const dt = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
-      const now = new Date(Number(t.slice(0, 4)), Number(t.slice(5, 7)) - 1, Number(t.slice(8, 10)))
-      const diff = Math.round((now - dt) / 86400000)
-      if (diff === 1) return '昨天'
-      if (dt.getFullYear() === now.getFullYear()) return Number(m[2]) + '月' + Number(m[3]) + '日'
-      return m[1] + '年' + Number(m[2]) + '月' + Number(m[3]) + '日'
-    },
-    /** 读最近 7 天：步数/消耗取当日统计，饮水取 diet-store；没记录的日子带 hasAny=false */
-    loadWeek() {
-      const n = 7
-      const base = new Date()
-      const days = []
-      for (let i = n - 1; i >= 0; i--) {
-        const d = new Date(base.getFullYear(), base.getMonth(), base.getDate() - i)
-        const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
-        const daily = getDailyByDate(key)
-        const cups = Number(getWater(key)) || 0
-        const steps = daily ? Number(daily.steps) || 0 : null
-        const calories = daily ? Number(daily.calories) || 0 : null
-        const hasAny = !!daily || cups > 0
-        days.push({ date: key, steps, calories, water: cups, hasAny })
-      }
-      this.weekBoard = buildWeekBoard(days, {
-        steps: Number(this.stepGoal) || 0,
-        calorie: Number(this.calorieGoal) || 0,
-        water: Number(this.waterGoal) || 0,
-      })
-    },
-    /** 删除某天的体重记录（removeWeight 之前是从没被调用的死接口） */
-    delWeight(date) {
-      uni.showModal({
-        title: '删除体重记录',
-        content: '确定删除 ' + this.dateWord(date) + ' 的记录？',
-        success: (r) => {
-          if (!r.confirm) return
-          removeWeight(date)
-          this.weightLog = getWeightLog()
-          this.loadWeek()
-          uni.showToast({ title: '已删除', icon: 'none' })
-        },
-      })
-    },
-    /** 切换喝水提醒（写配置 + 立即生效/停止） */
-    toggleReminder() {
-      this.reminderOn = !this.reminderOn
-      setReminderCfg({ enabled: this.reminderOn })
-      try {
-        if (this.reminderOn) startWaterReminder()
-        else stopWaterReminder()
-      } catch (e) {
-        /* 起不来不影响其它功能 */
-      }
-    },
     async refresh() {
       const todayStr = today()
       const targets = getTargets() || {}
@@ -835,8 +600,6 @@ export default {
       }
       if (!steps) steps = Number((getTodayData() || {}).steps) || 0
       this.steps = steps
-      // 近 7 天看板：与三环同源但按天读（getDailyByDate），目标值取上面刚读到的 targets
-      this.loadWeek()
 
       // 热量 / 饮水
       const sum = dayCalories(todayStr)
@@ -938,12 +701,6 @@ export default {
       return (v < 10 ? '0' + v : String(v)) + ':00'
     },
     openWaterSet() {
-      // 开关初始值取存储里的真实状态，避免"界面关着但后台还在提醒"
-      try {
-        this.reminderOn = !!getReminderCfg().enabled
-      } catch (e) {
-        this.reminderOn = false
-      }
       const prefs = getWaterPrefs()
       this.cupSel = prefs.cupMl
       this.cupCustomOn = ![200, 250, 300, 350, 400].includes(Number(prefs.cupMl))
@@ -1033,14 +790,6 @@ export default {
   /* 尺寸/位置/颜色由行内样式算出，这里只做兜底 */
   box-sizing: border-box;
 }
-.ring-cap {
-  /* 弧两端的圆头：尺寸/位置/颜色全部由行内样式给出（.ring-cap 只是载体），
-     这里只补「定位 + 圆角」，不要再加别的属性，否则会和行内值打架。
-     端帽是独立元素、不在 .ring-layer 的 mask 子树里，所以不会被环形遮罩裁掉。 */
-  position: absolute;
-  border-radius: 50%;
-  pointer-events: none;
-}
 .ring-center {
   position: absolute;
   left: 0;
@@ -1085,17 +834,14 @@ export default {
   height: 18rpx;
   border-radius: 50%;
 }
-/* 图例小圆点必须与同心环的弧用同一组令牌，否则「弧 vs 点」在某个主题下不同色。
-   这三个是图形（18rpx 色块），走图形令牌：白底上 ≥3:1（WCAG 1.4.11）。
-   --accent/--warm/--cool 是"色块填充"用的亮值，白天对白卡只有 2.83/2.52/4.03，不够。 */
 .dot.steps {
-  background: var(--accent-text);
+  background: var(--accent);
 }
 .dot.calorie {
-  background: var(--warm-graphic);
+  background: var(--warm);
 }
 .dot.water {
-  background: var(--cool-graphic);
+  background: var(--cool);
 }
 .legend-main {
   flex: 1;
@@ -1284,9 +1030,7 @@ export default {
 .trend-seg {
   position: absolute;
   height: 3rpx;
-  /* 数据图形走「图形令牌」：白天对 trend-box 底 #f2f5f9，旧值 --accent 只有 2.27:1（含 0.85 透明度），
-     改后 3.76:1；暗色下 6.24:1。WCAG 1.4.11 要求 3:1。 */
-  background: var(--accent-text);
+  background: var(--accent);
   opacity: 0.85;
   transform-origin: 0 50%;
   border-radius: 3rpx;
@@ -1298,46 +1042,9 @@ export default {
   margin-left: -6rpx;
   margin-top: -6rpx;
   border-radius: 50%;
-  /* 白天对 #f2f5f9：旧 --accent 2.59:1 → 4.87:1；暗色 8.13:1 */
-  background: var(--accent-text);
-  /* 光晕原来写死 rgba(43,212,92,.22)（暗色主题的绿），白天会跟深绿的点本体打架；
-     改用 --accent-soft-2 后随主题走（亮 rgba(18,177,74,.2) / 暗 rgba(43,212,92,.24)），
-     alpha 从 .22 变 .2/.24，肉眼无差别；与 diet/profile 里用的也是同一个令牌，语义统一。 */
-  box-shadow: 0 0 0 3rpx var(--accent-soft-2);
+  background: var(--accent);
+  box-shadow: 0 0 0 3rpx rgba(43, 212, 92, 0.22);
 }
-/* ===== 近 7 天数据：一张图，7 组 × 3 根细柱 ===== */
-.wb-legend { display: flex; align-items: center; margin-bottom: 14rpx; }
-.wb-lg { display: flex; align-items: center; margin-right: 26rpx; }
-.wb-dot { width: 12rpx; height: 12rpx; border-radius: 6rpx; margin-right: 8rpx; }
-.wb-lg-k { font-size: 22rpx; color: $text-secondary; margin-right: 8rpx; }
-.wb-lg-v { font-size: 22rpx; color: $text-main; font-variant-numeric: tabular-nums; }
-
-.wb-steps .wb-dot, .wb-b-steps { background: var(--accent-text); }
-.wb-calorie .wb-dot, .wb-b-calorie { background: var(--warm-graphic); }
-.wb-water .wb-dot, .wb-b-water { background: var(--cool-graphic); }
-
-/* 顶部虚线 = 100% 目标线：柱高按百分比，所以顶边就是所有序列的 100% */
-.wb-chart { display: flex; align-items: flex-end; border-top: 2rpx dashed $border-subtle; }
-.wb-group { flex: 1; display: flex; flex-direction: column; align-items: center; }
-.wb-bwrap { display: flex; align-items: flex-end; justify-content: center; height: 190rpx; }
-.wb-b { width: 10rpx; margin: 0 2rpx; border-radius: 6rpx 6rpx 0 0; min-height: 2rpx; }
-.wb-b.empty { background: $border-subtle; height: 2rpx !important; opacity: 0.6; }
-.wb-x { font-size: 20rpx; color: $text-muted; margin-top: 8rpx; }
-.wb-legend-note { margin-top: 4rpx; }
-.wb-note { font-size: 20rpx; color: $text-muted; }
-
-/* 体重管理三行（health.vue 没有通用的 .kv，这里自带一套） */
-.wm-row { display: flex; align-items: baseline; justify-content: space-between; padding: 12rpx 0; border-bottom: 1rpx solid $border-subtle; }
-.wm-k { font-size: 25rpx; color: $text-secondary; }
-.wm-v { font-size: 25rpx; color: $text-main; font-variant-numeric: tabular-nums; }
-
-/* ===== 体重历史（可删） ===== */
-.wl-list { margin-top: 12rpx; }
-.wl-item { display: flex; align-items: center; padding: 10rpx 0; border-bottom: 1rpx solid $border-subtle; }
-.wl-date { flex: 1; font-size: 24rpx; color: $text-secondary; }
-.wl-kg { font-size: 26rpx; color: $text-main; font-variant-numeric: tabular-nums; margin-right: 20rpx; }
-.wl-del { font-size: 22rpx; color: $text-muted; }
-
 .trend-empty {
   position: absolute;
   left: 0;
@@ -1377,9 +1084,7 @@ export default {
 .goal-fill {
   height: 100%;
   border-radius: 999rpx;
-  /* 原来用 --accent-grad 渐变：白天左端 2.32:1、右端仅 1.47:1（对轨道 --line #e3e9f0）。
-     改单色图形令牌后 4.35:1，暗色 7.14:1；同时也符合「平面、不堆渐变」的取向。 */
-  background: var(--accent-text);
+  background: var(--accent-grad);
 }
 
 /* 近 7 天缺口 */
@@ -1417,13 +1122,11 @@ export default {
   width: 26rpx;
   border-radius: 6rpx 6rpx 0 0;
 }
-/* 近 7 天缺口柱：负=缺口 绿、正=盈余 橙。柱体是数据图形，走图形令牌。
-   白天对白卡：neg 旧 2.83 → 5.32:1，pos 旧 2.52 → 4.16:1（WCAG 1.4.11 需 3:1）。 */
 .weekg-bar.neg {
-  background: var(--accent-text);
+  background: var(--accent);
 }
 .weekg-bar.pos {
-  background: var(--warm-graphic);
+  background: var(--warm);
 }
 .weekg-day {
   margin-top: 8rpx;
@@ -1463,30 +1166,6 @@ export default {
 }
 
 /* ===== 喝水打卡（科学饮水）===== */
-/* 喝水提醒开关（写清能力边界：App 后台有效、进程被杀后不响） */
-.wt-remind { margin-top: 24rpx; padding-top: 20rpx; border-top: 1rpx solid $border-subtle; }
-.wt-remind-row { display: flex; align-items: center; justify-content: space-between; }
-.wt-remind-k { font-size: 26rpx; color: $text-main; }
-.wt-switch {
-  width: 76rpx;
-  height: 44rpx;
-  border-radius: 22rpx;
-  background: $bg-card-deep;
-  padding: 4rpx;
-  box-sizing: border-box;
-  transition: background 0.18s ease;
-}
-.wt-switch.on { background: $brand-primary; }
-.wt-switch-dot {
-  width: 36rpx;
-  height: 36rpx;
-  border-radius: 18rpx;
-  background: #fff;
-  transition: transform 0.18s ease;
-}
-.wt-switch.on .wt-switch-dot { transform: translateX(32rpx); }
-.wt-remind-hint { display: block; margin-top: 8rpx; font-size: 20rpx; color: $text-muted; line-height: 1.5; }
-
 .wt-gear {
   display: flex;
   align-items: center;

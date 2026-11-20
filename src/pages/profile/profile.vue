@@ -1,83 +1,62 @@
 <template>
   <view class="page" :class="themeClass">
-    <!-- 顶部合并卡：账号（三态判定在 auth-guard 的 accountCardState，模板不写判断）+ 身体信息 -->
+    <!-- 身体信息 -->
     <view class="card">
-      <view class="acard" v-if="accountCard">
-        <view class="acard-avatar">{{ avatarText }}</view>
-        <view class="acard-main">
-          <text class="acard-title">{{ accountCard.title }}</text>
-          <text class="acard-note">{{ accountCard.syncNote }}</text>
-        </view>
-        <text class="acard-btn" @click="openAccount">{{ accountCard.action }}</text>
-      </view>
-      <view class="acard-split" v-if="accountCard"></view>
-
-      <!-- 身体信息：默认折叠成一行摘要，点「编辑」展开原表单 -->
       <view class="card-head">
         <text class="card-title">身体信息</text>
-        <text class="body-toggle" v-if="editing" @click="editing = false">收起</text>
-        <text class="card-extra" v-else>用于推算基础代谢与目标</text>
+        <text class="card-extra">用于推算基础代谢与目标</text>
       </view>
 
-      <!-- 摘要行（收起时才有）：缺的字段直接跳过，不出现空档 -->
-      <view class="body-sum" v-show="!editing">
-        <text class="body-sum-text">{{ bodySummary || '点右侧「编辑」补全资料' }}</text>
-        <text class="body-sum-edit" @click="editing = true">编辑</text>
+      <view class="field">
+        <text class="field-label">性别</text>
+        <view class="seg">
+          <view class="seg-item" :class="{ on: form.sex === 'male' }" @click="form.sex = 'male'">男</view>
+          <view class="seg-item" :class="{ on: form.sex === 'female' }" @click="form.sex = 'female'">女</view>
+        </view>
       </view>
 
-      <!-- 表单：用 v-show 而不是 v-if —— 填一半点「收起」再展开，输入不能丢 -->
-      <view v-show="editing">
-        <view class="field">
-          <text class="field-label">性别</text>
-          <view class="seg">
-            <view class="seg-item" :class="{ on: form.sex === 'male' }" @click="form.sex = 'male'">男</view>
-            <view class="seg-item" :class="{ on: form.sex === 'female' }" @click="form.sex = 'female'">女</view>
-          </view>
-        </view>
-
-        <view class="field">
-          <text class="field-label">年龄</text>
-          <input class="field-inp" type="number" v-model="form.age" placeholder="岁" placeholder-class="ph" />
-          <text class="field-unit">岁</text>
-        </view>
-        <view class="field">
-          <text class="field-label">身高</text>
-          <input class="field-inp" type="digit" v-model="form.height" placeholder="cm" placeholder-class="ph" />
-          <text class="field-unit">cm</text>
-        </view>
-        <view class="field">
-          <text class="field-label">体重</text>
-          <input class="field-inp" type="digit" v-model="form.weight" placeholder="kg" placeholder-class="ph" />
-          <text class="field-unit">kg</text>
-        </view>
-        <view class="field">
-          <text class="field-label">体脂率</text>
-          <input
-            class="field-inp"
-            type="digit"
-            v-model="form.bodyFat"
-            placeholder="不填则按身高年龄估算"
-            placeholder-class="ph"
-          />
-          <text class="field-unit">%</text>
-        </view>
-        <view class="field">
-          <text class="field-label">活动量</text>
-          <picker :range="activityLabels" :value="activityIndex" @change="onActivityChange">
-            <view class="picker-value">{{ activityLabels[activityIndex] }}</view>
-          </picker>
-        </view>
-
-        <text class="hint">{{ bmrHint }}</text>
-        <view class="btn" @click="saveBodyInfo">保存并计算</view>
+      <view class="field">
+        <text class="field-label">年龄</text>
+        <input class="field-inp" type="number" v-model="form.age" placeholder="岁" placeholder-class="ph" />
+        <text class="field-unit">岁</text>
       </view>
+      <view class="field">
+        <text class="field-label">身高</text>
+        <input class="field-inp" type="digit" v-model="form.height" placeholder="cm" placeholder-class="ph" />
+        <text class="field-unit">cm</text>
+      </view>
+      <view class="field">
+        <text class="field-label">体重</text>
+        <input class="field-inp" type="digit" v-model="form.weight" placeholder="kg" placeholder-class="ph" />
+        <text class="field-unit">kg</text>
+      </view>
+      <view class="field">
+        <text class="field-label">体脂率</text>
+        <input
+          class="field-inp"
+          type="digit"
+          v-model="form.bodyFat"
+          placeholder="不填则按身高年龄估算"
+          placeholder-class="ph"
+        />
+        <text class="field-unit">%</text>
+      </view>
+      <view class="field">
+        <text class="field-label">活动量</text>
+        <picker :range="activityLabels" :value="activityIndex" @change="onActivityChange">
+          <view class="picker-value">{{ activityLabels[activityIndex] }}</view>
+        </picker>
+      </view>
+
+      <text class="hint">{{ bmrHint }}</text>
+      <view class="btn" @click="saveBodyInfo">保存并计算</view>
     </view>
 
     <!-- 计算成果 -->
     <view class="card">
       <text class="card-title">计算成果</text>
       <view class="big-num-row">
-        <text class="big-num num">{{ bmr }}</text>
+        <text class="big-num">{{ bmr }}</text>
         <text class="big-unit">kcal / 天（基础代谢 BMR）</text>
       </view>
       <view class="kv"><text class="kv-k">瘦体重</text><text class="kv-v">{{ leanMass || '—' }} kg</text></view>
@@ -122,49 +101,97 @@
       <view class="btn" @click="saveGoalInfo">保存目标</view>
     </view>
 
-    <!-- 数据：导出 / 导入备份文件（换机迁移；序列化、白名单、60 天裁剪、并集合并都在 backup-native 里） -->
+    <!-- 体重记录与趋势 -->
     <view class="card">
       <view class="card-head">
-        <text class="card-title">数据</text>
-        <text class="card-extra">json 文件</text>
+        <text class="card-title">体重记录</text>
+        <text class="card-extra">今天 {{ todayDate }}</text>
       </view>
-      <text class="hint">换手机前导出一份，到新设备上导入即可。</text>
+      <view class="field">
+        <text class="field-label">今天体重</text>
+        <input class="field-inp" type="digit" v-model="weightInput" placeholder="如 72.6" placeholder-class="ph" />
+        <text class="field-unit">kg</text>
+        <text class="save-mini" @click="saveTodayWeight">记下</text>
+      </view>
+      <view class="kv" v-if="weightCount">
+        <text class="kv-k">最近一次</text>
+        <text class="kv-v">{{ lastWeight }} kg（{{ lastWeightDate }}）</text>
+      </view>
+      <view class="kv" v-if="weightCount >= 2">
+        <text class="kv-k">趋势</text>
+        <text class="kv-v">{{ slopeText }}</text>
+      </view>
+      <view class="kv" v-if="forecastText">
+        <text class="kv-k">按当前趋势</text>
+        <text class="kv-v">{{ forecastText }}</text>
+      </view>
+      <text class="hint" v-if="!weightCount">还没有体重记录；建议每周固定时间称一次，趋势才准。</text>
+    </view>
 
-      <view class="data-actions">
-        <view class="data-btn" :class="{ busy: exporting }" @click="doExportFile">
-          {{ exporting ? '导出中…' : '导出文件' }}
+    <!-- 近 7 天统计 -->
+    <view class="card">
+      <view class="card-head">
+        <text class="card-title">近 7 天</text>
+        <text class="card-extra">有记录 {{ week.activeCount }} 天</text>
+      </view>
+      <view class="stat-row">
+        <view class="stat-cell">
+          <text class="stat-num">{{ week.avgIntake }}</text>
+          <text class="stat-label">平均摄入</text>
         </view>
-        <view class="data-btn ghost" :class="{ busy: importing }" @click="askImport">
-          {{ importing ? '导入中…' : '从文件导入' }}
+        <view class="stat-cell">
+          <text class="stat-num">{{ week.avgTdee }}</text>
+          <text class="stat-label">平均消耗</text>
+        </view>
+        <view class="stat-cell">
+          <text class="stat-num" :class="{ warn: weekAvgGap > 0 }">{{ weekAvgGap }}</text>
+          <text class="stat-label">日均缺口</text>
         </view>
       </view>
+      <!-- 简易双柱：绿=摄入 橙=消耗，按 7 天最大值归一；没记录的日子整体淡化 -->
+      <view class="bars">
+        <view class="bar-col" :class="{ dim: !d.hasRecord }" v-for="d in week.days" :key="d.date">
+          <view class="bar-pair">
+            <view class="bar intake" :style="{ height: barHeight(d.intake) }"></view>
+            <view class="bar tdee" :style="{ height: barHeight(d.tdee) }"></view>
+          </view>
+          <text class="bar-day">{{ d.date.slice(8) }}</text>
+        </view>
+      </view>
+      <view class="legend">
+        <text class="legend-item">摄入</text>
+        <text class="legend-item tdee">消耗</text>
+      </view>
+      <text class="hint">平均值只按"有记录的天"算，没记的日子不参与。</text>
+    </view>
 
-      <!-- App 端多一条捷径：直接读本机最近一次导出的那份（H5 没有文件系统，编译期裁掉） -->
-      <!-- #ifdef APP-PLUS -->
-      <text class="data-link" @click="readLatestBackup">读取本机最近一次导出的文件</text>
-      <!-- #endif -->
+    <!-- 运动历史 -->
+    <view class="card">
+      <view class="card-head">
+        <text class="card-title">运动历史</text>
+        <text class="card-extra" v-if="history.length">共 {{ history.length }} 条</text>
+      </view>
+      <text class="hint" v-if="!history.length">
+        还没有运动记录。到「运动」页跑一次、或记一次其他运动，结束后自动存到这里。
+      </text>
+      <view class="hist-item" v-for="r in history" :key="r.kind + r.id">
+        <view class="hist-main">
+          <text class="hist-title">{{ r.title }}</text>
+          <text class="hist-sub">{{ durText(r.duration) }} · {{ r.sub }}</text>
+        </view>
+        <text class="hist-cal">{{ r.calorie }}</text>
+        <text class="hist-del" @click="delRecord(r)">删</text>
+      </view>
+    </view>
 
-      <!-- 导出结果：App 端系统分享面板没弹出来时，把落盘路径也写出来，用户能自己去文件管理器取 -->
-      <text class="data-note" v-if="lastExport">已导出 {{ lastExport.fileName }}</text>
-      <text class="data-note" v-if="lastExport && lastExport.path && !lastExport.shared">
-        文件位置：{{ lastExport.path }}
-      </text>
-      <text class="data-note" v-if="lastExport && formatCounts(lastExport.counts)">
-        含 {{ formatCounts(lastExport.counts) }}
-      </text>
-
-      <!-- 导入结果 -->
-      <text class="data-note" v-if="lastImport">
-        已恢复 {{ lastImport.applied }} 项<text v-if="formatCounts(lastImport.counts)">：{{ formatCounts(lastImport.counts) }}</text>
-      </text>
-      <text class="data-note warn" v-if="lastImport && lastImport.skipped">
-        忽略了 {{ lastImport.skipped }} 个本版本不认识的字段
-      </text>
-      <text class="data-note warn" v-if="lastImport && lastImport.failed">
-        有 {{ lastImport.failed }} 项写入失败
-      </text>
-
-      <text class="data-limit">不含账号口令与地图缓存；按天数据只保留最近 60 天。</text>
+    <!-- 数据备份 -->
+    <view class="card">
+      <text class="card-title">数据备份</text>
+      <text class="hint">数据只存在这台设备上。换手机前先导出，粘到备忘录或发给自己即可。</text>
+      <view class="btn-row">
+        <view class="btn ghost" @click="exportData">导出到剪贴板</view>
+        <view class="btn ghost" @click="importData">从剪贴板导入</view>
+      </view>
     </view>
 
     <!-- 外观：白天 / 黑夜 -->
@@ -192,65 +219,36 @@
 
 <script>
 import {
-  getBody, saveBody, getGoals, saveGoals, hasBodyData, getStoredBody,
+  getBody, saveBody, getGoals, saveGoals,
+  getWeightLog, upsertWeight, today,
 } from '@/utils/body-store.js'
 import {
   ACTIVITY_OPTIONS, calcBMR, calcBMI, calcLeanMass, calcTDEE, recommendGoals,
-  bmiLabel as bmiTagOf,
+  calcWeightSlope, forecastDaysToGoal, bmiLabel as bmiTagOf,
 } from '@/utils/body-calc.js'
+import { getRecords, removeRecord } from '@/utils/storage.js'
+import { recentAverages, allExerciseHistory } from '@/utils/day-summary.js'
+import { removeActivity, formatActivityDuration } from '@/utils/activity-store.js'
 import { THEME_OPTIONS, setThemeMode } from '@/utils/theme.js'
-import { accountCardState, listAccounts, getSession } from '@/utils/auth-guard.js'
-import { exportBackupFile, importBackupText, readLatestBackupFromDevice, readBackupForImport } from '@/utils/backup-native.js'
-
-/** 活动量标签去掉括号说明：'中度活动（每周 3–5 次）' → '中度活动' */
-function shortActivityLabel(label) {
-  return String(label || '').replace(/（[^）]*）/g, '')
-}
 
 export default {
   data() {
     return {
       themeOptions: THEME_OPTIONS,
+      todayDate: today(),
       form: { sex: 'male', age: '', height: '', weight: '', bodyFat: '', activity: 1.2 },
       goals: { calorie: '', water: 8, protein: '', weight: '' },
+      weightInput: '',
+      weightCount: 0,
+      lastWeight: '',
+      lastWeightDate: '',
+      slope: 0,
       activityLabels: ACTIVITY_OPTIONS.map((o) => o.label),
-      // 账号入口卡状态（onShow → reload 时重读，从注册页返回立刻反映）
-      accountCard: null,
-      // 身体信息：展开/收起。初值直接按"本机填过没有"定 —— 放在 data 里而不是 onShow，
-      // 是为了避免老用户进页面时先闪一帧展开表单。没填过 → 默认展开。
-      editing: !hasBodyData(),
-      // 数据卡：导出/导入状态
-      exporting: false,
-      importing: false,
-      lastExport: null,
-      lastImport: null,
+      week: { days: [], activeCount: 0, avgIntake: 0, avgTdee: 0, avgExercise: 0 },
+      history: [],
     }
   },
   computed: {
-    /** 头像圆标：有手机号取后两位，没有就用「我」 */
-    avatarText() {
-      const phone = (this.accountCard && this.accountCard.phone) || ''
-      return phone ? phone.slice(-2) : '我'
-    },
-    /**
-     * 收起态摘要：缺的字段直接跳过，不留空档。
-     * 性别与活动量只在"至少填了一个数值字段"时才带上 —— 否则新人会看到「男 · 中度活动」这种
-     * 其实什么都没填的假摘要（它们有默认值）。
-     */
-    bodySummary() {
-      const weight = Number(this.form.weight)
-      const height = Number(this.form.height)
-      const age = Number(this.form.age)
-      const parts = []
-      if (weight > 0) parts.push(weight + ' kg')
-      if (height > 0) parts.push(height + ' cm')
-      if (age > 0) parts.push(age + ' 岁')
-      if (!parts.length) return ''
-      parts.push(this.form.sex === 'female' ? '女' : '男')
-      const label = this.activityLabels[this.activityIndex]
-      if (label) parts.push(shortActivityLabel(label))
-      return parts.join(' · ')
-    },
     activityIndex() {
       const i = ACTIVITY_OPTIONS.findIndex((o) => Number(o.value) === Number(this.form.activity))
       return i < 0 ? 0 : i
@@ -279,6 +277,32 @@ export default {
     tdee() {
       return calcTDEE(this.bmr, this.form.activity, 0)
     },
+    slopeText() {
+      const v = this.slope
+      if (!v) return '基本持平'
+      const abs = Math.abs(v)
+      return `${v < 0 ? '下降' : '上升'}中 · 每天约 ${abs.toFixed(2)} kg（每周约 ${(abs * 7).toFixed(2)} kg）`
+    },
+    forecastText() {
+      const goal = Number(this.goals.weight)
+      if (!(goal > 0) || !this.lastWeight) return ''
+      const days = forecastDaysToGoal(Number(this.lastWeight), this.slope, goal)
+      if (days === 0) return '已经到目标体重了'
+      if (days < 0) return '按当前趋势还到不了目标，先稳定记录'
+      return `约 ${days} 天到 ${goal} kg`
+    },
+    // 日均缺口 = 平均摄入 − 平均消耗（正数说明在盈余）
+    weekAvgGap() {
+      return Math.round((this.week.avgIntake || 0) - (this.week.avgTdee || 0))
+    },
+    // 柱状图归一化基准：7 天里最大的那个数（至少 1，避免除零）
+    weekMax() {
+      let max = 1
+      for (const d of this.week.days || []) {
+        max = Math.max(max, Number(d.intake) || 0, Number(d.tdee) || 0)
+      }
+      return max
+    },
   },
   onShow() {
     this.reload()
@@ -291,16 +315,14 @@ export default {
       uni.showToast({ title: '外观：' + (hit ? hit.label : v), icon: 'none' })
     },
     reload() {
-      // 用 getStoredBody()（只含真实填过的字段）而不是 getBody()（带 60kg/170cm/25 岁兜底值）：
-      // 否则新用户一进来，表单与摘要上就凭空出现"60 kg · 170 cm · 25 岁"这种假数据。
-      const body = getStoredBody()
+      const body = getBody()
       this.form = {
-        sex: body.sex || 'male',
+        sex: body.sex,
         age: body.age,
         height: body.height,
         weight: body.weight,
         bodyFat: body.bodyFat,
-        activity: body.activity || 1.2,
+        activity: body.activity,
       }
       const g = getGoals()
       this.goals = {
@@ -309,14 +331,49 @@ export default {
         protein: g.protein ? String(g.protein) : '',
         weight: g.weight ? String(g.weight) : '',
       }
-      // 账号入口卡：onShow → reload 会重读，用户从注册页返回时这里立刻变
-      this.accountCard = accountCardState({ accounts: listAccounts(), session: getSession() })
+      const log = getWeightLog()
+      this.weightCount = log.length
+      if (log.length) {
+        this.lastWeight = log[log.length - 1].w
+        this.lastWeightDate = log[log.length - 1].d
+        this.slope = calcWeightSlope(log.slice(-30))
+      } else {
+        this.lastWeight = ''
+        this.lastWeightDate = ''
+        this.slope = 0
+      }
+      // 近 7 天账 + 运动历史
+      const week = recentAverages(7)
+      this.week = {
+        days: week.days,
+        activeCount: week.activeCount,
+        avgIntake: week.avgIntake,
+        avgTdee: week.avgTdee,
+        avgExercise: week.avgExercise,
+      }
+      this.history = allExerciseHistory().slice(0, 12)
     },
-    /** 进注册页（同一个页面按自身状态渲染注册表单 / 登录表单 / 已登录态） */
-    openAccount() {
-      uni.navigateTo({
-        url: '/pages/register/register',
-        fail: () => uni.showToast({ title: '打不开注册页', icon: 'none' }),
+    // 柱高：按 7 天最大值归一到 120rpx
+    barHeight(v) {
+      const h = Math.round(((Number(v) || 0) / this.weekMax) * 120)
+      return (h < 2 ? 2 : h) + 'rpx'
+    },
+    // 时长文案（秒为真值，秒位以下显示"X 秒"）
+    durText(seconds) {
+      return formatActivityDuration({ seconds })
+    },
+    // 删除：跑步/走路走 removeRecord，其他运动走 removeActivity
+    delRecord(r) {
+      uni.showModal({
+        title: '删除这条记录',
+        content: `确定删除 ${r.date} 的这次运动吗？删除后热量统计会同步减少。`,
+        success: (m) => {
+          if (!m.confirm) return
+          if (r.kind === 'activity') removeActivity(r.date, r.id)
+          else removeRecord(r.id)
+          this.reload()
+          uni.showToast({ title: '已删除', icon: 'success' })
+        },
       })
     },
     onActivityChange(e) {
@@ -333,8 +390,6 @@ export default {
         activity: this.form.activity,
       })
       this.reload()
-      // 保存成功后自动收起；摘要行由 form 实时派生，会同时更新
-      this.editing = false
       uni.showToast({ title: '已保存', icon: 'success' })
     },
     saveGoalInfo() {
@@ -363,116 +418,71 @@ export default {
       this.goals.protein = String(r.protein)
       this.saveGoalInfo()
     },
-
-    // ---------- 数据：导出 / 导入备份文件（序列化、白名单、裁剪、合并都在 backup-native/backup） ----------
-    /** counts → "饮食 42 天 · 运动 18 天 · 体重 31 条"，没有的项直接跳过 */
-    formatCounts(counts) {
-      const c = counts || {}
-      const parts = []
-      if (c.dietDays) parts.push('饮食 ' + c.dietDays + ' 天')
-      if (c.waterDays) parts.push('饮水 ' + c.waterDays + ' 天')
-      if (c.activityDays) parts.push('运动 ' + c.activityDays + ' 天')
-      if (c.records) parts.push('跑步/走路 ' + c.records + ' 条')
-      if (c.weightLog) parts.push('体重 ' + c.weightLog + ' 条')
-      return parts.join(' · ')
-    },
-    async doExportFile() {
-      if (this.exporting) return
-      this.exporting = true
-      try {
-        const r = await exportBackupFile()
-        if (!r.ok) {
-          uni.showToast({ title: r.reason || '导出失败', icon: 'none' })
-          return
-        }
-        this.lastExport = {
-          fileName: r.fileName,
-          path: r.path || '',
-          shared: !!r.shared,
-          downloaded: !!r.downloaded,
-          counts: r.summary || {},
-        }
-        // H5 是浏览器下载；App 是写入 _doc/ 后弹系统分享面板
-        uni.showToast({
-          title: (r.downloaded ? '已下载 ' : '已导出 ') + r.fileName,
-          icon: 'none',
-        })
-      } finally {
-        this.exporting = false
-      }
-    },
-    /** 主入口：先二次确认（说明覆盖/并集规则），确认后再去读文件 */
-    askImport() {
-      if (this.importing) return
-      uni.showModal({
-        title: '从备份文件恢复',
-        content:
-          '同名的个人数据（身体信息、每日目标、体重记录、跑步/走路记录）会被备份覆盖；按天数据（饮食/饮水/运动）取并集。确定继续？',
-        confirmText: '继续导入',
-        success: async (m) => {
-          if (!m.confirm) return
-          this.importing = true
-          try {
-            const got = await readBackupForImport()
-            if (!got.ok) {
-              // 失败原因通常是一句话（H5 无文件系统 / 还没导出过），用弹窗而不是 toast 才看得全
-              uni.showModal({
-                title: '读不到备份文件',
-                content: got.reason || '请先在旧设备上导出一份备份',
-                showCancel: false,
-              })
-              return
-            }
-            this.runImport(got.text, got.name)
-          } finally {
-            this.importing = false
-          }
-        },
-      })
-    },
-    /** App 端小字入口：先读文件（知道文件名），再用带文件名的确认框导入 */
-    readLatestBackup() {
-      if (this.importing) return
-      this.importing = true
-      readLatestBackupFromDevice().then((got) => {
-        this.importing = false
-        if (!got.ok) {
-          uni.showModal({
-            title: '读不到备份文件',
-            content: got.reason || '请先在旧设备上导出一份备份',
-            showCancel: false,
-          })
-          return
-        }
-        uni.showModal({
-          title: '导入这份备份？',
-          content:
-            got.name + '\n同名的个人数据会被覆盖；按天数据取并集。',
-          confirmText: '导入',
-          success: (m) => {
-            if (m.confirm) this.runImport(got.text, got.name)
-          },
-        })
-      })
-    },
-    runImport(text, fileName) {
-      const r = importBackupText(text)
-      if (!r.ok) {
-        uni.showToast({ title: r.reason || '导入失败', icon: 'none' })
+    saveTodayWeight() {
+      const w = Number(this.weightInput)
+      if (!(w > 0)) {
+        uni.showToast({ title: '填一下体重', icon: 'none' })
         return
       }
-      this.lastImport = {
-        fileName: fileName || '',
-        counts: r.counts || {},
-        applied: (r.applied || []).length,
-        skipped: (r.skipped || []).length,
-        failed: (r.failed || []).length,
-        exportedAt: r.exportedAt || '',
-      }
-      // 备份可能改了身体信息/目标/体重，立刻重读
+      upsertWeight(this.todayDate, w)
+      // 同时更新身体信息里的当前体重，保证各处口径一致
+      saveBody({ weight: w })
+      this.weightInput = ''
       this.reload()
-      this.editing = false
-      uni.showToast({ title: '已恢复 ' + this.lastImport.applied + ' 项', icon: 'success' })
+      uni.showToast({ title: '已记录', icon: 'success' })
+    },
+    exportData() {
+      const payload = {
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        body: getBody(),
+        goals: getGoals(),
+        weightLog: getWeightLog(),
+        records: getRecords(),
+        // 直接读原始键，保证导出是全量而不是只导出今天
+        dietDays: uni.getStorageSync('fh_diet_days') || {},
+        waterDays: uni.getStorageSync('fh_water_days') || {},
+        activityDays: uni.getStorageSync('fh_activity_days') || {},
+      }
+      uni.setClipboardData({
+        data: JSON.stringify(payload),
+        success: () => uni.showToast({ title: '已复制到剪贴板', icon: 'success' }),
+        fail: () => uni.showToast({ title: '复制失败', icon: 'none' }),
+      })
+    },
+    importData() {
+      uni.getClipboardData({
+        success: (res) => {
+          let data
+          try {
+            data = JSON.parse(res.data)
+          } catch (e) {
+            uni.showToast({ title: '剪贴板不是有效的备份', icon: 'none' })
+            return
+          }
+          if (!data || !data.version) {
+            uni.showToast({ title: '备份格式不对', icon: 'none' })
+            return
+          }
+          uni.showModal({
+            title: '导入会覆盖当前数据',
+            content: '确定用剪贴板里的备份覆盖这台设备上的记录吗？',
+            success: (m) => {
+              if (!m.confirm) return
+              if (data.body) saveBody(data.body)
+              if (data.goals) saveGoals(data.goals)
+              if (data.weightLog) uni.setStorageSync('fh_weight_log', data.weightLog)
+              if (data.records) uni.setStorageSync('fh_records', data.records)
+              if (data.dietDays) uni.setStorageSync('fh_diet_days', data.dietDays)
+              if (data.waterDays) uni.setStorageSync('fh_water_days', data.waterDays)
+              if (data.activityDays) uni.setStorageSync('fh_activity_days', data.activityDays)
+              this.reload()
+              uni.showToast({ title: '已导入', icon: 'success' })
+            },
+          })
+        },
+        fail: () => uni.showToast({ title: '读不到剪贴板', icon: 'none' }),
+      })
     },
   },
 }
@@ -574,6 +584,18 @@ export default {
   font-size: $btn-font-lg;
   font-weight: 700;
 }
+.btn.ghost {
+  background: $bg-card-light;
+  color: $text-main;
+  border: 1rpx solid $border-subtle;
+}
+.btn-row {
+  display: flex;
+  gap: 16rpx;
+}
+.btn-row .btn {
+  flex: 1;
+}
 .big-num-row {
   display: flex;
   align-items: baseline;
@@ -610,9 +632,128 @@ export default {
 .rec-btn {
   font-size: 24rpx;
   color: var(--accent-text);
-  border: 1rpx solid var(--accent-soft-2);
+  border: 1rpx solid rgba(43, 212, 92, 0.5);
   padding: 8rpx 20rpx;
   border-radius: 999rpx;
+}
+.save-mini {
+  font-size: 24rpx;
+  color: var(--on-accent);
+  background: $brand-primary;
+  padding: 10rpx 22rpx;
+  border-radius: 999rpx;
+}
+
+/* ===== 近 7 天统计 ===== */
+.stat-row {
+  display: flex;
+  margin-top: 16rpx;
+}
+.stat-cell {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.stat-num {
+  font-size: 34rpx;
+  font-weight: 700;
+  color: $text-main;
+}
+.stat-num.warn {
+  color: var(--warm-text);
+}
+.stat-label {
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  color: $text-secondary;
+}
+.bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 10rpx;
+  height: 150rpx;
+  margin-top: 20rpx;
+  padding-top: 10rpx;
+  border-top: 1rpx solid $border-subtle;
+}
+.bar-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+}
+/* 那天没有任何记录：整列淡化，避免把"基础消耗"误读成"有记录" */
+.bar-col.dim {
+  opacity: 0.3;
+}
+.bar-pair {
+  display: flex;
+  align-items: flex-end;
+  gap: 4rpx;
+  height: 120rpx;
+}
+.bar {
+  width: 14rpx;
+  border-radius: 4rpx 4rpx 0 0;
+}
+.bar.intake {
+  background: var(--accent);
+}
+.bar.tdee {
+  background: var(--warm);
+  opacity: 0.75;
+}
+.bar-day {
+  margin-top: 8rpx;
+  font-size: 18rpx;
+  color: $text-muted;
+}
+.legend {
+  display: flex;
+  gap: 24rpx;
+  margin-top: 8rpx;
+}
+.legend-item {
+  font-size: 20rpx;
+  color: var(--accent-text);
+}
+.legend-item.tdee {
+  color: var(--warm-text);
+}
+
+/* ===== 运动历史 ===== */
+.hist-item {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  padding: 20rpx 0;
+  border-bottom: 1rpx solid $border-subtle;
+}
+.hist-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.hist-title {
+  font-size: 28rpx;
+  color: $text-main;
+}
+.hist-sub {
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  color: $text-secondary;
+}
+.hist-cal {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: var(--warm-text);
+}
+.hist-del {
+  font-size: 24rpx;
+  color: $text-muted;
 }
 
 /* flat-press:2026-11-06 */
@@ -661,158 +802,5 @@ export default {
 .tseg-item.on .tseg-label {
   color: var(--on-accent);
   font-weight: 700;
-}
-
-/* ===== 账号入口卡（2026-11-20）：随机账号 / 已注册 / 已登录 ===== */
-.acard {
-  display: flex;
-  align-items: center;
-  gap: 18rpx;
-}
-/* 账号行与身体信息之间的分隔线（账号状态未就绪时整行不渲染，分隔线也一起隐藏）。
-   用 --line-strong 而不是 --line：黑夜主题下 --line 压在 --bg-card 上几乎看不见，
-   而把 --line 加到 2rpx 又显得笨重 —— 加深一档比加粗干净（2026-11-20 实测结论）。 */
-.acard-split {
-  height: 1rpx;
-  margin: 22rpx 0 18rpx;
-  background: $border-strong;
-}
-.acard-avatar {
-  width: 76rpx;
-  height: 76rpx;
-  line-height: 76rpx;
-  text-align: center;
-  border-radius: 999rpx;
-  background: var(--accent-soft);
-  border: 1rpx solid var(--accent-soft-2);
-  color: var(--accent-text);
-  font-size: 26rpx;
-  font-weight: 800;
-}
-.acard-main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-.acard-title {
-  font-size: 28rpx;
-  font-weight: 700;
-  color: var(--text-1);
-}
-.acard-note {
-  margin-top: 6rpx;
-  font-size: 20rpx;
-  color: var(--text-3);
-}
-.acard-btn {
-  font-size: 24rpx;
-  font-weight: 700;
-  color: var(--on-accent);
-  background: var(--accent);
-  padding: 12rpx 26rpx;
-  border-radius: 999rpx;
-  transition: transform 0.12s var(--ease), opacity 0.18s var(--ease);
-}
-.acard-btn:active {
-  transform: scale(0.96);
-  opacity: 0.9;
-}
-
-/* ===== 身体信息：收起态摘要行 + 展开/收起控件（2026-11-20） ===== */
-.body-sum {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16rpx;
-  padding: 4rpx 0 2rpx;
-}
-.body-sum-text {
-  flex: 1;
-  font-size: 28rpx;
-  font-weight: 600;
-  color: var(--text-1);
-  line-height: 1.4;
-}
-/* 「编辑」用胶囊，和账号卡右上角那个按钮同一族 */
-.body-sum-edit {
-  font-size: 24rpx;
-  font-weight: 700;
-  color: var(--on-accent);
-  background: var(--accent);
-  padding: 10rpx 24rpx;
-  border-radius: 999rpx;
-  transition: transform 0.12s var(--ease), opacity 0.18s var(--ease);
-}
-.body-sum-edit:active {
-  transform: scale(0.96);
-  opacity: 0.9;
-}
-/* 展开态的「收起」是次要操作，用描边胶囊，不与主按钮抢注意力 */
-.body-toggle {
-  font-size: 24rpx;
-  color: var(--accent-text);
-  padding: 8rpx 20rpx;
-  border-radius: 999rpx;
-  border: 1rpx solid var(--accent-soft-2);
-}
-
-/* ===== 数据卡：导出 / 导入备份文件（2026-11-20，替代旧的剪贴板方案） ===== */
-.data-actions {
-  display: flex;
-  gap: 16rpx;
-  margin-top: 18rpx;
-}
-.data-btn {
-  flex: 1;
-  text-align: center;
-  padding: 20rpx 0;
-  border-radius: $btn-radius;
-  background: var(--accent);
-  color: var(--on-accent);
-  font-size: $btn-font;
-  font-weight: 700;
-  transition: transform 0.12s var(--ease), opacity 0.18s var(--ease);
-}
-.data-btn.ghost {
-  background: $bg-card-light;
-  color: $text-main;
-  border: 1rpx solid $border-subtle;
-}
-.data-btn.busy {
-  opacity: 0.6;
-}
-.data-btn:active {
-  transform: scale(0.97);
-  opacity: 0.92;
-}
-/* App 端的"读本机最近一次导出"：小字按钮 */
-.data-link {
-  display: block;
-  margin-top: 14rpx;
-  font-size: 22rpx;
-  color: var(--accent-text);
-  text-decoration: underline;
-}
-/* 导出/导入结果行；文件路径可能很长，允许断行 */
-.data-note {
-  display: block;
-  margin-top: 12rpx;
-  font-size: 22rpx;
-  color: $text-secondary;
-  line-height: 1.5;
-  word-break: break-all;
-}
-.data-note.warn {
-  color: var(--warm-text);
-}
-/* 能力边界：这一行不能省 */
-.data-limit {
-  display: block;
-  margin-top: 14rpx;
-  padding-top: 12rpx;
-  border-top: 1rpx solid $border-subtle;
-  font-size: 20rpx;
-  color: $text-muted;
-  line-height: 1.5;
 }
 </style>

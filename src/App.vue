@@ -3,8 +3,6 @@ import { autoSyncSteps } from '@/utils/cloud.js'
 import { nativeStepsEnsure } from '@/utils/native-steps.js'
 import { initTheme, applyTheme, getMode } from '@/utils/theme.js'
 
-import { startWaterReminder, stopWaterReminder, getReminderCfg } from '@/utils/water-reminder.js'
-
 export default {
   onLaunch: function () {
     // 主题要在首帧就定下来，否则会先闪一下默认暗色
