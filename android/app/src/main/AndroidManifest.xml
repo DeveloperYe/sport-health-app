@@ -19,6 +19,10 @@
     <uses-permission android:name="android.permission.VIBRATE"/>
     <uses-permission android:name="android.permission.READ_LOGS"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <!-- 计步：重启后重新排零点闹钟 -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <!-- 计步：零点精确快照每日基线（Android 12+ 用户可在系统里撤销；撤销后自动退化为不精确闹钟） -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
     <uses-permission android:name="android.permission.FLASHLIGHT"/>
     <uses-permission android:name="android.permission.WRITE_SETTINGS"/>
 
@@ -96,6 +100,29 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="location" />
+
+        <!-- 原生计步：Java 侧常驻监听两个系统传感器（不带前台通知），
+             避免原来「JS 里实现 SensorEventListener」跨层丢回调的问题 -->
+        <service
+            android:name="com.developerye.sporthealth.StepTrackService"
+            android:enabled="true"
+            android:exported="false" />
+
+        <!-- 每日 00:00:30 快照今日基线（进程不需常驻，闹钟唤醒即可） -->
+        <receiver
+            android:name="com.developerye.sporthealth.StepMidnightReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
+        <!-- 重启后闹钟会被系统清空，这里重新排上 -->
+        <receiver
+            android:name="com.developerye.sporthealth.StepBootReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

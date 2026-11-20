@@ -45,3 +45,6 @@ assets/
 android/app/src/main/assets/apps/__UNI__74D4914/www/
 # 离线瓦片包：21MB 二进制不入库，走 Release 分发（CI 在构建前按哈希下载）
 src/static/tiles/*.pmtiles
+
+# 扩展安装包不是项目文件（曾误入 443 MB vsix）
+*.vsix

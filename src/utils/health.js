@@ -1,3 +1,5 @@
+import { resolveTodaySteps } from './steps-math.js'
+
 // 健康数据服务：平台差异能力（计步）尽量收敛在本模块
 // - Android App（APP-PLUS）：系统计步传感器 TYPE_STEP_COUNTER（plus.android 桥接）
 //   注：plus.stepCounter 是 DCloud「计步器模块」，离线打包 SDK 不含实现（对象壳存在但
@@ -6,6 +8,14 @@
 // - 其余平台（H5 等）：暂无计步能力，返回 0
 
 // #ifdef APP-PLUS
+import {
+  nativeStepsAvailable,
+  nativeStepsEnsure,
+  nativeTodaySteps,
+  nativeTodayStepsWait,
+  nativeBranches,
+  nativeDiag,
+} from './native-steps.js'
 // 动态申请计步权限（Android 6.0+ 必需；进程内只申请一次，不重复弹）
 let permRequested = false
 function requestActivityRecognition(done) {
@@ -210,6 +220,11 @@ function readBranches() {
 
 /** 两路原始读数（运动页内部用；普通页面请用 getTodaySteps / getWorkoutSteps） */
 export function getStepBranches() {
+  // 原生优先：Java 侧常驻监听，不跨 JS 层，切后台也不丢
+  if (nativeStepsAvailable()) {
+    const b = nativeBranches()
+    if (b && b.ok) return Promise.resolve({ ok: true, counter: b.counter, det: b.det })
+  }
   return readBranches()
 }
 
@@ -250,52 +265,38 @@ function todayStr() {
 // 语义：开机累计直接作为今日初始值（首读不把读到的值当基线清零，读到多少显示多少）；
 // 跨天以「昨日最后读数」为今日起点；手机重启归零用 offset 补偿已计步数；
 // detector 分支兜底。每次读取前重注册 counter 以刷新开机累计（含 App 未运行期间的步数）。
-export function getTodaySteps() {
+
+// JS 兜底解算（原生不可用时用）：逻辑与 StepCounter.java 一致
+function jsTodaySteps() {
   return readComposite()
     .then((total) => refreshCounterValue().then(() => total))
     .then((total) => {
-    if (total < 0) return 0
-    const today = todayStr()
-    let rec = null
-    try {
-      rec = uni.getStorageSync(SENSOR_KEY)
-    } catch (e) {}
-    const valid = rec && rec.date === today && typeof rec.base === 'number'
-    if (!valid) {
-      // 跨天/首装：昨日最后读数 = 今日起点；首日无记录 → base=0（开机累计全额即今日）
-      const prevLastRaw =
-        rec && typeof rec.lastRaw === 'number'
-          ? rec.lastRaw
-          : rec && typeof rec.base === 'number'
-            ? rec.base
-            : null
-      rec = {
-        date: today,
-        base: prevLastRaw !== null && prevLastRaw >= 0 ? prevLastRaw : 0,
-        detBase: detTotal,
-        lastRaw: sensorTotal,
-        offset: 0,
+      let rec = null
+      try {
+        rec = uni.getStorageSync(SENSOR_KEY)
+      } catch (e) {}
+      const r = resolveTodaySteps(rec, { counter: sensorTotal, det: detTotal }, todayStr())
+      if (r && r.rec) {
+        try {
+          uni.setStorageSync(SENSOR_KEY, r.rec)
+        } catch (e) {}
       }
-    } else {
-      // 旧格式记录兼容：补 lastRaw / offset，负基线视为 0（开机口径全额）
-      if (typeof rec.lastRaw !== 'number') rec.lastRaw = rec.base
-      if (typeof rec.offset !== 'number') rec.offset = 0
-      if (rec.base < 0) rec.base = 0
-    }
-    if (sensorTotal >= 0 && typeof rec.lastRaw === 'number' && rec.lastRaw >= 0 && sensorTotal < rec.lastRaw) {
-      // 手机重启：counter 归零，补偿重启前已计步数
-      rec.offset += rec.lastRaw
-    }
-    if (sensorTotal >= 0) rec.lastRaw = sensorTotal
-    if (detTotal < (rec.detBase || 0)) rec.detBase = detTotal // App 重启：detector 归零重设
-    try {
-      uni.setStorageSync(SENSOR_KEY, rec)
-    } catch (e) {}
-    const counterDelta =
-      (rec.offset || 0) + (sensorTotal >= rec.base ? sensorTotal - rec.base : 0)
-    const detDelta = detTotal >= (rec.detBase || 0) ? detTotal - (rec.detBase || 0) : 0
-    return Math.max(counterDelta, detDelta)
-  })
+      if (!r || r.steps < 0) return total < 0 ? 0 : Math.max(0, total)
+      return r.steps
+    })
+}
+
+export function getTodaySteps() {
+  // 原生优先：Java 侧常驻监听、自己维护每日基线，读一个数字即可（不跨层、不依赖 WebView 存活）
+  if (nativeStepsAvailable()) {
+    nativeStepsEnsure()
+    return nativeTodayStepsWait(1500).then((v) => {
+      if (v !== null && v >= 0) return v
+      // 原生这次没就绪（冷启动传感器还没回调）：退回 JS 解算，别让界面显示 0
+      return jsTodaySteps()
+    })
+  }
+  return jsTodaySteps()
 }
 
 // 运动会话计步：返回两路统一口径的累计值（单调，供 delta 计步）。
@@ -306,7 +307,9 @@ export function getWorkoutSteps() {
 
 // 临时诊断信息（真机排查用，定位后移除）
 export function getStepDiag() {
+  const nat = nativeStepsAvailable() ? nativeDiag() : { available: false }
   return {
+    native: nat,
     hasPlus: typeof plus !== 'undefined',
     permAsked: permRequested,
     sensorFound,

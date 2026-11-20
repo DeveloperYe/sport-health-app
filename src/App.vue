@@ -1,5 +1,6 @@
 <script>
 import { autoSyncSteps } from '@/utils/cloud.js'
+import { nativeStepsEnsure } from '@/utils/native-steps.js'
 import { initTheme, applyTheme, getMode } from '@/utils/theme.js'
 
 export default {
@@ -10,6 +11,8 @@ export default {
   onShow: function () {
     // 回到前台时如果设的是「跟随系统」，重算一次（用户可能在后台改了系统深色模式）
     if (getMode() === 'auto') applyTheme('auto')
+    // 启动/回前台先把原生计步服务与零点闹钟拉起（H5/小程序里是空实现）
+    nativeStepsEnsure()
     // 启动/回到前台时自动同步今日步数（Android 原生计步器 / 微信运动）
     autoSyncSteps()
   },
